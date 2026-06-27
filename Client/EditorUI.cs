@@ -1,6 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
+using Comfort.Common;
+using EFT.InventoryLogic;
 using UnityEngine;
 
 namespace MapLootEditorLite.Client
@@ -12,9 +16,12 @@ namespace MapLootEditorLite.Client
         private readonly MarkerRenderer _renderer;
         private readonly LootPreviewSpawner _previews;
 
-        private Rect _windowRect = new Rect(20, 20, 420, 540);
+        private Rect _windowRect = new Rect(20, 20, 460, 540);
+        private Rect _confirmRect = new Rect(0, 0, 300, 120);
         private Vector2 _scrollPos;
         private string _packName = "MyLootPack";
+        private bool _deletePending;
+        private readonly Dictionary<string, string> _itemNameCache = new Dictionary<string, string>();
 
         public Rect WindowRect => _windowRect;
 
@@ -29,6 +36,33 @@ namespace MapLootEditorLite.Client
         public void Draw()
         {
             _windowRect = GUILayout.Window(12345, _windowRect, DrawWindow, "Map Loot Editor Lite");
+            if (_deletePending)
+            {
+                _confirmRect.x = Screen.width / 2f - 150;
+                _confirmRect.y = Screen.height / 2f - 60;
+                _confirmRect = GUILayout.Window(12346, _confirmRect, DrawConfirmDelete, "Confirm Delete");
+            }
+        }
+
+        public void RequestDelete()
+        {
+            if (_manager.Selected != null)
+                _deletePending = true;
+        }
+
+        private void DrawConfirmDelete(int id)
+        {
+            GUILayout.Label($"Delete '{_manager.Selected?.name}'?");
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Yes"))
+            {
+                _controller.DeleteSelected();
+                _deletePending = false;
+            }
+            if (GUILayout.Button("No"))
+                _deletePending = false;
+            GUILayout.EndHorizontal();
+            GUI.DragWindow();
         }
 
         private void DrawWindow(int id)
@@ -52,7 +86,8 @@ namespace MapLootEditorLite.Client
         private void DrawHeader()
         {
             GUILayout.Label($"Map: {_manager.Data?.map ?? "none"} | Markers: {_manager.GetAllMarkers().Count()}");
-            GUILayout.Label("F8 = Toggle | MMB = Cursor | 1=T 2=R 3=S | E = Select | Arrows = Move selected | WASD = Move cam | Space/Ctrl = Up/Down | Shift = Fast");
+            GUILayout.Label("F8 = Toggle | MMB = Cursor | 1=T 2=R 3=S | E = Select | Arrows = Move | WASD = Cam | Space/Ctrl = Up/Down | Shift = Fast");
+            GUILayout.Label("Ctrl+C = Copy | Ctrl+V = Paste | Ctrl+Z = Undo | Ctrl+Y = Redo | Delete = Delete selected");
 
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Save"))
@@ -86,12 +121,9 @@ namespace MapLootEditorLite.Client
             if (GUILayout.Button("Snap to Ground"))
                 _controller.SnapSelected();
             if (GUILayout.Button("Duplicate"))
-            {
-                _manager.DuplicateSelected();
-                _renderer.Rebuild();
-            }
+                _controller.DuplicateSelected();
             if (GUILayout.Button("Delete"))
-                _controller.DeleteSelected();
+                RequestDelete();
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
@@ -238,7 +270,7 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        private void DrawItems(System.Collections.Generic.List<LootItem> items, bool showRotation = false, System.Action<int> onPreview = null)
+        private void DrawItems(List<LootItem> items, bool showRotation = false, System.Action<int> onPreview = null)
         {
             if (items == null)
                 return;
@@ -252,7 +284,8 @@ namespace MapLootEditorLite.Client
 
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("Tpl", GUILayout.Width(30));
-                item.template = GUILayout.TextField(item.template ?? "");
+                item.template = GUILayout.TextField(item.template ?? "", GUILayout.Width(130));
+                var name = GetItemName(item.template);
                 GUILayout.Label("%", GUILayout.Width(18));
                 item.chance = FloatField("", item.chance);
                 if (onPreview != null && GUILayout.Button("Prev", GUILayout.Width(40)))
@@ -267,6 +300,9 @@ namespace MapLootEditorLite.Client
                     break;
                 }
                 GUILayout.EndHorizontal();
+
+                if (!string.IsNullOrEmpty(name))
+                    GUILayout.Label($"  {name}", GUILayout.Height(18));
 
                 if (showRotation)
                 {
@@ -286,6 +322,42 @@ namespace MapLootEditorLite.Client
                 items.Add(new LootItem());
                 _manager.IsDirty = true;
             }
+        }
+
+        private string GetItemName(string template)
+        {
+            if (string.IsNullOrEmpty(template))
+                return null;
+            if (_itemNameCache.TryGetValue(template, out var cached))
+                return cached;
+
+            var factory = Singleton<ItemFactoryClass>.Instance;
+            if (factory == null || !factory.ItemTemplates.TryGetValue(template, out var itemTemplate))
+            {
+                _itemNameCache[template] = null;
+                return null;
+            }
+
+            var name = GetTemplateName(itemTemplate);
+            _itemNameCache[template] = name;
+            return name;
+        }
+
+        private static string GetTemplateName(object itemTemplate)
+        {
+            if (itemTemplate == null)
+                return null;
+
+            var type = itemTemplate.GetType();
+            var prop = type.GetProperty("Name", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+            if (prop != null)
+                return prop.GetValue(itemTemplate) as string;
+
+            var field = type.GetField("_name", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (field != null)
+                return field.GetValue(itemTemplate) as string;
+
+            return null;
         }
 
         private void DrawMarkerList()

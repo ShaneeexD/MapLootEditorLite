@@ -12,11 +12,70 @@ namespace MapLootEditorLite.Client
         public MarkerBase Selected { get; set; }
         public bool IsDirty { get; set; }
 
+        private readonly List<string> _undoStack = new List<string>();
+        private readonly List<string> _redoStack = new List<string>();
+        private const int MaxUndo = 50;
+
+        public bool CanUndo => _undoStack.Count > 0;
+        public bool CanRedo => _redoStack.Count > 0;
+
         public void LoadMap(string mapId)
         {
             Data = JsonStorage.Load(mapId);
             Selected = null;
             IsDirty = false;
+            _undoStack.Clear();
+            _redoStack.Clear();
+        }
+
+        public void Snapshot()
+        {
+            if (Data == null)
+                return;
+
+            var snap = new MarkerSnapshot { Data = Data, SelectedId = Selected?.id };
+            _undoStack.Add(JsonConvert.SerializeObject(snap));
+            if (_undoStack.Count > MaxUndo)
+                _undoStack.RemoveAt(0);
+            _redoStack.Clear();
+        }
+
+        public void Undo()
+        {
+            if (_undoStack.Count == 0)
+                return;
+
+            var current = JsonConvert.SerializeObject(new MarkerSnapshot { Data = Data, SelectedId = Selected?.id });
+            var json = _undoStack[_undoStack.Count - 1];
+            _undoStack.RemoveAt(_undoStack.Count - 1);
+            ApplySnapshot(json);
+            _redoStack.Add(current);
+        }
+
+        public void Redo()
+        {
+            if (_redoStack.Count == 0)
+                return;
+
+            var current = JsonConvert.SerializeObject(new MarkerSnapshot { Data = Data, SelectedId = Selected?.id });
+            var json = _redoStack[_redoStack.Count - 1];
+            _redoStack.RemoveAt(_redoStack.Count - 1);
+            ApplySnapshot(json);
+            _undoStack.Add(current);
+        }
+
+        private void ApplySnapshot(string json)
+        {
+            var snap = JsonConvert.DeserializeObject<MarkerSnapshot>(json);
+            Data = snap.Data;
+            Selected = string.IsNullOrEmpty(snap.SelectedId) ? null : FindById(snap.SelectedId);
+            IsDirty = true;
+        }
+
+        private class MarkerSnapshot
+        {
+            public MapData Data;
+            public string SelectedId;
         }
 
         public void SetMapData(MapData data)

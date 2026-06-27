@@ -7,6 +7,7 @@ using EFT.Ballistics;
 using EFT.HealthSystem;
 using HarmonyLib;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 namespace MapLootEditorLite.Client
@@ -177,6 +178,19 @@ namespace MapLootEditorLite.Client
                 if (Input.GetKeyDown(KeyCode.Alpha3))
                     SetGizmoMode(GizmoMode.Scale);
 
+                if (Input.GetKeyDown(KeyCode.Delete) && GUIUtility.keyboardControl == 0)
+                    _ui.RequestDelete();
+
+                if (Input.GetKeyDown(KeyCode.C) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) && GUIUtility.keyboardControl == 0)
+                    CopySelected();
+                if (Input.GetKeyDown(KeyCode.V) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) && GUIUtility.keyboardControl == 0)
+                    Paste();
+
+                if (Input.GetKeyDown(KeyCode.Z) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) && GUIUtility.keyboardControl == 0)
+                    Undo();
+                if (Input.GetKeyDown(KeyCode.Y) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) && GUIUtility.keyboardControl == 0)
+                    Redo();
+
                 if (_freeCam)
                 {
                     if (Input.GetMouseButtonDown(2))
@@ -287,6 +301,7 @@ namespace MapLootEditorLite.Client
                         new Vector2(Screen.width / 2f, Screen.height / 2f), 50f);
                     if (picked != null)
                     {
+                        _manager.Snapshot();
                         _manager.Selected = picked;
                         Plugin.Log.LogInfo($"Selected {picked.name}");
                     }
@@ -298,6 +313,15 @@ namespace MapLootEditorLite.Client
         {
             if (_manager.Selected == null)
                 return;
+
+            if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow) ||
+                Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.RightArrow) ||
+                Input.GetKeyDown(KeyCode.PageUp) || Input.GetKeyDown(KeyCode.PageDown) ||
+                Input.GetKeyDown(KeyCode.KeypadPlus) || Input.GetKeyDown(KeyCode.Equals) ||
+                Input.GetKeyDown(KeyCode.KeypadMinus) || Input.GetKeyDown(KeyCode.Minus))
+            {
+                _manager.Snapshot();
+            }
 
             float speed = 5f * Time.deltaTime;
             float radiusSpeed = 2f * Time.deltaTime;
@@ -398,6 +422,7 @@ namespace MapLootEditorLite.Client
         public void CreateLootSpawn()
         {
             if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
             var marker = _manager.CreateLootSpawn(GetLookPosition(), GetPlayerRotation());
             _manager.Selected = marker;
             _renderer.Rebuild();
@@ -406,6 +431,7 @@ namespace MapLootEditorLite.Client
         public void CreateLootZone()
         {
             if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
             var marker = _manager.CreateLootZone(GetLookPosition());
             _manager.Selected = marker;
             _renderer.Rebuild();
@@ -414,6 +440,7 @@ namespace MapLootEditorLite.Client
         public void CreateStaticObject()
         {
             if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
             var marker = _manager.CreateStaticObject(GetLookPosition(), GetPlayerRotation());
             _manager.Selected = marker;
             _renderer.Rebuild();
@@ -422,6 +449,7 @@ namespace MapLootEditorLite.Client
         public void CreateLootSpawnAtLook()
         {
             if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
             var marker = _manager.CreateLootSpawn(GetLookPosition(), GetPlayerRotation());
             _manager.Selected = marker;
             _renderer.Rebuild();
@@ -430,6 +458,7 @@ namespace MapLootEditorLite.Client
         public void CreateLootZoneAtLook()
         {
             if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
             var marker = _manager.CreateLootZone(GetLookPosition());
             _manager.Selected = marker;
             _renderer.Rebuild();
@@ -438,6 +467,7 @@ namespace MapLootEditorLite.Client
         public void CreateStaticObjectAtLook()
         {
             if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
             var marker = _manager.CreateStaticObject(GetLookPosition(), GetPlayerRotation());
             _manager.Selected = marker;
             _renderer.Rebuild();
@@ -600,6 +630,7 @@ namespace MapLootEditorLite.Client
 
             if (Input.GetMouseButtonDown(0))
             {
+                _manager.Snapshot();
                 if (hoveredAxis != GizmoAxis.None)
                 {
                     _activeGizmoAxis = hoveredAxis;
@@ -769,10 +800,17 @@ namespace MapLootEditorLite.Client
         }
 
         public void Save() => _manager.Save();
-        public void SnapSelected() => _manager.SnapSelectedToGround();
+
+        public void SnapSelected()
+        {
+            _manager.Snapshot();
+            _manager.SnapSelectedToGround();
+            _renderer.Rebuild();
+        }
 
         public void DuplicateSelected()
         {
+            _manager.Snapshot();
             _manager.DuplicateSelected();
             _renderer.Rebuild();
         }
@@ -787,6 +825,89 @@ namespace MapLootEditorLite.Client
 
         public void ClearPreviews() => _previews.ClearAll();
         public void ClearVisuals() => _renderer.Clear();
+
+        public void Undo()
+        {
+            _manager.Undo();
+            _renderer.Rebuild();
+            _previews.ClearAll();
+        }
+
+        public void Redo()
+        {
+            _manager.Redo();
+            _renderer.Rebuild();
+            _previews.ClearAll();
+        }
+
+        public void CopySelected()
+        {
+            if (_manager.Selected == null)
+                return;
+
+            var wrapper = new ClipboardMarker
+            {
+                kind = _manager.Selected.Kind.ToString(),
+                data = JObject.FromObject(_manager.Selected)
+            };
+            GUIUtility.systemCopyBuffer = JsonConvert.SerializeObject(wrapper);
+        }
+
+        public void Paste()
+        {
+            if (!EnsureMapLoaded())
+                return;
+
+            var json = GUIUtility.systemCopyBuffer;
+            if (string.IsNullOrEmpty(json))
+                return;
+
+            try
+            {
+                var clip = JsonConvert.DeserializeObject<ClipboardMarker>(json);
+                if (clip?.data == null)
+                    return;
+
+                MarkerBase copy;
+                switch (clip.kind)
+                {
+                    case "LooseLoot":
+                        copy = clip.data.ToObject<LooseLootSpawn>();
+                        _manager.Data.lootSpawns ??= new System.Collections.Generic.List<LooseLootSpawn>();
+                        _manager.Data.lootSpawns.Add((LooseLootSpawn)copy);
+                        break;
+                    case "LootZone":
+                        copy = clip.data.ToObject<LootZone>();
+                        _manager.Data.lootZones ??= new System.Collections.Generic.List<LootZone>();
+                        _manager.Data.lootZones.Add((LootZone)copy);
+                        break;
+                    case "StaticObject":
+                        copy = clip.data.ToObject<StaticObject>();
+                        _manager.Data.objects ??= new System.Collections.Generic.List<StaticObject>();
+                        _manager.Data.objects.Add((StaticObject)copy);
+                        break;
+                    default:
+                        return;
+                }
+
+                copy.id = Guid.NewGuid().ToString();
+                copy.name = copy.name + "_paste";
+                copy.position = TransformData.FromVector3(GetLookPosition() + Vector3.up * 0.5f);
+                _manager.Selected = copy;
+                _manager.IsDirty = true;
+                _renderer.Rebuild();
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"Paste failed: {ex.Message}");
+            }
+        }
+
+        private class ClipboardMarker
+        {
+            public string kind;
+            public JObject data;
+        }
 
         public string CurrentMapId => _currentMapId;
 

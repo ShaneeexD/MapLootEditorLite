@@ -14,9 +14,11 @@ namespace MapLootEditorLite.Client
 
         private readonly Color _looseColor = new Color(0f, 1f, 0f, 0.6f);
         private readonly Color _zoneColor = new Color(1f, 1f, 0f, 0.15f);
-        private readonly Color _zoneWireColor = new Color(1f, 1f, 0f, 0.8f);
+        private readonly Color _zoneWireColor = new Color(1f, 1f, 0f, 1.0f);
         private readonly Color _objectColor = new Color(0f, 0.4f, 1f, 0.6f);
+        private readonly Color _objectWireColor = new Color(0.4f, 0.8f, 1f, 1.0f);
         private readonly Color _selectedColor = new Color(0.2f, 0.6f, 1f, 0.25f);
+        private readonly Color _selectedWireColor = new Color(0.2f, 0.6f, 1f, 1.0f);
         private readonly Color _gizmoXColor = new Color(1f, 0.2f, 0.2f, 0.9f);
         private readonly Color _gizmoYColor = new Color(0.2f, 1f, 0.2f, 0.9f);
         private readonly Color _gizmoZColor = new Color(0.2f, 0.4f, 1f, 0.9f);
@@ -163,7 +165,7 @@ namespace MapLootEditorLite.Client
                     visual = CreateZoneVisual(zone);
                     break;
                 case StaticObject _:
-                    visual = CreatePrimitiveNoCollider(PrimitiveType.Cube, 0.5f);
+                    visual = CreateStaticObjectVisual();
                     break;
                 default:
                     return null;
@@ -212,8 +214,8 @@ namespace MapLootEditorLite.Client
 
             var lr = wire.AddComponent<LineRenderer>();
             lr.useWorldSpace = false;
-            lr.startWidth = 0.03f;
-            lr.endWidth = 0.03f;
+            lr.startWidth = 0.04f;
+            lr.endWidth = 0.04f;
             lr.positionCount = 0;
             lr.material = GetWireMaterial();
             lr.startColor = _zoneWireColor;
@@ -233,14 +235,35 @@ namespace MapLootEditorLite.Client
 
             var lr = wire.AddComponent<LineRenderer>();
             lr.useWorldSpace = false;
-            lr.startWidth = 0.03f;
-            lr.endWidth = 0.03f;
+            lr.startWidth = 0.04f;
+            lr.endWidth = 0.04f;
             lr.positionCount = 0;
             lr.material = GetWireMaterial();
             lr.startColor = _zoneWireColor;
             lr.endColor = _zoneWireColor;
 
             DrawWireBox(lr, 0.5f);
+            return go;
+        }
+
+        private GameObject CreateStaticObjectVisual()
+        {
+            var go = CreatePrimitiveNoCollider(PrimitiveType.Cube, 0.5f);
+            var wire = new GameObject("wire_box");
+            wire.transform.SetParent(go.transform, false);
+            wire.transform.localScale = Vector3.one;
+            wire.transform.localPosition = Vector3.zero;
+
+            var lr = wire.AddComponent<LineRenderer>();
+            lr.useWorldSpace = false;
+            lr.startWidth = 0.04f;
+            lr.endWidth = 0.04f;
+            lr.positionCount = 0;
+            lr.material = GetWireMaterial();
+            lr.startColor = _objectWireColor;
+            lr.endColor = _objectWireColor;
+
+            DrawWireBox(lr, 0.25f);
             return go;
         }
 
@@ -378,8 +401,16 @@ namespace MapLootEditorLite.Client
                 var lr = wire.GetComponent<LineRenderer>();
                 if (lr != null)
                 {
-                    lr.startColor = selected ? _selectedColor : _zoneWireColor;
-                    lr.endColor = selected ? _selectedColor : _zoneWireColor;
+                    Color wireColor;
+                    if (selected)
+                        wireColor = _selectedWireColor;
+                    else if (marker is StaticObject)
+                        wireColor = _objectWireColor;
+                    else
+                        wireColor = _zoneWireColor;
+
+                    lr.startColor = wireColor;
+                    lr.endColor = wireColor;
                 }
             }
         }
