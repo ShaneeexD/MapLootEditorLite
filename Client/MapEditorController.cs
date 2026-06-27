@@ -37,7 +37,9 @@ namespace MapLootEditorLite.Client
 
         private bool _mouseDragging;
 
-        public static bool FreeCamInvulnerable { get; private set; }
+        public static bool FreeCamInvulnerable => _editorModeActive || Time.time < _editorModeInvincibleEndTime;
+        private static bool _editorModeActive;
+        private static float _editorModeInvincibleEndTime;
         private static readonly Harmony _freecamHarmony = new Harmony("com.maplooteditorlite.freecam");
         private static bool _freecamPatchesApplied;
 
@@ -209,12 +211,7 @@ namespace MapLootEditorLite.Client
             _renderer.Update();
 
             if (_editorOpen && _manager.Selected != null)
-            {
-                if (_manager.Selected is LooseLootSpawn spawn)
-                    _previews.UpdateSelected(spawn);
-                else if (_manager.Selected is LootZone zone)
-                    _previews.UpdateSelected(zone);
-            }
+                _previews.UpdateForMarker(_manager.Selected);
 
             _autoSaveTimer += Time.deltaTime;
             if (_autoSaveTimer > 30f)
@@ -303,14 +300,10 @@ namespace MapLootEditorLite.Client
                 return;
 
             float speed = 5f * Time.deltaTime;
-            float rotSpeed = 90f * Time.deltaTime;
             float radiusSpeed = 2f * Time.deltaTime;
 
             if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
-            {
                 speed *= 3f;
-                rotSpeed *= 3f;
-            }
 
             if (Input.GetKey(KeyCode.UpArrow))
                 _manager.MoveSelected(Vector3.forward * speed);
@@ -324,14 +317,12 @@ namespace MapLootEditorLite.Client
                 _manager.MoveSelected(Vector3.up * speed);
             if (Input.GetKey(KeyCode.PageDown))
                 _manager.MoveSelected(Vector3.down * speed);
-            if (Input.GetKey(KeyCode.R))
-                _manager.RotateSelected(Vector3.up * rotSpeed);
-            if (Input.GetKey(KeyCode.F))
-                _manager.RotateSelected(Vector3.down * rotSpeed);
             if (Input.GetKey(KeyCode.KeypadPlus) || Input.GetKey(KeyCode.Equals))
                 _manager.ChangeRadius(radiusSpeed);
             if (Input.GetKey(KeyCode.KeypadMinus) || Input.GetKey(KeyCode.Minus))
                 _manager.ChangeRadius(-radiusSpeed);
+
+            _previews.UpdateForMarker(_manager.Selected);
         }
 
         public Vector3 GetPlayerPosition()
@@ -506,7 +497,7 @@ namespace MapLootEditorLite.Client
             _freeCamCursorLocked = true;
             Cursor.visible = false;
             Cursor.lockState = CursorLockMode.Locked;
-            FreeCamInvulnerable = true;
+            _editorModeActive = true;
             Plugin.Log.LogInfo("Entered editor mode.");
         }
 
@@ -543,7 +534,8 @@ namespace MapLootEditorLite.Client
             _freeCamCursorLocked = true;
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
-            FreeCamInvulnerable = false;
+            _editorModeActive = false;
+            _editorModeInvincibleEndTime = Time.time + 5f;
             Plugin.Log.LogInfo("Exited editor mode.");
         }
 
@@ -656,6 +648,7 @@ namespace MapLootEditorLite.Client
                         var point = ray.GetPoint(distance);
                         var newPos = new Vector3(point.x, markerPos.y, point.z);
                         _manager.Selected.position = TransformData.FromVector3(newPos);
+                        _previews.UpdateForMarker(_manager.Selected);
                         _manager.IsDirty = true;
                     }
                 }
@@ -721,6 +714,7 @@ namespace MapLootEditorLite.Client
                     break;
             }
 
+            _previews.UpdateForMarker(_manager.Selected);
             _manager.IsDirty = true;
         }
 

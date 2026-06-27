@@ -16,8 +16,7 @@ namespace MapLootEditorLite.Client
         private readonly Color _zoneColor = new Color(1f, 1f, 0f, 0.15f);
         private readonly Color _zoneWireColor = new Color(1f, 1f, 0f, 0.8f);
         private readonly Color _objectColor = new Color(0f, 0.4f, 1f, 0.6f);
-        private readonly Color _selectedColor = Color.white;
-        private readonly Color _selectedZoneColor = new Color(0.2f, 0.6f, 1f, 0.25f);
+        private readonly Color _selectedColor = new Color(0.2f, 0.6f, 1f, 0.25f);
         private readonly Color _gizmoXColor = new Color(1f, 0.2f, 0.2f, 0.9f);
         private readonly Color _gizmoYColor = new Color(0.2f, 1f, 0.2f, 0.9f);
         private readonly Color _gizmoZColor = new Color(0.2f, 0.4f, 1f, 0.9f);
@@ -354,11 +353,7 @@ namespace MapLootEditorLite.Client
             }
 
             Color color;
-            if (selected && marker is LootZone)
-            {
-                color = _selectedZoneColor;
-            }
-            else if (selected)
+            if (selected)
             {
                 color = _selectedColor;
             }

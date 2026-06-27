@@ -52,7 +52,7 @@ namespace MapLootEditorLite.Client
         private void DrawHeader()
         {
             GUILayout.Label($"Map: {_manager.Data?.map ?? "none"} | Markers: {_manager.GetAllMarkers().Count()}");
-            GUILayout.Label("F8 = Toggle | MMB = Cursor | 1=T 2=R 3=S | E = Select | Arrows = Move | R/F = Rotate");
+            GUILayout.Label("F8 = Toggle | MMB = Cursor | 1=T 2=R 3=S | E = Select | Arrows = Move selected | WASD = Move cam | Space/Ctrl = Up/Down | Shift = Fast");
 
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Save"))
@@ -180,7 +180,7 @@ namespace MapLootEditorLite.Client
             }
             if (selected is LootZone lz && GUILayout.Button("Preview Random In Zone"))
             {
-                _previews.SpawnInZone(lz);
+                _previews.SpawnAllInZone(lz);
             }
             GUILayout.EndHorizontal();
         }

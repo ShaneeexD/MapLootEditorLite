@@ -31,15 +31,36 @@ namespace MapLootEditorLite.Client
             var pos = marker.position.ToVector3();
             var ground = MarkerManager.GetGroundPosition(pos);
             var rotation = marker.rotation.ToQuaternion();
-            SpawnPreview(tpl, ground ?? pos, rotation, marker.name, marker.id);
+            SpawnPreview(tpl, ground ?? pos, rotation, pos, rotation, true, marker.name, marker.id);
         }
 
         public void SpawnInZone(LootZone marker, int itemIndex = 0)
         {
             var tpl = GetItemTpl(marker.items, itemIndex);
+            var item = GetItem(marker.items, itemIndex);
             var pos = RandomPointInZone(marker);
             var rotation = GetZoneItemRotation(marker.items, itemIndex);
-            SpawnPreview(tpl, pos, rotation, marker.name, marker.id);
+            var markerPos = marker.position.ToVector3();
+            var markerRot = marker.rotation.ToQuaternion();
+            SpawnPreview(tpl, pos, rotation, markerPos, markerRot, item?.randomRotation != true, marker.name, marker.id);
+        }
+
+        public void SpawnAllInZone(LootZone marker)
+        {
+            if (marker.items == null || marker.items.Count == 0)
+                return;
+
+            ClearByMarkerId(marker.id);
+            var markerPos = marker.position.ToVector3();
+            var markerRot = marker.rotation.ToQuaternion();
+            for (int i = 0; i < marker.items.Count; i++)
+            {
+                var tpl = GetItemTpl(marker.items, i);
+                var item = GetItem(marker.items, i);
+                var pos = RandomPointInZone(marker);
+                var rotation = GetZoneItemRotation(marker.items, i);
+                SpawnPreviewInternal(tpl, pos, rotation, markerPos, markerRot, item?.randomRotation != true, marker.name, marker.id, false);
+            }
         }
 
         private Vector3 RandomPointInZone(LootZone zone)
@@ -68,8 +89,11 @@ namespace MapLootEditorLite.Client
         public void SpawnAtZoneCenter(LootZone marker, int itemIndex = 0)
         {
             var tpl = GetItemTpl(marker.items, itemIndex);
+            var item = GetItem(marker.items, itemIndex);
+            var pos = marker.position.ToVector3();
+            var rot = marker.rotation.ToQuaternion();
             var rotation = GetZoneItemRotation(marker.items, itemIndex);
-            SpawnPreview(tpl, marker.position.ToVector3(), rotation, marker.name, marker.id);
+            SpawnPreview(tpl, pos, rotation, pos, rot, item?.randomRotation != true, marker.name, marker.id);
         }
 
         private string GetItemTpl(List<LootItem> items, int index)
@@ -101,15 +125,21 @@ namespace MapLootEditorLite.Client
             return Quaternion.Euler(0f, UnityEngine.Random.Range(0f, 360f), 0f);
         }
 
-        public void SpawnPreview(string itemTpl, Vector3 position, Quaternion rotation, string markerName, string markerId)
+        public void SpawnPreview(string itemTpl, Vector3 position, Quaternion rotation, Vector3 markerPosition, Quaternion markerRotation, bool syncRotation, string markerName, string markerId)
         {
-            ClearByMarkerId(markerId);
+            SpawnPreviewInternal(itemTpl, position, rotation, markerPosition, markerRotation, syncRotation, markerName, markerId, true);
+        }
+
+        private void SpawnPreviewInternal(string itemTpl, Vector3 position, Quaternion rotation, Vector3 markerPosition, Quaternion markerRotation, bool syncRotation, string markerName, string markerId, bool clear)
+        {
+            if (clear)
+                ClearByMarkerId(markerId);
             var fallback = CreateFallbackPreview(itemTpl, position, rotation);
-            AttachMeta(fallback, itemTpl, markerName, markerId, true);
+            AttachMeta(fallback, itemTpl, markerName, markerId, true, position - markerPosition, Quaternion.Inverse(markerRotation) * rotation, syncRotation);
             _previews.Add(fallback);
             Plugin.Log.LogInfo($"Spawned fallback preview for {markerName} using tpl {itemTpl}; loading real asset...");
 
-            _runner.StartCoroutine(LoadRealPreviewCoroutine(itemTpl, position, rotation, markerName, markerId, fallback));
+            _runner.StartCoroutine(LoadRealPreviewCoroutine(itemTpl, position, rotation, markerPosition, markerRotation, syncRotation, markerName, markerId, fallback));
         }
 
         private GameObject TrySpawnRealPreview(string itemTpl, Vector3 position, Quaternion rotation)
@@ -147,7 +177,7 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        private IEnumerator LoadRealPreviewCoroutine(string itemTpl, Vector3 position, Quaternion rotation, string markerName, string markerId, GameObject fallback)
+        private IEnumerator LoadRealPreviewCoroutine(string itemTpl, Vector3 position, Quaternion rotation, Vector3 markerPosition, Quaternion markerRotation, bool syncRotation, string markerName, string markerId, GameObject fallback)
         {
             var task = PreloadBundles(itemTpl);
             while (!task.IsCompleted)
@@ -164,6 +194,8 @@ namespace MapLootEditorLite.Client
             if (!_previews.Contains(fallback))
                 yield break;
 
+            var offset = position - markerPosition;
+            var rotationOffset = Quaternion.Inverse(markerRotation) * rotation;
             for (int attempt = 0; attempt < 5; attempt++)
             {
                 var real = TrySpawnRealPreview(itemTpl, position, rotation);
@@ -171,7 +203,7 @@ namespace MapLootEditorLite.Client
                 {
                     _previews.Remove(fallback);
                     UnityEngine.Object.Destroy(fallback);
-                    AttachMeta(real, itemTpl, markerName, markerId, false);
+                    AttachMeta(real, itemTpl, markerName, markerId, false, offset, rotationOffset, syncRotation);
                     _previews.Add(real);
                     Plugin.Log.LogInfo($"Real preview loaded for {markerName} using tpl {itemTpl}");
                     yield break;
@@ -213,7 +245,7 @@ namespace MapLootEditorLite.Client
                 CancellationToken.None);
         }
 
-        private void AttachMeta(GameObject preview, string itemTpl, string markerName, string markerId, bool fallback)
+        private void AttachMeta(GameObject preview, string itemTpl, string markerName, string markerId, bool fallback, Vector3 offset, Quaternion rotationOffset, bool syncRotation)
         {
             var meta = preview.AddComponent<PreviewLootMarker>();
             meta.itemTpl = itemTpl;
@@ -221,6 +253,9 @@ namespace MapLootEditorLite.Client
             meta.sourceMarkerId = markerId;
             meta.previewOnly = true;
             meta.isFallback = fallback;
+            meta.syncRotation = syncRotation;
+            meta.offset = offset;
+            meta.rotationOffset = rotationOffset;
         }
 
         private GameObject CreateFallbackPreview(string itemTpl, Vector3 position, Quaternion rotation)
@@ -294,38 +329,34 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        public void UpdateSelected(LooseLootSpawn marker)
+        public void UpdateForMarker(MarkerBase marker)
         {
             if (marker == null)
                 return;
-            var rotation = marker.rotation.ToQuaternion();
-            foreach (var preview in _previews)
-            {
-                if (preview == null)
-                    continue;
-                var meta = preview.GetComponent<PreviewLootMarker>();
-                if (meta != null && meta.sourceMarkerId == marker.id)
-                    preview.transform.rotation = rotation;
-            }
-        }
 
-        public void UpdateSelected(LootZone marker)
-        {
-            if (marker == null)
-                return;
-            var item = GetItem(marker.items, 0);
-            if (item == null)
-                return;
-            if (item.randomRotation)
-                return;
-            var rotation = item.rotation.ToQuaternion();
+            var markerPos = marker.position.ToVector3();
+            var markerRot = marker.rotation.ToQuaternion();
             foreach (var preview in _previews)
             {
                 if (preview == null)
                     continue;
+
                 var meta = preview.GetComponent<PreviewLootMarker>();
-                if (meta != null && meta.sourceMarkerId == marker.id)
-                    preview.transform.rotation = rotation;
+                if (meta == null || meta.sourceMarkerId != marker.id)
+                    continue;
+
+                if (marker is LooseLootSpawn)
+                {
+                    var ground = MarkerManager.GetGroundPosition(markerPos);
+                    preview.transform.position = ground ?? markerPos;
+                }
+                else
+                {
+                    preview.transform.position = markerPos + markerRot * meta.offset;
+                }
+
+                if (meta.syncRotation)
+                    preview.transform.rotation = markerRot * meta.rotationOffset;
             }
         }
 
@@ -383,6 +414,9 @@ namespace MapLootEditorLite.Client
         public string sourceMarkerId;
         public bool previewOnly = true;
         public bool isFallback = false;
+        public bool syncRotation = true;
+        public Vector3 offset;
+        public Quaternion rotationOffset;
     }
 
     public class CoroutineRunner : MonoBehaviour
