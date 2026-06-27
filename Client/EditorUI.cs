@@ -268,6 +268,9 @@ namespace MapLootEditorLite.Client
                 obj.scale = TransformData.FromVector3(scale);
                 _manager.IsDirty = true;
             }
+
+            if (GUILayout.Button("Preview Object"))
+                _previews.SpawnStaticPreview(obj);
         }
 
         private void DrawItems(List<LootItem> items, bool showRotation = false, System.Action<int> onPreview = null)

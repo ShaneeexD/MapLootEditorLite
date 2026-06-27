@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Comfort.Common;
@@ -18,6 +20,7 @@ namespace MapLootEditorLite.Client
         private readonly GameObject _root;
         private readonly CoroutineRunner _runner;
         private readonly List<GameObject> _previews = new List<GameObject>();
+        private readonly List<GameObject> _staticPreviews = new List<GameObject>();
 
         public LootPreviewSpawner(GameObject root)
         {
@@ -358,6 +361,21 @@ namespace MapLootEditorLite.Client
                 if (meta.syncRotation)
                     preview.transform.rotation = markerRot * meta.rotationOffset;
             }
+
+            foreach (var preview in _staticPreviews)
+            {
+                if (preview == null)
+                    continue;
+
+                var meta = preview.GetComponent<PreviewStaticObjectMarker>();
+                if (meta == null || meta.sourceMarkerId != marker.id)
+                    continue;
+
+                preview.transform.position = markerPos;
+                preview.transform.rotation = markerRot;
+                if (marker is StaticObject so)
+                    preview.transform.localScale = so.scale.ToVector3();
+            }
         }
 
         public void ClearAll()
@@ -370,6 +388,13 @@ namespace MapLootEditorLite.Client
                 DestroyPreview(preview);
             }
             _previews.Clear();
+
+            foreach (var preview in _staticPreviews)
+            {
+                if (preview != null)
+                    UnityEngine.Object.Destroy(preview);
+            }
+            _staticPreviews.Clear();
         }
 
         public void ClearByMarkerId(string markerId)
@@ -390,6 +415,94 @@ namespace MapLootEditorLite.Client
                     DestroyPreview(preview);
                 }
             }
+
+            for (int i = _staticPreviews.Count - 1; i >= 0; i--)
+            {
+                var preview = _staticPreviews[i];
+                if (preview == null)
+                    continue;
+
+                var meta = preview.GetComponent<PreviewStaticObjectMarker>();
+                if (meta != null && meta.sourceMarkerId == markerId)
+                {
+                    _staticPreviews.RemoveAt(i);
+                    UnityEngine.Object.Destroy(preview);
+                }
+            }
+        }
+
+        public void SpawnStaticPreview(StaticObject marker)
+        {
+            if (marker == null || string.IsNullOrEmpty(marker.prefabPath))
+            {
+                Plugin.Log.LogWarning("Cannot preview static object: no prefab path set.");
+                return;
+            }
+
+            ClearByMarkerId(marker.id);
+            _runner.StartCoroutine(LoadStaticPreviewCoroutine(marker));
+        }
+
+        private IEnumerator LoadStaticPreviewCoroutine(StaticObject marker)
+        {
+            string path = Path.Combine(Application.streamingAssetsPath, "Windows", marker.prefabPath.TrimStart('/'));
+            Plugin.Log.LogInfo($"Loading static object bundle: {path}");
+
+            AssetBundle bundle = null;
+            bool bundleOwned = false;
+            string fileName = Path.GetFileName(path);
+            foreach (var b in AssetBundle.GetAllLoadedAssetBundles())
+            {
+                if (b.name == fileName || b.name == marker.prefabPath)
+                {
+                    bundle = b;
+                    Plugin.Log.LogInfo($"Using already loaded bundle: {b.name}");
+                    break;
+                }
+            }
+
+            if (bundle == null)
+            {
+                var request = AssetBundle.LoadFromFileAsync(path);
+                yield return request;
+
+                bundle = request.assetBundle;
+                bundleOwned = true;
+                if (bundle == null)
+                {
+                    Plugin.Log.LogWarning($"Failed to load static object bundle: {path}");
+                    yield break;
+                }
+            }
+
+            var assetRequest = bundle.LoadAllAssetsAsync<GameObject>();
+            yield return assetRequest;
+
+            var prefab = assetRequest.allAssets?.OfType<GameObject>().FirstOrDefault();
+            if (prefab == null)
+            {
+                Plugin.Log.LogWarning($"No GameObject asset found in bundle: {path}");
+                if (bundleOwned)
+                    bundle.Unload(true);
+                yield break;
+            }
+
+            var instance = UnityEngine.Object.Instantiate(prefab);
+            instance.name = $"StaticPreview_{marker.name}";
+            instance.transform.SetParent(_root.transform, false);
+            instance.transform.position = marker.position.ToVector3();
+            instance.transform.rotation = marker.rotation.ToQuaternion();
+            instance.transform.localScale = marker.scale.ToVector3();
+
+            var meta = instance.AddComponent<PreviewStaticObjectMarker>();
+            meta.sourceMarkerId = marker.id;
+            meta.prefabPath = marker.prefabPath;
+
+            _staticPreviews.Add(instance);
+            Plugin.Log.LogInfo($"Spawned static object preview for {marker.name} from {path}");
+
+            if (bundleOwned)
+                bundle.Unload(false);
         }
 
         private void DestroyPreview(GameObject preview)
@@ -417,6 +530,12 @@ namespace MapLootEditorLite.Client
         public bool syncRotation = true;
         public Vector3 offset;
         public Quaternion rotationOffset;
+    }
+
+    public class PreviewStaticObjectMarker : MonoBehaviour
+    {
+        public string sourceMarkerId;
+        public string prefabPath;
     }
 
     public class CoroutineRunner : MonoBehaviour
