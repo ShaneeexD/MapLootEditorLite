@@ -33,6 +33,21 @@ public record MapData
     public List<StaticObject> Objects { get; set; } = [];
 }
 
+public record LootItem
+{
+    [JsonPropertyName("template")]
+    public string Template { get; set; } = string.Empty;
+
+    [JsonPropertyName("chance")]
+    public double Chance { get; set; } = 100;
+
+    [JsonPropertyName("rotation")]
+    public TransformData Rotation { get; set; } = new();
+
+    [JsonPropertyName("randomRotation")]
+    public bool RandomRotation { get; set; } = true;
+}
+
 public record LooseLootSpawn
 {
     [JsonPropertyName("id")]
@@ -47,8 +62,12 @@ public record LooseLootSpawn
     [JsonPropertyName("rotation")]
     public TransformData Rotation { get; set; } = new();
 
+    // Kept for loading legacy packs; new packs use items
     [JsonPropertyName("itemTpls")]
     public List<string> ItemTpls { get; set; } = [];
+
+    [JsonPropertyName("items")]
+    public List<LootItem> Items { get; set; } = [];
 
     [JsonPropertyName("spawnChance")]
     public double SpawnChance { get; set; } = 100;
@@ -77,8 +96,12 @@ public record LootZone
     [JsonPropertyName("radius")]
     public double Radius { get; set; } = 1;
 
+    // Kept for loading legacy packs; new packs use items
     [JsonPropertyName("itemTpls")]
     public List<string> ItemTpls { get; set; } = [];
+
+    [JsonPropertyName("items")]
+    public List<LootItem> Items { get; set; } = [];
 
     [JsonPropertyName("spawnChance")]
     public double SpawnChance { get; set; } = 100;

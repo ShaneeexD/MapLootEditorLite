@@ -16,15 +16,16 @@ import {
 } from 'lucide-react'
 import { saveAs } from 'file-saver'
 import { ClipboardPaste } from 'lucide-react'
-import { ItemName, ItemSelector, useItems } from './ItemSelector'
-import { type ItemInfo } from './itemsApi'
+import { ItemSelector } from './ItemSelector'
 import {
+  type LootItem,
   type LootZone,
   type LooseLootSpawn,
   type MapData,
   type PackData,
   type StaticObject,
   type TransformData,
+  defaultLootItem,
   defaultMapData,
   defaultPackData,
   defaultTransform,
@@ -34,6 +35,39 @@ import {
 
 type MarkerTab = 'spawns' | 'zones' | 'objects'
 
+function migratePackData(pack: PackData): PackData {
+  const maps: Record<string, MapData> = {}
+  for (const [key, map] of Object.entries(pack.maps)) {
+    maps[key] = {
+      ...map,
+      lootSpawns: map.lootSpawns.map((spawn) => ({
+        ...spawn,
+        items: migrateItems(spawn.items, (spawn as any).itemTpls),
+      })),
+      lootZones: map.lootZones.map((zone) => ({
+        ...zone,
+        items: migrateItems(zone.items, (zone as any).itemTpls),
+      })),
+    }
+  }
+  return { ...pack, maps }
+}
+
+function migrateItems(items: LootItem[] | undefined, itemTpls: string[] | undefined): LootItem[] {
+  if (items && items.length > 0) {
+    return items.map((item) => ({
+      ...defaultLootItem(),
+      ...item,
+      rotation: item.rotation ?? defaultTransform(),
+      randomRotation: item.randomRotation ?? true,
+    }))
+  }
+  if (itemTpls && itemTpls.length > 0) {
+    return itemTpls.map((t) => ({ ...defaultLootItem(), template: t || '', chance: 100 }))
+  }
+  return [defaultLootItem()]
+}
+
 export default function App() {
   const [pack, setPack] = useState<PackData>(defaultPackData())
   const [selectedMapId, setSelectedMapId] = useState<string>('')
@@ -42,7 +76,6 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const importRef = useRef<HTMLInputElement>(null)
   const [importKey, setImportKey] = useState(0)
-  const items = useItems()
 
   const mapIds = useMemo(() => Object.keys(pack.maps), [pack.maps])
   const currentMap = selectedMapId ? pack.maps[selectedMapId] : null
@@ -83,7 +116,7 @@ export default function App() {
     const reader = new FileReader()
     reader.onload = () => {
       try {
-        const imported = JSON.parse(reader.result as string) as PackData
+        const imported = migratePackData(JSON.parse(reader.result as string) as PackData)
         setPack(imported)
         const first = Object.keys(imported.maps)[0] || ''
         setSelectedMapId(first)
@@ -261,14 +294,12 @@ export default function App() {
                 <div className="flex-1 overflow-y-auto p-6">
                   {tab === 'spawns' && (
                     <SpawnList
-                      items={items}
                       data={currentMap.lootSpawns}
                       onChange={(spawns) => updateMap(selectedMapId, (m) => ({ ...m, lootSpawns: spawns }))}
                     />
                   )}
                   {tab === 'zones' && (
                     <ZoneList
-                      items={items}
                       data={currentMap.lootZones}
                       onChange={(zones) => updateMap(selectedMapId, (m) => ({ ...m, lootZones: zones }))}
                     />
@@ -381,13 +412,63 @@ function TabButton({
   )
 }
 
+function ItemListEditor({
+  value,
+  onChange,
+  showRotation = false,
+}: {
+  value: LootItem[]
+  onChange: (items: LootItem[]) => void
+  showRotation?: boolean
+}) {
+  const update = (index: number, updates: Partial<LootItem>) => {
+    onChange(replaceAt(value, index, { ...value[index], ...updates }))
+  }
+
+  return (
+    <div className="space-y-2">
+      <label className="label">Items (chance does not need to add to 100)</label>
+      {value.map((item, i) => (
+        <div key={i} className="space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <ItemSelector label="" value={item.template} onChange={(v) => update(i, { template: v })} />
+            </div>
+            <div className="w-28">
+              <NumberField label="%" value={item.chance} onChange={(v) => update(i, { chance: v })} min={0} max={100} />
+            </div>
+            <button onClick={() => onChange(removeAt(value, i))} className="btn-danger p-2">
+              <Trash2 size={16} />
+            </button>
+          </div>
+          {showRotation && (
+            <div className="flex items-center gap-2 pl-2">
+              <Toggle
+                label="Random Rotation"
+                checked={item.randomRotation ?? true}
+                onChange={(v) => update(i, { randomRotation: v })}
+              />
+              {!item.randomRotation && (
+                <div className="flex-1">
+                  <TransformField label="Rotation" value={item.rotation ?? defaultTransform()} onChange={(v) => update(i, { rotation: v })} />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+      <button onClick={() => onChange([...value, defaultLootItem()])} className="btn-secondary text-sm flex items-center gap-1">
+        <Plus size={14} /> Add Item
+      </button>
+    </div>
+  )
+}
+
 function SpawnList({
   data,
-  items,
   onChange,
 }: {
   data: LooseLootSpawn[]
-  items: ItemInfo[] | null
   onChange: (spawns: LooseLootSpawn[]) => void
 }) {
   const [form, setForm] = useState<LooseLootSpawn>({
@@ -395,7 +476,7 @@ function SpawnList({
     name: 'loot_spawn',
     position: defaultTransform(),
     rotation: defaultTransform(),
-    itemTpls: ['544fb45d4bdc2dee738b4568'],
+    items: [{ ...defaultLootItem(), template: '544fb45d4bdc2dee738b4568' }],
     spawnChance: 100,
     respawnable: false,
     forced: false,
@@ -415,11 +496,6 @@ function SpawnList({
         <h3 className="text-sm font-semibold text-tarkov-accent uppercase tracking-wider">Add Loose Loot Spawn</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <TextField label="Name" value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} />
-          <ItemSelector
-            label="Item"
-            value={form.itemTpls[0]}
-            onChange={(v) => setForm((f) => ({ ...f, itemTpls: [v] }))}
-          />
           <NumberField
             label="Spawn Chance"
             value={form.spawnChance}
@@ -443,6 +519,9 @@ function SpawnList({
           </div>
           <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} />
           <TransformField label="Rotation" value={form.rotation} onChange={(v) => setForm((f) => ({ ...f, rotation: v }))} />
+          <div className="md:col-span-2 lg:col-span-4">
+            <ItemListEditor value={form.items} onChange={(v) => setForm((f) => ({ ...f, items: v }))} />
+          </div>
           <div className="flex items-end md:col-span-2 lg:col-span-2">
             <button onClick={add} className="btn-primary w-full flex items-center justify-center gap-2">
               <Plus size={16} /> Add Loot Spawn
@@ -454,13 +533,18 @@ function SpawnList({
                 try {
                   const text = await navigator.clipboard.readText()
                   const parsed = JSON.parse(text)
-                  if (parsed.position && parsed.itemTpls) {
+                  if (parsed.position && (parsed.items || parsed.itemTpls)) {
+                    const migratedItems: LootItem[] = parsed.items
+                      ? parsed.items
+                      : Array.isArray(parsed.itemTpls)
+                        ? parsed.itemTpls.map((t: string) => ({ template: t || '', chance: 100 }))
+                        : [{ template: parsed.itemTpls || '', chance: 100 }]
                     setForm({
                       id: generateId(),
                       name: parsed.name || 'imported_spawn',
                       position: parsed.position || defaultTransform(),
                       rotation: parsed.rotation || defaultTransform(),
-                      itemTpls: Array.isArray(parsed.itemTpls) ? parsed.itemTpls : [parsed.itemTpls || ''],
+                      items: migratedItems,
                       spawnChance: parsed.spawnChance ?? 100,
                       respawnable: parsed.respawnable ?? false,
                       forced: parsed.forced ?? false,
@@ -485,11 +569,6 @@ function SpawnList({
           <div key={spawn.id} className="card">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <TextField label="Name" value={spawn.name} onChange={(v) => update(i, { name: v })} />
-              <ItemSelector
-                label="Item"
-                value={spawn.itemTpls[0] || ''}
-                onChange={(v) => update(i, { itemTpls: [v] })}
-              />
               <NumberField
                 label="Spawn Chance"
                 value={spawn.spawnChance ?? 100}
@@ -497,7 +576,7 @@ function SpawnList({
                 min={0}
                 max={100}
               />
-              <div className="flex items-end justify-between">
+              <div className="flex items-end justify-between md:col-span-1 lg:col-span-2">
                 <div className="flex flex-col gap-1">
                   <Toggle
                     label="Respawnable"
@@ -509,7 +588,6 @@ function SpawnList({
                     checked={spawn.forced ?? false}
                     onChange={(v) => update(i, { forced: v })}
                   />
-                  <ItemName id={spawn.itemTpls[0] || ''} items={items} />
                 </div>
                 <button onClick={() => onChange(removeAt(data, i))} className="btn-danger p-2">
                   <Trash2 size={16} />
@@ -517,6 +595,9 @@ function SpawnList({
               </div>
               <TransformField label="Position" value={spawn.position} onChange={(v) => update(i, { position: v })} />
               <TransformField label="Rotation" value={spawn.rotation} onChange={(v) => update(i, { rotation: v })} />
+              <div className="md:col-span-2 lg:col-span-4">
+                <ItemListEditor value={spawn.items} onChange={(v) => update(i, { items: v })} />
+              </div>
             </div>
           </div>
         ))}
@@ -528,11 +609,9 @@ function SpawnList({
 
 function ZoneList({
   data,
-  items,
   onChange,
 }: {
   data: LootZone[]
-  items: ItemInfo[] | null
   onChange: (zones: LootZone[]) => void
 }) {
   const [form, setForm] = useState<LootZone>({
@@ -541,7 +620,7 @@ function ZoneList({
     position: defaultTransform(),
     rotation: defaultTransform(),
     radius: 1,
-    itemTpls: ['544fb45d4bdc2dee738b4568'],
+    items: [{ ...defaultLootItem(), template: '544fb45d4bdc2dee738b4568' }],
     spawnChance: 100,
     forced: false,
   })
@@ -560,11 +639,6 @@ function ZoneList({
         <h3 className="text-sm font-semibold text-tarkov-accent uppercase tracking-wider">Add Loot Zone</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <TextField label="Name" value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} />
-          <ItemSelector
-            label="Item"
-            value={form.itemTpls[0]}
-            onChange={(v) => setForm((f) => ({ ...f, itemTpls: [v] }))}
-          />
           <NumberField
             label="Radius"
             value={form.radius}
@@ -587,6 +661,9 @@ function ZoneList({
             />
           </div>
           <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} />
+          <div className="md:col-span-2 lg:col-span-4">
+            <ItemListEditor value={form.items} onChange={(v) => setForm((f) => ({ ...f, items: v }))} showRotation />
+          </div>
           <div className="flex items-end md:col-span-1 lg:col-span-2">
             <button onClick={add} className="btn-primary w-full flex items-center justify-center gap-2">
               <Plus size={16} /> Add Loot Zone
@@ -600,11 +677,6 @@ function ZoneList({
           <div key={zone.id} className="card">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <TextField label="Name" value={zone.name} onChange={(v) => update(i, { name: v })} />
-              <ItemSelector
-                label="Item"
-                value={zone.itemTpls[0] || ''}
-                onChange={(v) => update(i, { itemTpls: [v] })}
-              />
               <NumberField label="Radius" value={zone.radius ?? 1} onChange={(v) => update(i, { radius: v })} min={0} step={0.1} />
               <NumberField
                 label="Spawn Chance"
@@ -613,19 +685,21 @@ function ZoneList({
                 min={0}
                 max={100}
               />
-              <TransformField label="Position" value={zone.position} onChange={(v) => update(i, { position: v })} />
-              <div className="flex items-end justify-between md:col-span-1 lg:col-span-3">
+              <div className="flex items-end justify-between">
                 <div className="flex flex-col gap-1">
                   <Toggle
                     label="Forced (Quest)"
                     checked={zone.forced ?? false}
                     onChange={(v) => update(i, { forced: v })}
                   />
-                  <ItemName id={zone.itemTpls[0] || ''} items={items} />
                 </div>
                 <button onClick={() => onChange(removeAt(data, i))} className="btn-danger p-2">
                   <Trash2 size={16} />
                 </button>
+              </div>
+              <TransformField label="Position" value={zone.position} onChange={(v) => update(i, { position: v })} />
+              <div className="md:col-span-2 lg:col-span-4">
+                <ItemListEditor value={zone.items} onChange={(v) => update(i, { items: v })} showRotation />
               </div>
             </div>
           </div>

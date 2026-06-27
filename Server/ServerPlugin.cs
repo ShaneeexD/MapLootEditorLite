@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
-using HarmonyLib;
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.DI;
 using SPTarkov.Server.Core.Models.Spt.Mod;
 using SPTarkov.Server.Core.Models.Utils;
+using SPTarkov.Server.Core.Services;
 using WTTServerCommonLib;
 using Range = SemanticVersioning.Range;
 using Version = SemanticVersioning.Version;
@@ -39,12 +39,14 @@ public class ServerPlugin : IOnLoad
 
     private readonly ISptLogger<ServerPlugin> _logger;
     private readonly WTTServerCommonLib.WTTServerCommonLib _wttCommon;
+    private readonly DatabaseService _databaseService;
 
-    public ServerPlugin(ISptLogger<ServerPlugin> logger, WTTServerCommonLib.WTTServerCommonLib wttCommon)
+    public ServerPlugin(ISptLogger<ServerPlugin> logger, WTTServerCommonLib.WTTServerCommonLib wttCommon, DatabaseService databaseService)
     {
         _logger = logger;
         Logger = logger;
         _wttCommon = wttCommon;
+        _databaseService = databaseService;
     }
 
     public async Task OnLoad()
@@ -69,8 +71,7 @@ public class ServerPlugin : IOnLoad
             await _wttCommon.CustomLootspawnService.CreateCustomLootSpawns(assembly, Path.Combine("db", "CustomLootspawns"));
             _logger.Info($"[MLEL] Registered forced quest spawns with WTT-CommonLib from {forcedSpawnDirectory}");
 
-            var harmony = new Harmony("com.shane.maplooteditorlite");
-            harmony.PatchAll(assembly);
+            LootTransformer.Register(_databaseService);
 
             _logger.Info($"[MLEL] MapLootEditorLite server mod loaded. {PackRegistry.TotalSpawnCount()} custom spawns registered across {packs.Count} packs.");
         }

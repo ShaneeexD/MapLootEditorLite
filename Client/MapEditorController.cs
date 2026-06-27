@@ -317,6 +317,8 @@ namespace MapLootEditorLite.Client
 
         public void DeleteSelected()
         {
+            var markerId = _manager.Selected?.id;
+            _previews.ClearByMarkerId(markerId);
             _manager.DeleteSelected();
             _renderer.Rebuild();
         }

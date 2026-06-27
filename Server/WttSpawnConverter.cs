@@ -64,7 +64,17 @@ public static class WttSpawnConverter
                     foreach (var wttMapId in ToWttMapIds(packMapKey))
                     {
                         forcedByMap.TryAdd(wttMapId, []);
-                        forcedByMap[wttMapId].Add(CreateWttSpawnpoint(zone));
+                        if (zone.Items == null || zone.Items.Count == 0)
+                        {
+                            forcedByMap[wttMapId].Add(CreateWttSpawnpoint(zone));
+                            continue;
+                        }
+
+                        var items = BuildWttItems(zone.Items, out var chances);
+                        for (int i = 0; i < items.Count; i++)
+                        {
+                            forcedByMap[wttMapId].Add(CreateWttZoneItemSpawnpoint(zone, zone.Items[i], items[i], chances[i], i));
+                        }
                     }
                 }
             }
@@ -82,9 +92,8 @@ public static class WttSpawnConverter
 
     private static WttSpawnpoint CreateWttSpawnpoint(LooseLootSpawn spawn)
     {
-        var itemTpl = spawn.ItemTpls.FirstOrDefault() ?? "544fb45d4bdc2dee738b4568";
-        var rootId = new MongoId();
-        var composedKey = itemTpl;
+        var items = BuildWttItems(spawn.Items, out var chances);
+        var rootId = items.FirstOrDefault()?.Id ?? new MongoId();
 
         return new WttSpawnpoint
         {
@@ -102,33 +111,16 @@ public static class WttSpawnConverter
                 IsGroupPosition = false,
                 GroupPositions = [],
                 Root = rootId,
-                Items =
-                [
-                    new SptLootItem
-                    {
-                        Id = rootId,
-                        Template = itemTpl,
-                        ComposedKey = composedKey,
-                        Upd = new Upd { SpawnedInSession = true }
-                    }
-                ]
+                Items = items
             },
-            ItemDistribution =
-            [
-                new WttItemDistribution
-                {
-                    ComposedKey = new WttComposedKey { Key = composedKey },
-                    RelativeProbability = 1
-                }
-            ]
+            ItemDistribution = BuildWttItemDistribution(items, chances)
         };
     }
 
     private static WttSpawnpoint CreateWttSpawnpoint(LootZone zone)
     {
-        var itemTpl = zone.ItemTpls.FirstOrDefault() ?? "544fb45d4bdc2dee738b4568";
-        var rootId = new MongoId();
-        var composedKey = itemTpl;
+        var items = BuildWttItems(zone.Items, out var chances);
+        var rootId = items.FirstOrDefault()?.Id ?? new MongoId();
 
         return new WttSpawnpoint
         {
@@ -146,26 +138,94 @@ public static class WttSpawnConverter
                 IsGroupPosition = false,
                 GroupPositions = [],
                 Root = rootId,
-                Items =
-                [
-                    new SptLootItem
-                    {
-                        Id = rootId,
-                        Template = itemTpl,
-                        ComposedKey = composedKey,
-                        Upd = new Upd { SpawnedInSession = true }
-                    }
-                ]
+                Items = items
+            },
+            ItemDistribution = BuildWttItemDistribution(items, chances)
+        };
+    }
+
+    private static WttSpawnpoint CreateWttZoneItemSpawnpoint(LootZone zone, LootItem item, SptLootItem sptItem, int chance, int index)
+    {
+        var rotation = item.RandomRotation ? zone.Rotation : item.Rotation;
+        var locationId = $"{zone.Id}_{index}";
+
+        return new WttSpawnpoint
+        {
+            LocationId = locationId,
+            Probability = 1.0,
+            Template = new SpawnpointTemplate
+            {
+                Id = locationId,
+                IsContainer = false,
+                UseGravity = false,
+                RandomRotation = item.RandomRotation,
+                Position = new XYZ { X = zone.Position.X, Y = zone.Position.Y, Z = zone.Position.Z },
+                Rotation = new XYZ { X = rotation.X, Y = rotation.Y, Z = rotation.Z },
+                IsAlwaysSpawn = true,
+                IsGroupPosition = false,
+                GroupPositions = [],
+                Root = sptItem.Id,
+                Items = [sptItem]
             },
             ItemDistribution =
             [
                 new WttItemDistribution
                 {
-                    ComposedKey = new WttComposedKey { Key = composedKey },
-                    RelativeProbability = 1
+                    ComposedKey = new WttComposedKey { Key = sptItem.ComposedKey ?? string.Empty },
+                    RelativeProbability = chance
                 }
             ]
         };
+    }
+
+    private static List<SptLootItem> BuildWttItems(List<LootItem> items, out List<int> chances)
+    {
+        chances = new List<int>();
+        if (items == null || items.Count == 0)
+        {
+            chances.Add(100);
+            return
+            [
+                new SptLootItem
+                {
+                    Id = new MongoId(),
+                    Template = "544fb45d4bdc2dee738b4568",
+                    ComposedKey = "544fb45d4bdc2dee738b4568",
+                    Upd = new Upd { SpawnedInSession = true }
+                }
+            ];
+        }
+
+        var result = new List<SptLootItem>(items.Count);
+        for (int i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            var tpl = string.IsNullOrWhiteSpace(item.Template) ? "544fb45d4bdc2dee738b4568" : item.Template;
+            chances.Add((int)item.Chance);
+            result.Add(new SptLootItem
+            {
+                Id = new MongoId(),
+                Template = tpl,
+                ComposedKey = $"{tpl}_{i}",
+                Upd = new Upd { SpawnedInSession = true }
+            });
+        }
+        return result;
+    }
+
+    private static List<WttItemDistribution> BuildWttItemDistribution(List<SptLootItem> items, List<int> chances)
+    {
+        var distribution = new List<WttItemDistribution>();
+        for (int i = 0; i < items.Count; i++)
+        {
+            var chance = i < chances.Count ? chances[i] : 1;
+            distribution.Add(new WttItemDistribution
+            {
+                ComposedKey = new WttComposedKey { Key = items[i].ComposedKey ?? string.Empty },
+                RelativeProbability = chance > 0 ? chance : 1
+            });
+        }
+        return distribution;
     }
 
     private static IEnumerable<string> ToWttMapIds(string packMapKey)

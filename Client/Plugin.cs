@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Linq;
 using BepInEx;
@@ -35,12 +36,14 @@ namespace MapLootEditorLite.Client
             Log.LogInfo("Map Loot Editor Lite client plugin loaded");
 
             SptRoot = FindSptRoot(Info.Location);
+            var serverRoot = FindServerRoot(SptRoot);
             ModDataDirectory = Path.Combine(SptRoot, "BepInEx", "config", "MapLootEditorLite");
-            ServerModDirectory = Path.Combine(SptRoot, "user", "mods", "MapLootEditorLite");
+            ServerModDirectory = Path.Combine(serverRoot, "user", "mods", "MapLootEditorLite");
             ServerModPacksDirectory = Path.Combine(ServerModDirectory, "packs");
             ServerModExportsDirectory = Path.Combine(ServerModDirectory, "exports");
 
-            Log.LogInfo($"Detected SPT root: {SptRoot}");
+            Log.LogInfo($"Detected client root: {SptRoot}");
+            Log.LogInfo($"Detected server root: {serverRoot}");
             Log.LogInfo($"Server mod directory: {ServerModDirectory}");
             Log.LogInfo($"Exports directory: {ServerModExportsDirectory}");
 
@@ -144,6 +147,17 @@ namespace MapLootEditorLite.Client
             }
 
             return Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(pluginPath)));
+        }
+
+        private static string FindServerRoot(string clientRoot)
+        {
+            // SPT is commonly installed with the server in a subfolder named "SPT" (e.g. C:\SPT\SPT).
+            // If that subfolder exists and contains the user/mods directory, use it. Otherwise fall back to the client root.
+            var serverCandidate = Path.Combine(clientRoot, "SPT");
+            if (Directory.Exists(Path.Combine(serverCandidate, "user")))
+                return serverCandidate;
+
+            return clientRoot;
         }
     }
 }

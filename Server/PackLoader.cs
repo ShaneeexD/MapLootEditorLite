@@ -79,6 +79,7 @@ public static class PackLoader
                     }
 
                     pack.Name = string.IsNullOrWhiteSpace(pack.Name) ? Path.GetFileNameWithoutExtension(file) : pack.Name;
+                    MigrateLegacyItems(pack);
                     packs.Add(pack);
                     ServerPlugin.Logger?.Info($"[MLEL] Loaded pack '{pack.Name}' from {file}");
                 }
@@ -90,5 +91,32 @@ public static class PackLoader
         }
 
         return packs;
+    }
+
+    private static void MigrateLegacyItems(PackData pack)
+    {
+        if (pack.Maps == null)
+            return;
+
+        foreach (var map in pack.Maps.Values)
+        {
+            foreach (var spawn in map.LootSpawns)
+            {
+                if (spawn.Items.Count == 0 && spawn.ItemTpls.Count > 0)
+                {
+                    spawn.Items = spawn.ItemTpls.Select(t => new LootItem { Template = t, Chance = 100 }).ToList();
+                    spawn.ItemTpls.Clear();
+                }
+            }
+
+            foreach (var zone in map.LootZones)
+            {
+                if (zone.Items.Count == 0 && zone.ItemTpls.Count > 0)
+                {
+                    zone.Items = zone.ItemTpls.Select(t => new LootItem { Template = t, Chance = 100 }).ToList();
+                    zone.ItemTpls.Clear();
+                }
+            }
+        }
     }
 }

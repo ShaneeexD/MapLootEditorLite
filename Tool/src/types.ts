@@ -4,12 +4,28 @@ export interface TransformData {
   z: number
 }
 
+export interface LootItem {
+  template: string
+  chance: number
+  rotation: TransformData
+  randomRotation: boolean
+}
+
+export function defaultLootItem(): LootItem {
+  return {
+    template: '',
+    chance: 100,
+    rotation: defaultTransform(),
+    randomRotation: true,
+  }
+}
+
 export interface LooseLootSpawn {
   id: string
   name: string
   position: TransformData
   rotation: TransformData
-  itemTpls: string[]
+  items: LootItem[]
   spawnChance: number
   respawnable: boolean
   forced: boolean
@@ -21,7 +37,7 @@ export interface LootZone {
   position: TransformData
   rotation: TransformData
   radius: number
-  itemTpls: string[]
+  items: LootItem[]
   spawnChance: number
   forced: boolean
 }

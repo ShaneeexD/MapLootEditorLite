@@ -127,13 +127,29 @@ Packs are JSON files that can contain multiple maps:
   "maps": {
     "customs": {
       "map": "customs",
-      "lootSpawns": [ ... ],
+      "lootSpawns": [
+        {
+          "id": "abc123",
+          "name": "loot_spawn",
+          "position": { "x": 0, "y": 0, "z": 0 },
+          "rotation": { "x": 0, "y": 0, "z": 0 },
+          "items": [
+            { "template": "544fb45d4bdc2dee738b4568", "chance": 100 },
+            { "template": "5c052e6986f7746b207bc3c9", "chance": 50 }
+          ],
+          "spawnChance": 100,
+          "respawnable": false,
+          "forced": false
+        }
+      ],
       "lootZones": [ ... ],
       "objects": [ ... ]
     }
   }
 }
 ```
+
+Each spawn/zone has an `items` list. Every item has its own `chance` (0–100) and is rolled independently, so the total does not need to add up to 100 and the spawn can still end up empty. Old packs using `itemTpls` are automatically migrated.
 
 ## Resources
 

@@ -61,7 +61,7 @@ namespace MapLootEditorLite.Client
                 name = "loot_spawn",
                 position = TransformData.FromVector3(position),
                 rotation = TransformData.FromVector3(rotation),
-                itemTpls = new List<string> { "544fb45d4bdc2dee738b4568" }
+                items = new List<LootItem> { new LootItem { template = "544fb45d4bdc2dee738b4568", chance = 100f } }
             };
             Data.lootSpawns.Add(marker);
             IsDirty = true;
@@ -77,7 +77,7 @@ namespace MapLootEditorLite.Client
                 position = TransformData.FromVector3(position),
                 rotation = TransformData.FromVector3(Vector3.zero),
                 radius = 1f,
-                itemTpls = new List<string> { "544fb45d4bdc2dee738b4568" }
+                items = new List<LootItem> { new LootItem { template = "544fb45d4bdc2dee738b4568", chance = 100f } }
             };
             Data.lootZones.Add(marker);
             IsDirty = true;

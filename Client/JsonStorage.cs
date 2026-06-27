@@ -39,7 +39,42 @@ namespace MapLootEditorLite.Client
                 return new MapData { map = mapId };
 
             data.map = mapId;
+            MigrateLegacyItems(data);
             return data;
+        }
+
+        public static void MigrateLegacyItems(MapData data)
+        {
+            if (data == null)
+                return;
+
+            foreach (var spawn in data.lootSpawns)
+            {
+                if (spawn.items == null)
+                    spawn.items = new System.Collections.Generic.List<LootItem>();
+
+                if (spawn.items.Count == 0 && spawn.itemTpls != null && spawn.itemTpls.Count > 0)
+                {
+                    foreach (var tpl in spawn.itemTpls)
+                        spawn.items.Add(new LootItem { template = tpl, chance = 100f });
+
+                    spawn.itemTpls.Clear();
+                }
+            }
+
+            foreach (var zone in data.lootZones)
+            {
+                if (zone.items == null)
+                    zone.items = new System.Collections.Generic.List<LootItem>();
+
+                if (zone.items.Count == 0 && zone.itemTpls != null && zone.itemTpls.Count > 0)
+                {
+                    foreach (var tpl in zone.itemTpls)
+                        zone.items.Add(new LootItem { template = tpl, chance = 100f });
+
+                    zone.itemTpls.Clear();
+                }
+            }
         }
     }
 }

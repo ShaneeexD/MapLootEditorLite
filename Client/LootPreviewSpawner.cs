@@ -1,5 +1,8 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Comfort.Common;
 using EFT;
 using EFT.AssetsManager;
@@ -13,16 +16,18 @@ namespace MapLootEditorLite.Client
     {
         public const string DefaultItemTpl = "544fb45d4bdc2dee738b4568";
         private readonly GameObject _root;
+        private readonly CoroutineRunner _runner;
         private readonly List<GameObject> _previews = new List<GameObject>();
 
         public LootPreviewSpawner(GameObject root)
         {
             _root = root;
+            _runner = root.GetComponent<CoroutineRunner>() ?? root.AddComponent<CoroutineRunner>();
         }
 
         public void SpawnAtMarker(LooseLootSpawn marker)
         {
-            var tpl = GetFirstTpl(marker.itemTpls);
+            var tpl = GetFirstTpl(marker.items);
             var pos = marker.position.ToVector3();
             var ground = MarkerManager.GetGroundPosition(pos);
             SpawnPreview(tpl, ground ?? pos, marker.name, marker.id);
@@ -30,7 +35,7 @@ namespace MapLootEditorLite.Client
 
         public void SpawnInZone(LootZone marker)
         {
-            var tpl = GetFirstTpl(marker.itemTpls);
+            var tpl = GetFirstTpl(marker.items);
             var center = marker.position.ToVector3();
             var randomPos = center + UnityEngine.Random.insideUnitSphere * marker.radius;
             randomPos.y = center.y;
@@ -40,64 +45,119 @@ namespace MapLootEditorLite.Client
 
         public void SpawnAtZoneCenter(LootZone marker)
         {
-            var tpl = GetFirstTpl(marker.itemTpls);
+            var tpl = GetFirstTpl(marker.items);
             var pos = marker.position.ToVector3();
             var ground = MarkerManager.GetGroundPosition(pos);
             SpawnPreview(tpl, ground ?? pos, marker.name, marker.id);
         }
 
-        private string GetFirstTpl(List<string> tpls)
+        private string GetFirstTpl(List<LootItem> items)
         {
-            if (tpls != null && tpls.Count > 0 && !string.IsNullOrEmpty(tpls[0]))
-                return tpls[0];
+            if (items != null && items.Count > 0 && !string.IsNullOrEmpty(items[0].template))
+                return items[0].template;
             return DefaultItemTpl;
         }
 
         public void SpawnPreview(string itemTpl, Vector3 position, string markerName, string markerId)
         {
-            GameObject preview = null;
-            bool real = false;
+            var fallback = CreateFallbackPreview(itemTpl, position);
+            AttachMeta(fallback, itemTpl, markerName, markerId, true);
+            _previews.Add(fallback);
+            Plugin.Log.LogInfo($"Spawned fallback preview for {markerName} using tpl {itemTpl}; loading real asset...");
 
+            _runner.StartCoroutine(LoadRealPreviewCoroutine(itemTpl, position, markerName, markerId, fallback));
+        }
+
+        private GameObject TrySpawnRealPreview(string itemTpl, Vector3 position)
+        {
             try
             {
                 var factory = Singleton<ItemFactoryClass>.Instance;
-                if (factory != null)
-                {
-                    var item = factory.CreateItem(MongoID.Generate(true).ToString(), itemTpl, null);
-                    if (item != null)
-                    {
-                        var pool = Singleton<PoolManagerClass>.Instance;
-                        if (pool != null)
-                        {
-                            preview = pool.CreateLootPrefab(item, ECameraType.Default, null);
-                            if (preview != null)
-                            {
-                                real = true;
-                                preview.transform.SetParent(_root.transform, false);
-                                preview.transform.position = position;
-                                preview.transform.rotation = Quaternion.identity;
-                                preview.transform.localScale = Vector3.one;
-                                DisablePhysics(preview);
-                                AttachMeta(preview, itemTpl, markerName, markerId, false);
-                            }
-                        }
-                    }
-                }
+                if (factory == null)
+                    return null;
+
+                var item = factory.CreateItem(MongoID.Generate(true).ToString(), itemTpl, null);
+                if (item == null)
+                    return null;
+
+                var pool = Singleton<PoolManagerClass>.Instance;
+                if (pool == null)
+                    return null;
+
+                var preview = pool.CreateLootPrefab(item, ECameraType.Default, null);
+                if (preview == null)
+                    return null;
+
+                preview.transform.SetParent(_root.transform, false);
+                preview.transform.position = position;
+                preview.transform.rotation = Quaternion.identity;
+                preview.transform.localScale = Vector3.one;
+                DisablePhysics(preview);
+                return preview;
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogWarning($"Failed to spawn real item preview for {itemTpl}: {ex.Message}");
-                preview = null;
+                Plugin.Log.LogDebug($"Real preview not ready for {itemTpl}: {ex.Message}");
+                return null;
             }
+        }
 
-            if (preview == null)
+        private IEnumerator LoadRealPreviewCoroutine(string itemTpl, Vector3 position, string markerName, string markerId, GameObject fallback)
+        {
+            var task = PreloadBundles(itemTpl);
+            while (!task.IsCompleted)
             {
-                preview = CreateFallbackPreview(itemTpl, position);
-                AttachMeta(preview, itemTpl, markerName, markerId, true);
+                yield return null;
             }
 
-            _previews.Add(preview);
-            Plugin.Log.LogInfo($"Spawned preview for {markerName} using tpl {itemTpl} (real={real})");
+            if (task.IsFaulted)
+            {
+                Plugin.Log.LogDebug($"Failed to preload asset for {itemTpl}: {task.Exception?.GetBaseException()?.Message}");
+                yield break;
+            }
+
+            if (!_previews.Contains(fallback))
+                yield break;
+
+            var real = TrySpawnRealPreview(itemTpl, position);
+            if (real != null)
+            {
+                _previews.Remove(fallback);
+                UnityEngine.Object.Destroy(fallback);
+                AttachMeta(real, itemTpl, markerName, markerId, false);
+                _previews.Add(real);
+                Plugin.Log.LogInfo($"Real preview loaded for {markerName} using tpl {itemTpl}");
+            }
+        }
+
+        private async Task PreloadBundles(string itemTpl)
+        {
+            var pool = Singleton<PoolManagerClass>.Instance;
+            if (pool == null)
+                return;
+
+            var factory = Singleton<ItemFactoryClass>.Instance;
+            if (factory == null)
+                return;
+
+            if (!factory.ItemTemplates.TryGetValue(itemTpl, out var template))
+                return;
+
+            var keys = new List<ResourceKey>();
+            if (template.Prefab != null)
+                keys.Add(template.Prefab);
+            if (template.UsePrefab != null)
+                keys.Add(template.UsePrefab);
+            if (keys.Count == 0)
+                return;
+
+            await pool.LoadBundlesAndCreatePools(
+                0,
+                PoolManagerClass.AssemblyType.Local,
+                keys.ToArray(),
+                JobPriorityClass.Immediate,
+                null,
+                CancellationToken.None);
         }
 
         private void AttachMeta(GameObject preview, string itemTpl, string markerName, string markerId, bool fallback)
@@ -112,15 +172,22 @@ namespace MapLootEditorLite.Client
 
         private GameObject CreateFallbackPreview(string itemTpl, Vector3 position)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             UnityEngine.Object.Destroy(go.GetComponent<Collider>());
             go.transform.SetParent(_root.transform, false);
             go.transform.position = position;
-            go.transform.localScale = Vector3.one * 0.2f;
+            go.transform.localScale = Vector3.one * 0.25f;
             var renderer = go.GetComponent<Renderer>();
-            var shader = Shader.Find("Sprites/Default") ?? Shader.Find("Standard");
+            var shader = Shader.Find("Standard") ?? Shader.Find("Sprites/Default");
             var mat = new Material(shader);
-            mat.color = Color.magenta;
+            mat.color = new Color(0.2f, 0.9f, 1f, 0.8f);
+            mat.SetFloat("_Mode", 3);
+            mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            mat.SetInt("_ZWrite", 0);
+            mat.DisableKeyword("_ALPHATEST_ON");
+            mat.EnableKeyword("_ALPHABLEND_ON");
+            mat.renderQueue = 3000;
             renderer.material = mat;
             return go;
         }
@@ -174,18 +241,43 @@ namespace MapLootEditorLite.Client
                 if (preview == null)
                     continue;
 
-                var meta = preview.GetComponent<PreviewLootMarker>();
-                if (meta != null && meta.isFallback)
-                {
-                    UnityEngine.Object.Destroy(preview);
-                }
-                else
-                {
-                    try { AssetPoolObject.ReturnToPool(preview, true); }
-                    catch { UnityEngine.Object.Destroy(preview); }
-                }
+                DestroyPreview(preview);
             }
             _previews.Clear();
+        }
+
+        public void ClearByMarkerId(string markerId)
+        {
+            if (string.IsNullOrEmpty(markerId))
+                return;
+
+            for (int i = _previews.Count - 1; i >= 0; i--)
+            {
+                var preview = _previews[i];
+                if (preview == null)
+                    continue;
+
+                var meta = preview.GetComponent<PreviewLootMarker>();
+                if (meta != null && meta.sourceMarkerId == markerId)
+                {
+                    _previews.RemoveAt(i);
+                    DestroyPreview(preview);
+                }
+            }
+        }
+
+        private void DestroyPreview(GameObject preview)
+        {
+            var meta = preview.GetComponent<PreviewLootMarker>();
+            if (meta != null && meta.isFallback)
+            {
+                UnityEngine.Object.Destroy(preview);
+            }
+            else
+            {
+                try { AssetPoolObject.ReturnToPool(preview, true); }
+                catch { UnityEngine.Object.Destroy(preview); }
+            }
         }
     }
 
@@ -196,5 +288,9 @@ namespace MapLootEditorLite.Client
         public string sourceMarkerId;
         public bool previewOnly = true;
         public bool isFallback = false;
+    }
+
+    public class CoroutineRunner : MonoBehaviour
+    {
     }
 }

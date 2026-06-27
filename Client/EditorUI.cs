@@ -79,10 +79,17 @@ namespace MapLootEditorLite.Client
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Paste Import"))
+            if (GUILayout.Button("Paste Map JSON"))
                 _importText = GUIUtility.systemCopyBuffer;
-            if (GUILayout.Button("Apply Import"))
+            if (GUILayout.Button("Apply Map Import"))
                 ApplyImport();
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Paste Pack JSON"))
+                _importText = GUIUtility.systemCopyBuffer;
+            if (GUILayout.Button("Apply Pack Import"))
+                ApplyPackImport();
             GUILayout.EndHorizontal();
             _importText = GUILayout.TextArea(_importText, GUILayout.Height(40));
         }
@@ -97,6 +104,12 @@ namespace MapLootEditorLite.Client
                 _controller.CreateLootZone();
             if (GUILayout.Button("Static Object"))
                 _controller.CreateStaticObject();
+            GUILayout.EndHorizontal();
+
+            GUILayout.Label("Create at crosshair:", GUILayout.Height(20));
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Loot Spawn"))
+                _controller.CreateLootSpawnAtLook();
             GUILayout.EndHorizontal();
         }
 
@@ -222,7 +235,7 @@ namespace MapLootEditorLite.Client
             spawn.respawnable = GUILayout.Toggle(spawn.respawnable, "");
             GUILayout.EndHorizontal();
 
-            DrawItemTpls(spawn.itemTpls);
+            DrawItems(spawn.items);
         }
 
         private void DrawLootZone(LootZone zone)
@@ -237,7 +250,7 @@ namespace MapLootEditorLite.Client
             zone.spawnChance = FloatField("", zone.spawnChance);
             GUILayout.EndHorizontal();
 
-            DrawItemTpls(zone.itemTpls);
+            DrawItems(zone.items, true);
         }
 
         private void DrawStaticObject(StaticObject obj)
@@ -256,28 +269,47 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        private void DrawItemTpls(System.Collections.Generic.List<string> itemTpls)
+        private void DrawItems(System.Collections.Generic.List<LootItem> items, bool showRotation = false)
         {
-            GUILayout.Label("Item Tpls (first used for preview):");
-            if (itemTpls == null)
+            if (items == null)
                 return;
 
-            for (int i = 0; i < itemTpls.Count; i++)
+            GUILayout.Label("Items (chance does not need to add to 100):");
+            for (int i = 0; i < items.Count; i++)
             {
+                var item = items[i];
+                if (item.rotation == null)
+                    item.rotation = new TransformData();
+
                 GUILayout.BeginHorizontal();
-                itemTpls[i] = GUILayout.TextField(itemTpls[i]);
+                GUILayout.Label("Tpl", GUILayout.Width(30));
+                item.template = GUILayout.TextField(item.template ?? "");
+                GUILayout.Label("%", GUILayout.Width(18));
+                item.chance = FloatField("", item.chance);
                 if (GUILayout.Button("-", GUILayout.Width(24)))
                 {
-                    itemTpls.RemoveAt(i);
+                    items.RemoveAt(i);
                     _manager.IsDirty = true;
                     break;
                 }
                 GUILayout.EndHorizontal();
+
+                if (showRotation)
+                {
+                    GUILayout.BeginHorizontal();
+                    item.randomRotation = GUILayout.Toggle(item.randomRotation, "Random Rotation");
+                    if (!item.randomRotation)
+                    {
+                        var rot = Vector3Field("Rot", item.rotation.ToVector3());
+                        item.rotation = TransformData.FromVector3(rot);
+                    }
+                    GUILayout.EndHorizontal();
+                }
             }
 
-            if (GUILayout.Button("Add Item Tpl"))
+            if (GUILayout.Button("Add Item"))
             {
-                itemTpls.Add("");
+                items.Add(new LootItem());
                 _manager.IsDirty = true;
             }
         }
@@ -338,6 +370,7 @@ namespace MapLootEditorLite.Client
                 }
 
                 imported.map = _manager.Data?.map ?? imported.map;
+                JsonStorage.MigrateLegacyItems(imported);
                 _manager.SetMapData(imported);
                 _renderer.Rebuild();
                 Plugin.Log.LogInfo("Imported marker data from clipboard");
@@ -345,6 +378,42 @@ namespace MapLootEditorLite.Client
             catch (Exception ex)
             {
                 Plugin.Log.LogError($"Import failed: {ex.Message}");
+            }
+        }
+
+        private void ApplyPackImport()
+        {
+            try
+            {
+                var imported = JsonConvert.DeserializeObject<PackData>(_importText);
+                if (imported == null)
+                {
+                    Plugin.Log.LogWarning("Pack JSON deserialized to null");
+                    return;
+                }
+
+                var currentMap = _manager.Data?.map ?? _controller.CurrentMapId;
+                if (string.IsNullOrEmpty(currentMap))
+                {
+                    Plugin.Log.LogWarning("No current map to import into");
+                    return;
+                }
+
+                if (imported.maps == null || !imported.maps.TryGetValue(currentMap, out var mapData))
+                {
+                    Plugin.Log.LogWarning($"Pack does not contain map '{currentMap}'");
+                    return;
+                }
+
+                mapData.map = currentMap;
+                JsonStorage.MigrateLegacyItems(mapData);
+                _manager.SetMapData(mapData);
+                _renderer.Rebuild();
+                Plugin.Log.LogInfo($"Imported pack '{imported.name}' data for {currentMap} from clipboard");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"Pack import failed: {ex.Message}");
             }
         }
     }

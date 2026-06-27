@@ -61,9 +61,18 @@ namespace MapLootEditorLite.Client
         public abstract MarkerKind Kind { get; }
     }
 
+    public class LootItem
+    {
+        public string template = "";
+        public float chance = 100f;
+        public TransformData rotation = new TransformData();
+        public bool randomRotation = true;
+    }
+
     public class LooseLootSpawn : MarkerBase
     {
         public List<string> itemTpls = new List<string>();
+        public List<LootItem> items = new List<LootItem>();
         public float spawnChance = 100f;
         public bool respawnable = false;
         public bool forced = false;
@@ -75,6 +84,7 @@ namespace MapLootEditorLite.Client
     {
         public float radius = 1f;
         public List<string> itemTpls = new List<string>();
+        public List<LootItem> items = new List<LootItem>();
         public float spawnChance = 100f;
         public bool forced = false;
 
