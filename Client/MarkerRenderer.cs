@@ -3,6 +3,9 @@ using UnityEngine;
 
 namespace MapLootEditorLite.Client
 {
+    public enum GizmoMode { Translate, Rotate, Scale }
+    public enum GizmoAxis { None, X, Y, Z }
+
     public class MarkerRenderer
     {
         private readonly MarkerManager _manager;
@@ -15,9 +18,26 @@ namespace MapLootEditorLite.Client
         private readonly Color _objectColor = new Color(0f, 0.4f, 1f, 0.6f);
         private readonly Color _selectedColor = Color.white;
         private readonly Color _selectedZoneColor = new Color(0.2f, 0.6f, 1f, 0.25f);
+        private readonly Color _gizmoXColor = new Color(1f, 0.2f, 0.2f, 0.9f);
+        private readonly Color _gizmoYColor = new Color(0.2f, 1f, 0.2f, 0.9f);
+        private readonly Color _gizmoZColor = new Color(0.2f, 0.4f, 1f, 0.9f);
 
         private Material _wireMaterial;
         private readonly Dictionary<string, ZoneShape> _zoneShapeCache = new Dictionary<string, ZoneShape>();
+
+        public GizmoMode GizmoMode { get; set; } = GizmoMode.Translate;
+        public bool ShowGizmo { get; set; } = true;
+        public GizmoAxis HoveredAxis { get; private set; }
+        public GizmoAxis ActiveAxis { get; set; }
+
+        private GameObject _gizmoRoot;
+        private GizmoMode _gizmoVisualMode;
+        private readonly Dictionary<GizmoAxis, LineRenderer> _gizmoLines = new Dictionary<GizmoAxis, LineRenderer>();
+        private readonly Dictionary<GizmoAxis, GameObject> _gizmoHandles = new Dictionary<GizmoAxis, GameObject>();
+        private readonly Dictionary<GizmoAxis, LineRenderer> _gizmoRings = new Dictionary<GizmoAxis, LineRenderer>();
+        private const float _gizmoSize = 0.5f;
+        private const float _gizmoHandleSize = 0.08f;
+        private const int _gizmoRingSegments = 32;
 
         public MarkerRenderer(MarkerManager manager, GameObject root)
         {
@@ -90,6 +110,8 @@ namespace MapLootEditorLite.Client
                     _zoneShapeCache.Remove(id);
                 }
             }
+
+            UpdateGizmo();
         }
 
         public void DrawLabels(bool editorOpen)
@@ -400,6 +422,226 @@ namespace MapLootEditorLite.Client
                 }
             }
             return best;
+        }
+
+        public GizmoAxis PickGizmoAxis(Camera camera, Vector2 screenPos, float maxPx)
+        {
+            HoveredAxis = GizmoAxis.None;
+            if (_manager?.Selected == null || !ShowGizmo || camera == null)
+                return GizmoAxis.None;
+
+            var pos = _manager.Selected.position.ToVector3();
+            var rot = _manager.Selected.rotation.ToQuaternion();
+            GizmoAxis best = GizmoAxis.None;
+            float bestDist = maxPx;
+
+            foreach (var axis in new[] { GizmoAxis.X, GizmoAxis.Y, GizmoAxis.Z })
+            {
+                var dir = GetGizmoAxisDirection(axis, rot);
+                var end = pos + dir * _gizmoSize;
+                var projected = camera.WorldToScreenPoint(end);
+                if (projected.z <= 0)
+                    continue;
+
+                var dist = Vector2.Distance(screenPos, new Vector2(projected.x, projected.y));
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    best = axis;
+                }
+            }
+
+            HoveredAxis = best;
+            return best;
+        }
+
+        private void UpdateGizmo()
+        {
+            if (_manager?.Selected == null || !ShowGizmo)
+            {
+                DestroyGizmo();
+                return;
+            }
+
+            EnsureGizmo();
+            var marker = _manager.Selected;
+            var pos = marker.position.ToVector3();
+            var rot = marker.rotation.ToQuaternion();
+
+            foreach (var axis in new[] { GizmoAxis.X, GizmoAxis.Y, GizmoAxis.Z })
+            {
+                var dir = GetGizmoAxisDirection(axis, rot);
+                var end = pos + dir * _gizmoSize;
+                var color = GetGizmoColor(axis);
+                var isActive = ActiveAxis == axis || HoveredAxis == axis;
+
+                var line = _gizmoLines[axis];
+                line.startColor = color;
+                line.endColor = color;
+                line.startWidth = isActive ? 0.04f : 0.025f;
+                line.endWidth = isActive ? 0.04f : 0.025f;
+
+                if (GizmoMode == GizmoMode.Rotate)
+                {
+                    line.enabled = false;
+                }
+                else
+                {
+                    line.enabled = true;
+                    line.positionCount = 2;
+                    line.SetPosition(0, pos);
+                    line.SetPosition(1, end);
+                }
+
+                var handle = _gizmoHandles[axis];
+                handle.transform.position = end;
+                handle.transform.rotation = Quaternion.identity;
+                var scale = isActive ? _gizmoHandleSize * 1.5f : _gizmoHandleSize;
+                handle.transform.localScale = Vector3.one * scale;
+
+                var renderer = handle.GetComponent<MeshRenderer>();
+                if (renderer != null)
+                    renderer.material.color = color;
+
+                if (_gizmoRings.TryGetValue(axis, out var ring))
+                {
+                    if (GizmoMode == GizmoMode.Rotate)
+                    {
+                        ring.enabled = true;
+                        ring.startColor = color;
+                        ring.endColor = color;
+                        ring.startWidth = isActive ? 0.04f : 0.025f;
+                        ring.endWidth = isActive ? 0.04f : 0.025f;
+                        DrawGizmoRing(ring, pos, dir, _gizmoSize);
+                    }
+                    else
+                    {
+                        ring.enabled = false;
+                    }
+                }
+            }
+        }
+
+        private void EnsureGizmo()
+        {
+            if (_gizmoRoot == null)
+            {
+                _gizmoRoot = new GameObject("MLE_GizmoRoot");
+                _gizmoRoot.transform.SetParent(_root.transform, false);
+            }
+
+            if (_gizmoVisualMode != GizmoMode)
+            {
+                DestroyGizmoObjects();
+                _gizmoVisualMode = GizmoMode;
+            }
+
+            foreach (var axis in new[] { GizmoAxis.X, GizmoAxis.Y, GizmoAxis.Z })
+            {
+                if (!_gizmoLines.TryGetValue(axis, out var lr))
+                {
+                    var go = new GameObject($"MLE_GizmoLine_{axis}");
+                    go.transform.SetParent(_gizmoRoot.transform, false);
+                    lr = go.AddComponent<LineRenderer>();
+                    lr.material = GetWireMaterial();
+                    lr.useWorldSpace = true;
+                    lr.positionCount = 2;
+                    _gizmoLines[axis] = lr;
+                }
+
+                if (!_gizmoHandles.TryGetValue(axis, out var handle))
+                {
+                    handle = CreateGizmoHandle();
+                    handle.name = $"MLE_GizmoHandle_{axis}";
+                    handle.transform.SetParent(_gizmoRoot.transform, false);
+                    _gizmoHandles[axis] = handle;
+                }
+
+                if (!_gizmoRings.TryGetValue(axis, out var ring))
+                {
+                    var go = new GameObject($"MLE_GizmoRing_{axis}");
+                    go.transform.SetParent(_gizmoRoot.transform, false);
+                    ring = go.AddComponent<LineRenderer>();
+                    ring.material = GetWireMaterial();
+                    ring.useWorldSpace = true;
+                    ring.positionCount = _gizmoRingSegments + 1;
+                    ring.loop = true;
+                    _gizmoRings[axis] = ring;
+                }
+            }
+        }
+
+        private GameObject CreateGizmoHandle()
+        {
+            var type = GizmoMode == GizmoMode.Scale ? PrimitiveType.Cube : PrimitiveType.Sphere;
+            return CreatePrimitiveNoCollider(type, _gizmoHandleSize);
+        }
+
+        private void DestroyGizmo()
+        {
+            if (_gizmoRoot != null)
+            {
+                UnityEngine.Object.Destroy(_gizmoRoot);
+                _gizmoRoot = null;
+                _gizmoLines.Clear();
+                _gizmoHandles.Clear();
+                _gizmoRings.Clear();
+                _gizmoVisualMode = default;
+            }
+        }
+
+        private void DestroyGizmoObjects()
+        {
+            if (_gizmoRoot == null)
+                return;
+
+            foreach (Transform child in _gizmoRoot.transform)
+                UnityEngine.Object.Destroy(child.gameObject);
+
+            _gizmoLines.Clear();
+            _gizmoHandles.Clear();
+            _gizmoRings.Clear();
+        }
+
+        private void DrawGizmoRing(LineRenderer lr, Vector3 center, Vector3 normal, float radius)
+        {
+            Vector3 axisA;
+            if (Mathf.Abs(normal.y) < 0.9f)
+                axisA = Vector3.Cross(normal, Vector3.up).normalized;
+            else
+                axisA = Vector3.Cross(normal, Vector3.forward).normalized;
+            var axisB = Vector3.Cross(normal, axisA);
+
+            for (int i = 0; i <= _gizmoRingSegments; i++)
+            {
+                float angle = i * Mathf.PI * 2f / _gizmoRingSegments;
+                var point = center + (axisA * Mathf.Cos(angle) + axisB * Mathf.Sin(angle)) * radius;
+                lr.SetPosition(i, point);
+            }
+        }
+
+        private Vector3 GetGizmoAxisDirection(GizmoAxis axis, Quaternion localRotation)
+        {
+            Vector3 dir;
+            switch (axis)
+            {
+                case GizmoAxis.X: dir = Vector3.right; break;
+                case GizmoAxis.Y: dir = Vector3.up; break;
+                case GizmoAxis.Z: dir = Vector3.forward; break;
+                default: return Vector3.zero;
+            }
+            return localRotation * dir;
+        }
+
+        private Color GetGizmoColor(GizmoAxis axis)
+        {
+            switch (axis)
+            {
+                case GizmoAxis.X: return _gizmoXColor;
+                case GizmoAxis.Y: return _gizmoYColor;
+                case GizmoAxis.Z: return _gizmoZColor;
+                default: return Color.white;
+            }
         }
     }
 }

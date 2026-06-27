@@ -34,6 +34,19 @@ namespace MapLootEditorLite.Client
 
         private bool _mouseDragging;
 
+        private bool _freeCamCursorLocked = true;
+        private Player _freeCamPlayer;
+        private CharacterController _freeCamPlayerController;
+        private Vector3 _freeCamPlayerStartPosition;
+
+        private GizmoMode _gizmoMode = GizmoMode.Translate;
+        private GizmoAxis _activeGizmoAxis;
+        private Vector3 _gizmoDragStartWorld;
+        private Vector3 _gizmoDragStartMarkerPos;
+        private Vector3 _gizmoDragStartMarkerRot;
+        private Vector3 _gizmoDragStartMarkerScale;
+        private Plane _gizmoDragPlane;
+
         private void Awake()
         {
             _manager = new MarkerManager();
@@ -82,13 +95,36 @@ namespace MapLootEditorLite.Client
             if (_editorOpen)
             {
                 if (Input.GetKeyDown(KeyCode.F9))
+                {
+                    _lastToggleFrame = Time.frameCount;
                     ToggleFreeCam();
+                }
+                if (Input.GetKeyDown(KeyCode.Alpha1))
+                    SetGizmoMode(GizmoMode.Translate);
+                if (Input.GetKeyDown(KeyCode.Alpha2))
+                    SetGizmoMode(GizmoMode.Rotate);
+                if (Input.GetKeyDown(KeyCode.Alpha3))
+                    SetGizmoMode(GizmoMode.Scale);
 
                 if (_freeCam)
                 {
-                    Cursor.visible = false;
-                    Cursor.lockState = CursorLockMode.Locked;
-                    UpdateFreeCam();
+                    if (Input.GetMouseButtonDown(2))
+                        ToggleFreeCamCursor();
+
+                    if (_freeCamCursorLocked)
+                    {
+                        Cursor.visible = false;
+                        Cursor.lockState = CursorLockMode.Locked;
+                        UpdateFreeCam();
+                    }
+                    else
+                    {
+                        Cursor.visible = true;
+                        Cursor.lockState = CursorLockMode.None;
+                        HandleMouseInput();
+                    }
+
+                    UpdateFreeCamPlayer();
                 }
                 else
                 {
@@ -100,6 +136,7 @@ namespace MapLootEditorLite.Client
                 }
             }
 
+            _renderer.ShowGizmo = !_freeCam || !_freeCamCursorLocked;
             _renderer.Update();
 
             if (_editorOpen && _manager.Selected != null)
@@ -271,6 +308,12 @@ namespace MapLootEditorLite.Client
             return world.RegisteredPlayers?.FirstOrDefault(p => p.IsYourPlayer);
         }
 
+        private Player GetMainPlayer()
+        {
+            var world = Singleton<GameWorld>.Instance;
+            return world?.MainPlayer;
+        }
+
         private bool EnsureMapLoaded()
         {
             if (_manager.Data != null)
@@ -378,6 +421,16 @@ namespace MapLootEditorLite.Client
             _gameCamera.gameObject.tag = "Untagged";
             _gameCamera.enabled = false;
 
+            _freeCamPlayer = GetMainPlayer();
+            if (_freeCamPlayer != null)
+            {
+                _freeCamPlayerController = _freeCamPlayer.gameObject.GetComponent<CharacterController>();
+                if (_freeCamPlayerController != null)
+                    _freeCamPlayerController.enabled = false;
+                _freeCamPlayerStartPosition = _freeCamPlayer.Position;
+            }
+
+            _freeCamCursorLocked = true;
             Cursor.visible = false;
             Cursor.lockState = CursorLockMode.Locked;
             Plugin.Log.LogInfo("Entered freecam.");
@@ -385,6 +438,21 @@ namespace MapLootEditorLite.Client
 
         private void ExitFreeCam()
         {
+            if (_freeCamPlayer != null)
+            {
+                var exitPos = _freeCamCamera != null ? _freeCamCamera.transform.position : _freeCamPlayer.Transform.position;
+                var ground = MarkerManager.GetGroundPosition(exitPos);
+                if (ground.HasValue)
+                    _freeCamPlayer.Transform.position = ground.Value;
+
+                if (_freeCamPlayerController != null)
+                {
+                    _freeCamPlayerController.enabled = true;
+                    _freeCamPlayerController = null;
+                }
+                _freeCamPlayer = null;
+            }
+
             if (_freeCamCamera != null)
             {
                 _freeCamCamera.gameObject.tag = "Untagged";
@@ -397,6 +465,8 @@ namespace MapLootEditorLite.Client
                 _gameCamera.enabled = true;
                 _gameCamera = null;
             }
+
+            _freeCamCursorLocked = true;
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
             Plugin.Log.LogInfo("Exited freecam.");
@@ -428,39 +498,189 @@ namespace MapLootEditorLite.Client
             _freeCamCamera.transform.position += move.normalized * speed;
         }
 
+        private void UpdateFreeCamPlayer()
+        {
+            if (_freeCamPlayer == null || _freeCamCamera == null)
+                return;
+
+            var playerPos = _freeCamCamera.transform.position + _freeCamCamera.transform.forward * 2.5f;
+            _freeCamPlayer.Transform.position = playerPos;
+
+            var forward = _freeCamCamera.transform.forward;
+            forward.y = 0;
+            if (forward.sqrMagnitude > 0.001f)
+                _freeCamPlayer.Transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
+        }
+
+        private void ToggleFreeCamCursor()
+        {
+            _freeCamCursorLocked = !_freeCamCursorLocked;
+            Plugin.Log.LogInfo($"Freecam cursor {(_freeCamCursorLocked ? "locked" : "unlocked")}.");
+        }
+
         private void HandleMouseInput()
         {
-            if (_freeCam)
+            if (_freeCam && _freeCamCursorLocked)
                 return;
             if (IsMouseOverUI())
                 return;
 
+            var camera = Camera.main;
+            if (camera == null)
+                return;
+
+            var hoveredAxis = _renderer.PickGizmoAxis(camera, Input.mousePosition, 25f);
+
             if (Input.GetMouseButtonDown(0))
             {
-                var picked = PickMarkerFromMouse();
-                if (picked != null)
+                if (hoveredAxis != GizmoAxis.None)
                 {
-                    _manager.Selected = picked;
-                    _mouseDragging = true;
+                    _activeGizmoAxis = hoveredAxis;
+                    _renderer.ActiveAxis = hoveredAxis;
+                    _gizmoDragStartMarkerPos = _manager.Selected.position.ToVector3();
+                    _gizmoDragStartMarkerRot = _manager.Selected.rotation.ToVector3();
+                    _gizmoDragStartMarkerScale = Vector3.one;
+                    if (_manager.Selected is StaticObject so)
+                        _gizmoDragStartMarkerScale = so.scale.ToVector3();
+                    else if (_manager.Selected is LootZone zone)
+                        _gizmoDragStartMarkerScale = zone.scale.ToVector3();
+
+                    if (GetGizmoDragPlane(camera, hoveredAxis, out _gizmoDragPlane))
+                    {
+                        var ray = camera.ScreenPointToRay(Input.mousePosition);
+                        if (_gizmoDragPlane.Raycast(ray, out float d))
+                            _gizmoDragStartWorld = ray.GetPoint(d);
+                        else
+                            _gizmoDragStartWorld = _gizmoDragStartMarkerPos;
+                    }
+                }
+                else
+                {
+                    var picked = _renderer.PickFromScreenPosition(camera, Input.mousePosition, 50f);
+                    if (picked != null)
+                    {
+                        _manager.Selected = picked;
+                        _mouseDragging = true;
+                    }
                 }
             }
 
-            if (Input.GetMouseButton(0) && _mouseDragging && _manager.Selected != null)
+            if (Input.GetMouseButton(0) && _manager.Selected != null)
             {
-                var markerPos = _manager.Selected.position.ToVector3();
-                var plane = new Plane(Vector3.up, markerPos);
-                var ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-                if (plane.Raycast(ray, out float distance))
+                if (_activeGizmoAxis != GizmoAxis.None)
                 {
-                    var point = ray.GetPoint(distance);
-                    var newPos = new Vector3(point.x, markerPos.y, point.z);
-                    _manager.Selected.position = TransformData.FromVector3(newPos);
-                    _manager.IsDirty = true;
+                    ApplyGizmoDrag(camera);
+                }
+                else if (_mouseDragging)
+                {
+                    var markerPos = _manager.Selected.position.ToVector3();
+                    var plane = new Plane(Vector3.up, markerPos);
+                    var ray = camera.ScreenPointToRay(Input.mousePosition);
+                    if (plane.Raycast(ray, out float distance))
+                    {
+                        var point = ray.GetPoint(distance);
+                        var newPos = new Vector3(point.x, markerPos.y, point.z);
+                        _manager.Selected.position = TransformData.FromVector3(newPos);
+                        _manager.IsDirty = true;
+                    }
                 }
             }
 
             if (Input.GetMouseButtonUp(0))
+            {
+                _activeGizmoAxis = GizmoAxis.None;
+                _renderer.ActiveAxis = GizmoAxis.None;
                 _mouseDragging = false;
+            }
+        }
+
+        private void ApplyGizmoDrag(Camera camera)
+        {
+            if (!GetGizmoDragPlane(camera, _activeGizmoAxis, out _gizmoDragPlane))
+                return;
+
+            var ray = camera.ScreenPointToRay(Input.mousePosition);
+            if (!_gizmoDragPlane.Raycast(ray, out float d))
+                return;
+
+            var point = ray.GetPoint(d);
+            var axisDir = GetGizmoAxisDirection(_activeGizmoAxis, _manager.Selected.rotation.ToQuaternion());
+            var offset = Vector3.Dot(point - _gizmoDragStartWorld, axisDir);
+
+            switch (_gizmoMode)
+            {
+                case GizmoMode.Translate:
+                    var newPos = _gizmoDragStartMarkerPos + axisDir * offset;
+                    _manager.Selected.position = TransformData.FromVector3(newPos);
+                    break;
+
+                case GizmoMode.Rotate:
+                    var v0 = Vector3.ProjectOnPlane(_gizmoDragStartWorld - _gizmoDragStartMarkerPos, axisDir);
+                    var v1 = Vector3.ProjectOnPlane(point - _gizmoDragStartMarkerPos, axisDir);
+                    if (v0.sqrMagnitude > 0.0001f && v1.sqrMagnitude > 0.0001f)
+                    {
+                        var angle = Vector3.SignedAngle(v0, v1, axisDir);
+                        var newRot = Quaternion.AngleAxis(angle, axisDir) * Quaternion.Euler(_gizmoDragStartMarkerRot);
+                        _manager.Selected.rotation = TransformData.FromVector3(newRot.eulerAngles);
+                    }
+                    break;
+
+                case GizmoMode.Scale:
+                    var newScale = _gizmoDragStartMarkerScale;
+                    switch (_activeGizmoAxis)
+                    {
+                        case GizmoAxis.X: newScale.x += offset; break;
+                        case GizmoAxis.Y: newScale.y += offset; break;
+                        case GizmoAxis.Z: newScale.z += offset; break;
+                    }
+                    if (_manager.Selected is StaticObject so)
+                    {
+                        so.scale = TransformData.FromVector3(newScale);
+                        _renderer.Rebuild();
+                    }
+                    else if (_manager.Selected is LootZone zone)
+                    {
+                        zone.scale = TransformData.FromVector3(newScale);
+                        _renderer.Rebuild();
+                    }
+                    break;
+            }
+
+            _manager.IsDirty = true;
+        }
+
+        private bool GetGizmoDragPlane(Camera camera, GizmoAxis axis, out Plane plane)
+        {
+            plane = new Plane();
+            if (_manager.Selected == null)
+                return false;
+
+            var axisDir = GetGizmoAxisDirection(axis, _manager.Selected.rotation.ToQuaternion());
+            if (axisDir == Vector3.zero)
+                return false;
+
+            plane = new Plane(camera.transform.forward, _manager.Selected.position.ToVector3());
+            return true;
+        }
+
+        private Vector3 GetGizmoAxisDirection(GizmoAxis axis, Quaternion localRotation)
+        {
+            Vector3 dir;
+            switch (axis)
+            {
+                case GizmoAxis.X: dir = Vector3.right; break;
+                case GizmoAxis.Y: dir = Vector3.up; break;
+                case GizmoAxis.Z: dir = Vector3.forward; break;
+                default: return Vector3.zero;
+            }
+            return localRotation * dir;
+        }
+
+        public void SetGizmoMode(GizmoMode mode)
+        {
+            _gizmoMode = mode;
+            _renderer.GizmoMode = mode;
+            Plugin.Log.LogInfo($"Gizmo mode: {mode}");
         }
 
         private bool IsMouseOverUI()
