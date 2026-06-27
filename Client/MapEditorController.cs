@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using Comfort.Common;
 using EFT;
+using HarmonyLib;
 using Newtonsoft.Json;
 using UnityEngine;
 
@@ -34,6 +35,10 @@ namespace MapLootEditorLite.Client
 
         private bool _mouseDragging;
 
+        public static bool FreeCamInvulnerable { get; private set; }
+        private static readonly Harmony _freecamHarmony = new Harmony("com.maplooteditorlite.freecam");
+        private static bool _freecamPatchesApplied;
+
         private bool _freeCamCursorLocked = true;
         private Player _freeCamPlayer;
         private CharacterController _freeCamPlayerController;
@@ -59,6 +64,39 @@ namespace MapLootEditorLite.Client
             _previews = new LootPreviewSpawner(_previewRoot);
             _ui = new EditorUI(this, _manager, _renderer, _previews);
             Plugin.Log.LogInfo($"MapEditorController awake: enabled={enabled} active={gameObject.activeInHierarchy} key={_toggleKey}");
+            TryApplyFreeCamPatches();
+        }
+
+        private void TryApplyFreeCamPatches()
+        {
+            if (_freecamPatchesApplied)
+                return;
+            _freecamPatchesApplied = true;
+
+            try
+            {
+                var method = AccessTools.Method(typeof(Player), "ReceiveDamage");
+                if (method != null)
+                {
+                    _freecamHarmony.Patch(method, prefix: new HarmonyMethod(typeof(MapEditorController), nameof(ReceiveDamagePrefix)));
+                    Plugin.Log.LogInfo("Patched Player.ReceiveDamage for freecam invulnerability.");
+                }
+                else
+                {
+                    Plugin.Log.LogWarning("Could not find Player.ReceiveDamage to patch.");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogWarning($"Failed to patch Player.ReceiveDamage: {ex.Message}");
+            }
+        }
+
+        public static bool ReceiveDamagePrefix(Player __instance)
+        {
+            if (!FreeCamInvulnerable || __instance == null || !__instance.IsYourPlayer)
+                return true;
+            return false;
         }
 
         private void Update()
@@ -433,6 +471,7 @@ namespace MapLootEditorLite.Client
             _freeCamCursorLocked = true;
             Cursor.visible = false;
             Cursor.lockState = CursorLockMode.Locked;
+            FreeCamInvulnerable = true;
             Plugin.Log.LogInfo("Entered freecam.");
         }
 
@@ -469,6 +508,7 @@ namespace MapLootEditorLite.Client
             _freeCamCursorLocked = true;
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
+            FreeCamInvulnerable = false;
             Plugin.Log.LogInfo("Exited freecam.");
         }
 
@@ -503,7 +543,7 @@ namespace MapLootEditorLite.Client
             if (_freeCamPlayer == null || _freeCamCamera == null)
                 return;
 
-            var playerPos = _freeCamCamera.transform.position + _freeCamCamera.transform.forward * 2.5f;
+            var playerPos = _freeCamCamera.transform.position - _freeCamCamera.transform.forward * 2.5f;
             _freeCamPlayer.Transform.position = playerPos;
 
             var forward = _freeCamCamera.transform.forward;

@@ -132,7 +132,6 @@ namespace MapLootEditorLite.Client
                 if (preview == null)
                     return null;
 
-                preview.transform.SetParent(_root.transform, false);
                 preview.transform.position = position;
                 preview.transform.rotation = rotation;
                 preview.transform.localScale = Vector3.one;
@@ -165,15 +164,23 @@ namespace MapLootEditorLite.Client
             if (!_previews.Contains(fallback))
                 yield break;
 
-            var real = TrySpawnRealPreview(itemTpl, position, rotation);
-            if (real != null)
+            for (int attempt = 0; attempt < 5; attempt++)
             {
-                _previews.Remove(fallback);
-                UnityEngine.Object.Destroy(fallback);
-                AttachMeta(real, itemTpl, markerName, markerId, false);
-                _previews.Add(real);
-                Plugin.Log.LogInfo($"Real preview loaded for {markerName} using tpl {itemTpl}");
+                var real = TrySpawnRealPreview(itemTpl, position, rotation);
+                if (real != null)
+                {
+                    _previews.Remove(fallback);
+                    UnityEngine.Object.Destroy(fallback);
+                    AttachMeta(real, itemTpl, markerName, markerId, false);
+                    _previews.Add(real);
+                    Plugin.Log.LogInfo($"Real preview loaded for {markerName} using tpl {itemTpl}");
+                    yield break;
+                }
+
+                yield return null;
             }
+
+            Plugin.Log.LogInfo($"Keeping fallback preview for {markerName} using tpl {itemTpl}");
         }
 
         private async Task PreloadBundles(string itemTpl)
