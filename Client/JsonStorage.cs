@@ -5,13 +5,11 @@ namespace MapLootEditorLite.Client
 {
     public static class JsonStorage
     {
-        public static string SaveDirectory { get; set; }
+        public static string SaveDirectory { get; set; } = string.Empty;
 
-        public static void Initialize(string pluginPath)
+        public static void Initialize(string modDataDirectory)
         {
-            var pluginsDir = Path.GetDirectoryName(pluginPath);
-            var bepinexDir = Path.GetDirectoryName(pluginsDir);
-            SaveDirectory = Path.Combine(bepinexDir, "config", "MapEditorLite");
+            SaveDirectory = Path.Combine(modDataDirectory, "editor");
         }
 
         public static string GetFilePath(string mapId)

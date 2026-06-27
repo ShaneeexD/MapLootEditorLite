@@ -1,0 +1,816 @@
+import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
+import {
+  Box,
+  Crosshair,
+  Download,
+  ExternalLink,
+  FileJson,
+  MapPin,
+  Menu,
+  Package,
+  Plus,
+  Store,
+  Target,
+  Trash2,
+  X,
+} from 'lucide-react'
+import { saveAs } from 'file-saver'
+import { ClipboardPaste } from 'lucide-react'
+import { ItemName, ItemSelector, useItems } from './ItemSelector'
+import { type ItemInfo } from './itemsApi'
+import {
+  type LootZone,
+  type LooseLootSpawn,
+  type MapData,
+  type PackData,
+  type StaticObject,
+  type TransformData,
+  defaultMapData,
+  defaultPackData,
+  defaultTransform,
+  generateId,
+  MAP_OPTIONS,
+} from './types'
+
+type MarkerTab = 'spawns' | 'zones' | 'objects'
+
+export default function App() {
+  const [pack, setPack] = useState<PackData>(defaultPackData())
+  const [selectedMapId, setSelectedMapId] = useState<string>('')
+  const [tab, setTab] = useState<MarkerTab>('spawns')
+  const [newMapId, setNewMapId] = useState<string>(MAP_OPTIONS[0].id)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const importRef = useRef<HTMLInputElement>(null)
+  const [importKey, setImportKey] = useState(0)
+  const items = useItems()
+
+  const mapIds = useMemo(() => Object.keys(pack.maps), [pack.maps])
+  const currentMap = selectedMapId ? pack.maps[selectedMapId] : null
+
+  const updatePack = (updates: Partial<PackData>) => {
+    setPack((p) => ({ ...p, ...updates }))
+  }
+
+  const updateMap = (mapId: string, updater: (m: MapData) => MapData) => {
+    setPack((p) => {
+      const map = p.maps[mapId]
+      if (!map) return p
+      return { ...p, maps: { ...p.maps, [mapId]: updater(map) } }
+    })
+  }
+
+  const addMap = () => {
+    if (!pack.maps[newMapId]) {
+      updatePack({
+        maps: { ...pack.maps, [newMapId]: defaultMapData(newMapId) },
+      })
+      setSelectedMapId(newMapId)
+    }
+  }
+
+  const removeMap = (mapId: string) => {
+    setPack((p) => {
+      const next = { ...p.maps }
+      delete next[mapId]
+      return { ...p, maps: next }
+    })
+    if (selectedMapId === mapId) setSelectedMapId('')
+  }
+
+  const handleImport = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const imported = JSON.parse(reader.result as string) as PackData
+        setPack(imported)
+        const first = Object.keys(imported.maps)[0] || ''
+        setSelectedMapId(first)
+        setImportKey((k) => k + 1)
+      } catch {
+        alert('Invalid pack JSON. Make sure it was exported from the in-game editor.')
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  const downloadPack = () => {
+    const blob = new Blob([JSON.stringify(pack, null, 2)], { type: 'application/json' })
+    const fileName = pack.name.trim().replace(/\s+/g, '_') || 'pack'
+    saveAs(blob, `${fileName}.json`)
+  }
+
+  return (
+    <div className="min-h-screen bg-tarkov-bg text-tarkov-text flex">
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
+      <div className="flex-1 flex flex-col">
+        <header className="border-b border-tarkov-border bg-tarkov-surface px-6 py-4 flex items-center gap-4">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 rounded hover:bg-tarkov-border/50 text-tarkov-text-dim hover:text-tarkov-text transition-colors"
+            aria-label="Open menu"
+          >
+            <Menu size={22} />
+          </button>
+          <div className="flex items-center gap-2 text-tarkov-accent">
+            <Package size={24} />
+            <h1 className="text-xl font-bold">MapLootEditorLite Tool</h1>
+          </div>
+          <div className="flex-1" />
+          <input
+            key={importKey}
+            ref={importRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleImport}
+          />
+          <button onClick={() => importRef.current?.click()} className="btn-secondary flex items-center gap-2">
+            <FileJson size={16} /> Import Pack
+          </button>
+          <button onClick={downloadPack} className="btn-primary flex items-center gap-2">
+            <Download size={16} /> Export Pack
+          </button>
+        </header>
+
+        <main className="flex-1 flex overflow-hidden">
+          <aside className="w-72 border-r border-tarkov-border bg-tarkov-surface flex flex-col">
+            <div className="p-4 border-b border-tarkov-border space-y-3">
+              <h2 className="text-sm font-semibold text-tarkov-accent uppercase tracking-wider">Pack Info</h2>
+              <div>
+                <label className="label">Name</label>
+                <input
+                  className="input-field"
+                  value={pack.name}
+                  onChange={(e) => updatePack({ name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">Author</label>
+                <input
+                  className="input-field"
+                  value={pack.author}
+                  onChange={(e) => updatePack({ author: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">Version</label>
+                <input
+                  className="input-field"
+                  value={pack.version}
+                  onChange={(e) => updatePack({ version: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="p-4 flex-1 overflow-y-auto">
+              <h2 className="text-sm font-semibold text-tarkov-accent uppercase tracking-wider mb-3">Maps</h2>
+              {mapIds.length === 0 ? (
+                <p className="text-sm text-tarkov-text-dim">No maps yet. Import a pack exported in-game or add a map below.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {mapIds.map((id) => {
+                    const label = MAP_OPTIONS.find((m) => m.id === id)?.label || id
+                    return (
+                      <li key={id}>
+                        <button
+                          onClick={() => setSelectedMapId(id)}
+                          className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-colors flex items-center justify-between ${
+                            selectedMapId === id
+                              ? 'bg-tarkov-accent/20 border-tarkov-accent/50 text-tarkov-accent'
+                              : 'bg-tarkov-bg border-tarkov-border text-tarkov-text hover:border-tarkov-accent'
+                          }`}
+                        >
+                          <span>{label}</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              removeMap(id)
+                            }}
+                            className="p-1 hover:text-tarkov-error transition-colors"
+                            aria-label="Remove map"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+
+              <div className="mt-4 pt-4 border-t border-tarkov-border space-y-2">
+                <label className="label">Add Map</label>
+                <select className="input-field" value={newMapId} onChange={(e) => setNewMapId(e.target.value)}>
+                  {MAP_OPTIONS.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <button onClick={addMap} className="btn-secondary w-full flex items-center justify-center gap-2">
+                  <Plus size={16} /> Add Map
+                </button>
+              </div>
+            </div>
+          </aside>
+
+          <section className="flex-1 flex flex-col overflow-hidden bg-tarkov-bg">
+            {!currentMap ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-tarkov-text-dim p-8">
+                <Package size={48} className="mb-4 text-tarkov-accent/50" />
+                <p className="text-lg font-medium">Import a pack exported from the game to get started.</p>
+                <p className="text-sm mt-2 max-w-md text-center">
+                  This tool is designed to manage and refine the loot packs you export from the in-game editor.
+                  Set spawn chances, remove unwanted markers, and export a clean pack for distribution.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="px-6 py-4 border-b border-tarkov-border flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-tarkov-text-dim">Map:</span>
+                    <span className="font-semibold text-tarkov-accent">
+                      {MAP_OPTIONS.find((m) => m.id === selectedMapId)?.label || selectedMapId}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <TabButton
+                      active={tab === 'spawns'}
+                      onClick={() => setTab('spawns')}
+                      icon={<Crosshair size={16} />}
+                      label={`Spawns (${currentMap.lootSpawns.length})`}
+                    />
+                    <TabButton
+                      active={tab === 'zones'}
+                      onClick={() => setTab('zones')}
+                      icon={<MapPin size={16} />}
+                      label={`Zones (${currentMap.lootZones.length})`}
+                    />
+                    <TabButton
+                      active={tab === 'objects'}
+                      onClick={() => setTab('objects')}
+                      icon={<Box size={16} />}
+                      label={`Objects (${currentMap.objects.length})`}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6">
+                  {tab === 'spawns' && (
+                    <SpawnList
+                      items={items}
+                      data={currentMap.lootSpawns}
+                      onChange={(spawns) => updateMap(selectedMapId, (m) => ({ ...m, lootSpawns: spawns }))}
+                    />
+                  )}
+                  {tab === 'zones' && (
+                    <ZoneList
+                      items={items}
+                      data={currentMap.lootZones}
+                      onChange={(zones) => updateMap(selectedMapId, (m) => ({ ...m, lootZones: zones }))}
+                    />
+                  )}
+                  {tab === 'objects' && (
+                    <ObjectList
+                      data={currentMap.objects}
+                      onChange={(objects) => updateMap(selectedMapId, (m) => ({ ...m, objects }))}
+                    />
+                  )}
+                </div>
+              </>
+            )}
+          </section>
+        </main>
+      </div>
+    </div>
+  )
+}
+
+function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <>
+      {open && <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />}
+      <div
+        className={`fixed top-0 left-0 h-full w-64 bg-tarkov-surface border-r border-tarkov-border z-50 transform transition-transform duration-200 ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="flex items-center justify-between px-4 py-4 border-b border-tarkov-border">
+          <div className="flex items-center gap-2 text-tarkov-accent">
+            <Package size={22} />
+            <span className="font-bold">Serenity Mods</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded hover:bg-tarkov-border/50 text-tarkov-text-dim hover:text-tarkov-text transition-colors"
+            aria-label="Close menu"
+          >
+            <X size={20} />
+          </button>
+        </div>
+        <nav className="p-2 space-y-1">
+          <SidebarLink
+            href="https://maplooteditorlite-tool.netlify.app"
+            icon={<Package size={18} />}
+            label="MapLootEditorLite Tool"
+            active
+          />
+          <SidebarLink href="https://tradergen-tool.netlify.app" icon={<Store size={18} />} label="TraderGen Tool" />
+          <SidebarLink href="https://ammogen-tool.netlify.app" icon={<Target size={18} />} label="AmmoGen Tool" />
+        </nav>
+      </div>
+    </>
+  )
+}
+
+function SidebarLink({
+  href,
+  icon,
+  label,
+  active,
+}: {
+  href: string
+  icon: ReactNode
+  label: string
+  active?: boolean
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+        active
+          ? 'bg-tarkov-accent/20 text-tarkov-accent border border-tarkov-accent/50'
+          : 'text-tarkov-text hover:bg-tarkov-border/50 hover:text-tarkov-text'
+      }`}
+    >
+      {icon}
+      <span className="flex-1">{label}</span>
+      <ExternalLink size={14} className="text-tarkov-text-dim" />
+    </a>
+  )
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean
+  onClick: () => void
+  icon: ReactNode
+  label: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
+        active
+          ? 'bg-tarkov-accent/20 border-tarkov-accent/50 text-tarkov-accent'
+          : 'bg-tarkov-surface border-tarkov-border text-tarkov-text hover:border-tarkov-accent'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  )
+}
+
+function SpawnList({
+  data,
+  items,
+  onChange,
+}: {
+  data: LooseLootSpawn[]
+  items: ItemInfo[] | null
+  onChange: (spawns: LooseLootSpawn[]) => void
+}) {
+  const [form, setForm] = useState<LooseLootSpawn>({
+    id: generateId(),
+    name: 'loot_spawn',
+    position: defaultTransform(),
+    rotation: defaultTransform(),
+    itemTpls: ['544fb45d4bdc2dee738b4568'],
+    spawnChance: 100,
+    respawnable: false,
+    forced: false,
+  })
+
+  const add = () => {
+    onChange([...data, { ...form, id: generateId() }])
+  }
+
+  const update = (index: number, updates: Partial<LooseLootSpawn>) => {
+    onChange(replaceAt(data, index, { ...data[index], ...updates }))
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="card space-y-4">
+        <h3 className="text-sm font-semibold text-tarkov-accent uppercase tracking-wider">Add Loose Loot Spawn</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <TextField label="Name" value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} />
+          <ItemSelector
+            label="Item"
+            value={form.itemTpls[0]}
+            onChange={(v) => setForm((f) => ({ ...f, itemTpls: [v] }))}
+          />
+          <NumberField
+            label="Spawn Chance"
+            value={form.spawnChance}
+            onChange={(v) => setForm((f) => ({ ...f, spawnChance: v }))}
+            min={0}
+            max={100}
+          />
+          <div className="flex items-end">
+            <Toggle
+              label="Respawnable"
+              checked={form.respawnable}
+              onChange={(v) => setForm((f) => ({ ...f, respawnable: v }))}
+            />
+          </div>
+          <div className="flex items-end">
+            <Toggle
+              label="Forced (Quest)"
+              checked={form.forced}
+              onChange={(v) => setForm((f) => ({ ...f, forced: v }))}
+            />
+          </div>
+          <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} />
+          <TransformField label="Rotation" value={form.rotation} onChange={(v) => setForm((f) => ({ ...f, rotation: v }))} />
+          <div className="flex items-end md:col-span-2 lg:col-span-2">
+            <button onClick={add} className="btn-primary w-full flex items-center justify-center gap-2">
+              <Plus size={16} /> Add Loot Spawn
+            </button>
+          </div>
+          <div className="flex items-end md:col-span-2 lg:col-span-2">
+            <button
+              onClick={async () => {
+                try {
+                  const text = await navigator.clipboard.readText()
+                  const parsed = JSON.parse(text)
+                  if (parsed.position && parsed.itemTpls) {
+                    setForm({
+                      id: generateId(),
+                      name: parsed.name || 'imported_spawn',
+                      position: parsed.position || defaultTransform(),
+                      rotation: parsed.rotation || defaultTransform(),
+                      itemTpls: Array.isArray(parsed.itemTpls) ? parsed.itemTpls : [parsed.itemTpls || ''],
+                      spawnChance: parsed.spawnChance ?? 100,
+                      respawnable: parsed.respawnable ?? false,
+                      forced: parsed.forced ?? false,
+                    })
+                  } else {
+                    alert('Clipboard does not contain a valid spawn JSON. Copy a spawn from the in-game editor first.')
+                  }
+                } catch {
+                  alert('Failed to read clipboard. Make sure the in-game editor copied a spawn JSON.')
+                }
+              }}
+              className="btn-secondary w-full flex items-center justify-center gap-2"
+            >
+              <ClipboardPaste size={16} /> Paste from Game
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {data.map((spawn, i) => (
+          <div key={spawn.id} className="card">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <TextField label="Name" value={spawn.name} onChange={(v) => update(i, { name: v })} />
+              <ItemSelector
+                label="Item"
+                value={spawn.itemTpls[0] || ''}
+                onChange={(v) => update(i, { itemTpls: [v] })}
+              />
+              <NumberField
+                label="Spawn Chance"
+                value={spawn.spawnChance ?? 100}
+                onChange={(v) => update(i, { spawnChance: v })}
+                min={0}
+                max={100}
+              />
+              <div className="flex items-end justify-between">
+                <div className="flex flex-col gap-1">
+                  <Toggle
+                    label="Respawnable"
+                    checked={spawn.respawnable ?? false}
+                    onChange={(v) => update(i, { respawnable: v })}
+                  />
+                  <Toggle
+                    label="Forced (Quest)"
+                    checked={spawn.forced ?? false}
+                    onChange={(v) => update(i, { forced: v })}
+                  />
+                  <ItemName id={spawn.itemTpls[0] || ''} items={items} />
+                </div>
+                <button onClick={() => onChange(removeAt(data, i))} className="btn-danger p-2">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+              <TransformField label="Position" value={spawn.position} onChange={(v) => update(i, { position: v })} />
+              <TransformField label="Rotation" value={spawn.rotation} onChange={(v) => update(i, { rotation: v })} />
+            </div>
+          </div>
+        ))}
+        {data.length === 0 && <p className="text-tarkov-text-dim text-sm">No loose loot spawns in this map.</p>}
+      </div>
+    </div>
+  )
+}
+
+function ZoneList({
+  data,
+  items,
+  onChange,
+}: {
+  data: LootZone[]
+  items: ItemInfo[] | null
+  onChange: (zones: LootZone[]) => void
+}) {
+  const [form, setForm] = useState<LootZone>({
+    id: generateId(),
+    name: 'loot_zone',
+    position: defaultTransform(),
+    rotation: defaultTransform(),
+    radius: 1,
+    itemTpls: ['544fb45d4bdc2dee738b4568'],
+    spawnChance: 100,
+    forced: false,
+  })
+
+  const add = () => {
+    onChange([...data, { ...form, id: generateId() }])
+  }
+
+  const update = (index: number, updates: Partial<LootZone>) => {
+    onChange(replaceAt(data, index, { ...data[index], ...updates }))
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="card space-y-4">
+        <h3 className="text-sm font-semibold text-tarkov-accent uppercase tracking-wider">Add Loot Zone</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <TextField label="Name" value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} />
+          <ItemSelector
+            label="Item"
+            value={form.itemTpls[0]}
+            onChange={(v) => setForm((f) => ({ ...f, itemTpls: [v] }))}
+          />
+          <NumberField
+            label="Radius"
+            value={form.radius}
+            onChange={(v) => setForm((f) => ({ ...f, radius: v }))}
+            min={0}
+            step={0.1}
+          />
+          <NumberField
+            label="Spawn Chance"
+            value={form.spawnChance}
+            onChange={(v) => setForm((f) => ({ ...f, spawnChance: v }))}
+            min={0}
+            max={100}
+          />
+          <div className="flex items-end">
+            <Toggle
+              label="Forced (Quest)"
+              checked={form.forced}
+              onChange={(v) => setForm((f) => ({ ...f, forced: v }))}
+            />
+          </div>
+          <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} />
+          <div className="flex items-end md:col-span-1 lg:col-span-2">
+            <button onClick={add} className="btn-primary w-full flex items-center justify-center gap-2">
+              <Plus size={16} /> Add Loot Zone
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {data.map((zone, i) => (
+          <div key={zone.id} className="card">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <TextField label="Name" value={zone.name} onChange={(v) => update(i, { name: v })} />
+              <ItemSelector
+                label="Item"
+                value={zone.itemTpls[0] || ''}
+                onChange={(v) => update(i, { itemTpls: [v] })}
+              />
+              <NumberField label="Radius" value={zone.radius ?? 1} onChange={(v) => update(i, { radius: v })} min={0} step={0.1} />
+              <NumberField
+                label="Spawn Chance"
+                value={zone.spawnChance ?? 100}
+                onChange={(v) => update(i, { spawnChance: v })}
+                min={0}
+                max={100}
+              />
+              <TransformField label="Position" value={zone.position} onChange={(v) => update(i, { position: v })} />
+              <div className="flex items-end justify-between md:col-span-1 lg:col-span-3">
+                <div className="flex flex-col gap-1">
+                  <Toggle
+                    label="Forced (Quest)"
+                    checked={zone.forced ?? false}
+                    onChange={(v) => update(i, { forced: v })}
+                  />
+                  <ItemName id={zone.itemTpls[0] || ''} items={items} />
+                </div>
+                <button onClick={() => onChange(removeAt(data, i))} className="btn-danger p-2">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+        {data.length === 0 && <p className="text-tarkov-text-dim text-sm">No loot zones in this map.</p>}
+      </div>
+    </div>
+  )
+}
+
+function ObjectList({
+  data,
+  onChange,
+}: {
+  data: StaticObject[]
+  onChange: (objects: StaticObject[]) => void
+}) {
+  const [form, setForm] = useState<StaticObject>({
+    id: generateId(),
+    name: 'static_object',
+    position: defaultTransform(),
+    rotation: defaultTransform(),
+    scale: { x: 1, y: 1, z: 1 },
+    prefabPath: '',
+  })
+
+  const add = () => {
+    onChange([...data, { ...form, id: generateId() }])
+  }
+
+  const update = (index: number, updates: Partial<StaticObject>) => {
+    onChange(replaceAt(data, index, { ...data[index], ...updates }))
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="card space-y-4">
+        <h3 className="text-sm font-semibold text-tarkov-accent uppercase tracking-wider">Add Static Object</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <TextField label="Name" value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} />
+          <TextField label="Prefab Path" value={form.prefabPath} onChange={(v) => setForm((f) => ({ ...f, prefabPath: v }))} />
+          <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} />
+          <TransformField label="Rotation" value={form.rotation} onChange={(v) => setForm((f) => ({ ...f, rotation: v }))} />
+          <TransformField label="Scale" value={form.scale} onChange={(v) => setForm((f) => ({ ...f, scale: v }))} />
+          <div className="flex items-end md:col-span-1 lg:col-span-3">
+            <button onClick={add} className="btn-primary w-full flex items-center justify-center gap-2">
+              <Plus size={16} /> Add Static Object
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {data.map((obj, i) => (
+          <div key={obj.id} className="card">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <TextField label="Name" value={obj.name} onChange={(v) => update(i, { name: v })} />
+              <TextField label="Prefab Path" value={obj.prefabPath || ''} onChange={(v) => update(i, { prefabPath: v })} />
+              <TransformField label="Position" value={obj.position} onChange={(v) => update(i, { position: v })} />
+              <TransformField label="Rotation" value={obj.rotation} onChange={(v) => update(i, { rotation: v })} />
+              <TransformField label="Scale" value={obj.scale} onChange={(v) => update(i, { scale: v })} />
+              <div className="flex items-end justify-end md:col-span-1 lg:col-span-3">
+                <button onClick={() => onChange(removeAt(data, i))} className="btn-danger p-2">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+        {data.length === 0 && <p className="text-tarkov-text-dim text-sm">No static objects in this map.</p>}
+      </div>
+    </div>
+  )
+}
+
+function TextField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <input className="input-field" value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  )
+}
+
+function NumberField({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  step = 1,
+}: {
+  label: string
+  value: number
+  onChange: (value: number) => void
+  min?: number
+  max?: number
+  step?: number
+}) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <input
+        className="input-field"
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+      />
+    </div>
+  )
+}
+
+function TransformField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: TransformData
+  onChange: (value: TransformData) => void
+}) {
+  const update = (axis: keyof TransformData, val: string) => {
+    onChange({ ...value, [axis]: parseFloat(val) || 0 })
+  }
+
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <div className="grid grid-cols-3 gap-2">
+        <input
+          className="input-field"
+          type="number"
+          step="0.1"
+          placeholder="X"
+          value={value.x}
+          onChange={(e) => update('x', e.target.value)}
+        />
+        <input
+          className="input-field"
+          type="number"
+          step="0.1"
+          placeholder="Y"
+          value={value.y}
+          onChange={(e) => update('y', e.target.value)}
+        />
+        <input
+          className="input-field"
+          type="number"
+          step="0.1"
+          placeholder="Z"
+          value={value.z}
+          onChange={(e) => update('z', e.target.value)}
+        />
+      </div>
+    </div>
+  )
+}
+
+function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <label className="toggle">
+      <span className="text-sm text-tarkov-text-dim mr-2">{label}</span>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span className="toggle-track">
+        <span className="toggle-thumb" />
+      </span>
+    </label>
+  )
+}
+
+function replaceAt<T>(arr: T[], index: number, item: T): T[] {
+  return [...arr.slice(0, index), item, ...arr.slice(index + 1)]
+}
+
+function removeAt<T>(arr: T[], index: number): T[] {
+  return [...arr.slice(0, index), ...arr.slice(index + 1)]
+}

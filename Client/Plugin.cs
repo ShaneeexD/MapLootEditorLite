@@ -1,3 +1,5 @@
+using System.IO;
+using System.Linq;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
@@ -11,6 +13,13 @@ namespace MapLootEditorLite.Client
         public static Plugin Instance { get; private set; }
         public static ManualLogSource Log { get; private set; }
         public static KeyCode ToggleKey { get; private set; } = KeyCode.F8;
+        public static string SptRoot { get; private set; } = string.Empty;
+        public static string ModDataDirectory { get; private set; } = string.Empty;
+        public static string ServerModDirectory { get; private set; } = string.Empty;
+        public static string ServerModPacksDirectory { get; private set; } = string.Empty;
+        public static string ServerModExportsDirectory { get; private set; } = string.Empty;
+        public static ConfigEntry<bool> EnableEditor;
+        public static ConfigEntry<bool> EnableDebugVisuals;
         public static ConfigEntry<KeyboardShortcut> PlaceLootSpawnHotkey;
         public static ConfigEntry<KeyboardShortcut> PlaceLootZoneHotkey;
         public static ConfigEntry<KeyboardShortcut> PlaceStaticObjectHotkey;
@@ -22,31 +31,60 @@ namespace MapLootEditorLite.Client
         private void Awake()
         {
             Instance = this;
-            Log = Logger;
+            Log = BepInEx.Logging.Logger.CreateLogSource("MLEL");
             Log.LogInfo("Map Loot Editor Lite client plugin loaded");
 
-            JsonStorage.Initialize(Info.Location);
+            SptRoot = FindSptRoot(Info.Location);
+            ModDataDirectory = Path.Combine(SptRoot, "BepInEx", "config", "MapLootEditorLite");
+            ServerModDirectory = Path.Combine(SptRoot, "user", "mods", "MapLootEditorLite");
+            ServerModPacksDirectory = Path.Combine(ServerModDirectory, "packs");
+            ServerModExportsDirectory = Path.Combine(ServerModDirectory, "exports");
 
-            var toggleConfig = Config.Bind("General", "ToggleKey", KeyCode.F8, "Hotkey that opens/closes the editor window");
+            Log.LogInfo($"Detected SPT root: {SptRoot}");
+            Log.LogInfo($"Server mod directory: {ServerModDirectory}");
+            Log.LogInfo($"Exports directory: {ServerModExportsDirectory}");
+
+            Directory.CreateDirectory(ModDataDirectory);
+            Directory.CreateDirectory(Path.Combine(ModDataDirectory, "editor"));
+            Directory.CreateDirectory(Path.Combine(ModDataDirectory, "spawns"));
+            Directory.CreateDirectory(Path.Combine(ModDataDirectory, "imports"));
+            Directory.CreateDirectory(Path.Combine(ModDataDirectory, "cache"));
+            Directory.CreateDirectory(ServerModPacksDirectory);
+            Directory.CreateDirectory(ServerModExportsDirectory);
+
+            JsonStorage.Initialize(ModDataDirectory);
+
+            var toggleConfig = base.Config.Bind("General", "ToggleKey", KeyCode.F8, "Hotkey that opens/closes the editor window");
             ToggleKey = toggleConfig.Value;
 
-            PlaceLootSpawnHotkey = Config.Bind("Hotkeys", "Place Loot Spawn", new KeyboardShortcut(KeyCode.Insert), "Place a loose loot spawn at your position");
-            PlaceLootZoneHotkey = Config.Bind("Hotkeys", "Place Loot Zone", new KeyboardShortcut(KeyCode.Insert, KeyCode.LeftShift), "Place a loot zone at your position");
-            PlaceStaticObjectHotkey = Config.Bind("Hotkeys", "Place Static Object", new KeyboardShortcut(KeyCode.Insert, KeyCode.LeftControl), "Place a static object at your position");
-            PlaceLootSpawnAtLookHotkey = Config.Bind("Hotkeys", "Place Loot Spawn at Look", new KeyboardShortcut(KeyCode.Home), "Place a loose loot spawn where you are looking");
-            PlaceLootZoneAtLookHotkey = Config.Bind("Hotkeys", "Place Loot Zone at Look", new KeyboardShortcut(KeyCode.Home, KeyCode.LeftShift), "Place a loot zone where you are looking");
-            PlaceStaticObjectAtLookHotkey = Config.Bind("Hotkeys", "Place Static Object at Look", new KeyboardShortcut(KeyCode.Home, KeyCode.LeftControl), "Place a static object where you are looking");
+            EnableEditor = base.Config.Bind("General", "EnableEditor", true, "Enable the in-raid F8 editor");
+            EnableDebugVisuals = base.Config.Bind("General", "EnableDebugVisuals", false, "Show debug visuals in raid");
+
+            PlaceLootSpawnHotkey = base.Config.Bind("Hotkeys", "Place Loot Spawn", new KeyboardShortcut(KeyCode.Insert), "Place a loose loot spawn at your position");
+            PlaceLootZoneHotkey = base.Config.Bind("Hotkeys", "Place Loot Zone", new KeyboardShortcut(KeyCode.Insert, KeyCode.LeftShift), "Place a loot zone at your position");
+            PlaceStaticObjectHotkey = base.Config.Bind("Hotkeys", "Place Static Object", new KeyboardShortcut(KeyCode.Insert, KeyCode.LeftControl), "Place a static object at your position");
+            PlaceLootSpawnAtLookHotkey = base.Config.Bind("Hotkeys", "Place Loot Spawn at Look", new KeyboardShortcut(KeyCode.Home), "Place a loose loot spawn where you are looking");
+            PlaceLootZoneAtLookHotkey = base.Config.Bind("Hotkeys", "Place Loot Zone at Look", new KeyboardShortcut(KeyCode.Home, KeyCode.LeftShift), "Place a loot zone where you are looking");
+            PlaceStaticObjectAtLookHotkey = base.Config.Bind("Hotkeys", "Place Static Object at Look", new KeyboardShortcut(KeyCode.Home, KeyCode.LeftControl), "Place a static object where you are looking");
 
             // F12 menu buttons (requires BepInEx ConfigurationManager)
-            Config.Bind("F12 Buttons", "Place Loot Spawn at Player", false, new ConfigDescription("Click to place a loose loot spawn where you are standing", null, new ConfigurationManagerAttributes { CustomDrawer = DrawButtonPlaceLootSpawnAtPlayer, HideSettingName = true }));
-            Config.Bind("F12 Buttons", "Place Loot Zone at Player", false, new ConfigDescription("Click to place a loot zone where you are standing", null, new ConfigurationManagerAttributes { CustomDrawer = DrawButtonPlaceLootZoneAtPlayer, HideSettingName = true }));
-            Config.Bind("F12 Buttons", "Place Static Object at Player", false, new ConfigDescription("Click to place a static object where you are standing", null, new ConfigurationManagerAttributes { CustomDrawer = DrawButtonPlaceStaticObjectAtPlayer, HideSettingName = true }));
-            Config.Bind("F12 Buttons", "Place Loot Spawn at Look", false, new ConfigDescription("Click to place a loose loot spawn where you are looking", null, new ConfigurationManagerAttributes { CustomDrawer = DrawButtonPlaceLootSpawnAtLook, HideSettingName = true }));
-            Config.Bind("F12 Buttons", "Place Loot Zone at Look", false, new ConfigDescription("Click to place a loot zone where you are looking", null, new ConfigurationManagerAttributes { CustomDrawer = DrawButtonPlaceLootZoneAtLook, HideSettingName = true }));
-            Config.Bind("F12 Buttons", "Place Static Object at Look", false, new ConfigDescription("Click to place a static object where you are looking", null, new ConfigurationManagerAttributes { CustomDrawer = DrawButtonPlaceStaticObjectAtLook, HideSettingName = true }));
-            Config.Bind("F12 Buttons", "Save Markers", false, new ConfigDescription("Click to save the current markers to disk", null, new ConfigurationManagerAttributes { CustomDrawer = DrawButtonSaveMarkers, HideSettingName = true }));
+            base.Config.Bind("F12 Buttons", "Place Loot Spawn at Player", false, new ConfigDescription("Click to place a loose loot spawn where you are standing", null, new ConfigurationManagerAttributes { CustomDrawer = DrawButtonPlaceLootSpawnAtPlayer, HideSettingName = true }));
+            base.Config.Bind("F12 Buttons", "Place Loot Zone at Player", false, new ConfigDescription("Click to place a loot zone where you are standing", null, new ConfigurationManagerAttributes { CustomDrawer = DrawButtonPlaceLootZoneAtPlayer, HideSettingName = true }));
+            base.Config.Bind("F12 Buttons", "Place Static Object at Player", false, new ConfigDescription("Click to place a static object where you are standing", null, new ConfigurationManagerAttributes { CustomDrawer = DrawButtonPlaceStaticObjectAtPlayer, HideSettingName = true }));
+            base.Config.Bind("F12 Buttons", "Place Loot Spawn at Look", false, new ConfigDescription("Click to place a loose loot spawn where you are looking", null, new ConfigurationManagerAttributes { CustomDrawer = DrawButtonPlaceLootSpawnAtLook, HideSettingName = true }));
+            base.Config.Bind("F12 Buttons", "Place Loot Zone at Look", false, new ConfigDescription("Click to place a loot zone where you are looking", null, new ConfigurationManagerAttributes { CustomDrawer = DrawButtonPlaceLootZoneAtLook, HideSettingName = true }));
+            base.Config.Bind("F12 Buttons", "Place Static Object at Look", false, new ConfigDescription("Click to place a static object where you are looking", null, new ConfigurationManagerAttributes { CustomDrawer = DrawButtonPlaceStaticObjectAtLook, HideSettingName = true }));
+            base.Config.Bind("F12 Buttons", "Save Markers", false, new ConfigDescription("Click to save the current markers to disk", null, new ConfigurationManagerAttributes { CustomDrawer = DrawButtonSaveMarkers, HideSettingName = true }));
 
-            Controller = gameObject.AddComponent<MapEditorController>();
+            if (EnableEditor.Value)
+            {
+                Controller = gameObject.AddComponent<MapEditorController>();
+                Log.LogInfo("Editor enabled");
+            }
+            else
+            {
+                Log.LogInfo("Editor is disabled in BepInEx config; set EnableEditor to true to use the F8 editor");
+            }
         }
 
         private static void DrawButtonPlaceLootSpawnAtPlayer(ConfigEntryBase entry)
@@ -89,6 +127,23 @@ namespace MapLootEditorLite.Client
         {
             if (GUILayout.Button("Save Markers", GUILayout.ExpandWidth(true)) && Controller != null)
                 Controller.Save();
+        }
+
+        private static string FindSptRoot(string pluginPath)
+        {
+            var dir = Path.GetDirectoryName(pluginPath);
+            while (!string.IsNullOrEmpty(dir))
+            {
+                if (Directory.Exists(Path.Combine(dir, "BepInEx")) && Directory.Exists(Path.Combine(dir, "user")))
+                    return dir;
+
+                var parent = Path.GetDirectoryName(dir);
+                if (parent == dir)
+                    break;
+                dir = parent;
+            }
+
+            return Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(pluginPath)));
         }
     }
 }

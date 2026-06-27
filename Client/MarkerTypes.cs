@@ -20,6 +20,14 @@ namespace MapLootEditorLite.Client
         public List<StaticObject> objects = new List<StaticObject>();
     }
 
+    public class PackData
+    {
+        public string name = "My Loot Pack";
+        public string author = "";
+        public string version = "1.0.0";
+        public System.Collections.Generic.Dictionary<string, MapData> maps = new System.Collections.Generic.Dictionary<string, MapData>(System.StringComparer.OrdinalIgnoreCase);
+    }
+
     public class TransformData
     {
         public float x;
@@ -58,6 +66,7 @@ namespace MapLootEditorLite.Client
         public List<string> itemTpls = new List<string>();
         public float spawnChance = 100f;
         public bool respawnable = false;
+        public bool forced = false;
 
         public override MarkerKind Kind => MarkerKind.LooseLoot;
     }
@@ -67,6 +76,7 @@ namespace MapLootEditorLite.Client
         public float radius = 1f;
         public List<string> itemTpls = new List<string>();
         public float spawnChance = 100f;
+        public bool forced = false;
 
         public override MarkerKind Kind => MarkerKind.LootZone;
     }

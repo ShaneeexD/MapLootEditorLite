@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>MapLootEditorLite.Server</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <OutputType>Library</OutputType>
+    <Version>1.0.0</Version>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <AssemblyName>MapLootEditorLite.Server</AssemblyName>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- SPT Server -->
+    <Reference Include="SPTarkov.Server.Core">
+      <HintPath>$(SPTPath)\SPT\SPTarkov.Server.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SPTarkov.DI">
+      <HintPath>$(SPTPath)\SPT\SPTarkov.DI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SPTarkov.Common">
+      <HintPath>$(SPTPath)\SPT\SPTarkov.Common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SPTarkov.Server.Assets">
+      <HintPath>$(SPTPath)\SPT\SPTarkov.Server.Assets.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SPTarkov.Server.Web">
+      <HintPath>$(SPTPath)\SPT\SPTarkov.Server.Web.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SPTarkov.Reflection">
+      <HintPath>$(SPTPath)\SPT\SPTarkov.Reflection.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- Harmony -->
+    <Reference Include="0Harmony">
+      <HintPath>$(SPTPath)\SPT\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SemanticVersioning">
+      <HintPath>$(SPTPath)\SPT\SemanticVersioning.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- WTT CommonLib -->
+    <Reference Include="WTT-ServerCommonLib">
+      <HintPath>$(SPTPath)\SPT\user\mods\WTT-ServerCommonLib\WTT-ServerCommonLib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="package.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+</Project>

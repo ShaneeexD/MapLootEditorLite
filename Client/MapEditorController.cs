@@ -1,6 +1,9 @@
+using System;
+using System.IO;
 using System.Linq;
 using Comfort.Common;
 using EFT;
+using Newtonsoft.Json;
 using UnityEngine;
 
 namespace MapLootEditorLite.Client
@@ -320,5 +323,56 @@ namespace MapLootEditorLite.Client
 
         public void ClearPreviews() => _previews.ClearAll();
         public void ClearVisuals() => _renderer.Clear();
+
+        public string CurrentMapId => _currentMapId;
+
+        public void ExportPack(string packName)
+        {
+            if (string.IsNullOrEmpty(_currentMapId) || _manager.Data == null)
+            {
+                Plugin.Log.LogWarning("Cannot export pack: no map loaded.");
+                return;
+            }
+
+            var pack = new PackData
+            {
+                name = packName,
+                maps = new System.Collections.Generic.Dictionary<string, MapData>(System.StringComparer.OrdinalIgnoreCase)
+                {
+                    [_currentMapId] = _manager.Data
+                }
+            };
+
+            var safeName = SanitizePackName(packName);
+            if (string.IsNullOrEmpty(safeName))
+            {
+                Plugin.Log.LogWarning("Cannot export pack: name is empty or invalid.");
+                return;
+            }
+
+            var exportsDir = Plugin.ServerModExportsDirectory;
+            Directory.CreateDirectory(exportsDir);
+            var path = Path.Combine(exportsDir, safeName + ".json");
+            File.WriteAllText(path, JsonConvert.SerializeObject(pack, Formatting.Indented));
+            Plugin.Log.LogInfo($"Exported pack '{safeName}' to {path}");
+        }
+
+        private static string SanitizePackName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return string.Empty;
+
+            var trimmed = name.Trim();
+            var fileName = Path.GetFileName(trimmed);
+            if (string.IsNullOrWhiteSpace(fileName))
+                return string.Empty;
+
+            var clean = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+            clean = clean.Trim('.', ' ');
+            if (string.IsNullOrWhiteSpace(clean))
+                return string.Empty;
+
+            return clean;
+        }
     }
 }

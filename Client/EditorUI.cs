@@ -16,6 +16,7 @@ namespace MapLootEditorLite.Client
         private Rect _windowRect = new Rect(20, 20, 420, 640);
         private Vector2 _scrollPos;
         private string _importText = "";
+        private string _packName = "MyLootPack";
 
         public EditorUI(MapEditorController controller, MarkerManager manager, MarkerRenderer renderer, LootPreviewSpawner previews)
         {
@@ -56,18 +57,25 @@ namespace MapLootEditorLite.Client
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Save"))
                 _controller.Save();
-            if (GUILayout.Button("Export JSON"))
+            if (GUILayout.Button("Copy JSON"))
             {
                 try
                 {
                     GUIUtility.systemCopyBuffer = JsonConvert.SerializeObject(_manager.Data, Formatting.Indented);
-                    Plugin.Log.LogInfo("Exported JSON to clipboard");
+                    Plugin.Log.LogInfo("Copied JSON to clipboard");
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log.LogError($"Export failed: {ex.Message}");
+                    Plugin.Log.LogError($"Copy failed: {ex.Message}");
                 }
             }
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Pack:", GUILayout.Width(40));
+            _packName = GUILayout.TextField(_packName);
+            if (GUILayout.Button("Export Pack"))
+                _controller.ExportPack(_packName);
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
@@ -171,6 +179,21 @@ namespace MapLootEditorLite.Client
                     DrawStaticObject(obj);
                     break;
             }
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Copy Spawn JSON"))
+            {
+                try
+                {
+                    GUIUtility.systemCopyBuffer = JsonConvert.SerializeObject(selected, Formatting.Indented);
+                    Plugin.Log.LogInfo("Copied selected marker JSON to clipboard");
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogError($"Failed to copy marker JSON: {ex.Message}");
+                }
+            }
+            GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Preview Item"))
