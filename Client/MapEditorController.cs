@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using Comfort.Common;
 using EFT;
+using EFT.HealthSystem;
 using HarmonyLib;
 using Newtonsoft.Json;
 using UnityEngine;
@@ -73,30 +74,48 @@ namespace MapLootEditorLite.Client
                 return;
             _freecamPatchesApplied = true;
 
+            PatchMethod("ApplyDamage", nameof(ApplyDamagePrefix));
+            PatchMethod("ChangeHealth", nameof(ChangeHealthPrefix));
+        }
+
+        private void PatchMethod(string methodName, string prefixName)
+        {
             try
             {
-                var method = AccessTools.Method(typeof(Player), "ReceiveDamage");
+                var method = AccessTools.Method(typeof(ActiveHealthController), methodName);
                 if (method != null)
                 {
-                    _freecamHarmony.Patch(method, prefix: new HarmonyMethod(typeof(MapEditorController), nameof(ReceiveDamagePrefix)));
-                    Plugin.Log.LogInfo("Patched Player.ReceiveDamage for freecam invulnerability.");
+                    _freecamHarmony.Patch(method, prefix: new HarmonyMethod(typeof(MapEditorController), prefixName));
+                    Plugin.Log.LogInfo($"Patched ActiveHealthController.{methodName} for freecam invulnerability.");
                 }
                 else
                 {
-                    Plugin.Log.LogWarning("Could not find Player.ReceiveDamage to patch.");
+                    Plugin.Log.LogWarning($"Could not find ActiveHealthController.{methodName} to patch.");
                 }
             }
             catch (System.Exception ex)
             {
-                Plugin.Log.LogWarning($"Failed to patch Player.ReceiveDamage: {ex.Message}");
+                Plugin.Log.LogWarning($"Failed to patch ActiveHealthController.{methodName}: {ex.Message}");
             }
         }
 
-        public static bool ReceiveDamagePrefix(Player __instance)
+        public static bool ApplyDamagePrefix(ActiveHealthController __instance, Player ___Player, ref float damage, EBodyPart bodyPart, DamageInfoStruct damageInfo)
         {
-            if (!FreeCamInvulnerable || __instance == null || !__instance.IsYourPlayer)
+            if (!FreeCamInvulnerable || ___Player == null || !___Player.IsYourPlayer)
                 return true;
-            return false;
+
+            damage = 0f;
+            return true;
+        }
+
+        public static bool ChangeHealthPrefix(ActiveHealthController __instance, Player ___Player, EBodyPart bodyPart, ref float value, DamageInfoStruct damageInfo)
+        {
+            if (!FreeCamInvulnerable || ___Player == null || !___Player.IsYourPlayer)
+                return true;
+
+            if (value < 0f)
+                value = 0f;
+            return true;
         }
 
         private void Update()
@@ -455,6 +474,14 @@ namespace MapLootEditorLite.Client
             _freeCamCamera.CopyFrom(_gameCamera);
             _freeCamCamera.tag = "MainCamera";
             _freeCamEuler = _gameCamera.transform.eulerAngles;
+
+            var camLight = go.AddComponent<Light>();
+            camLight.type = LightType.Spot;
+            camLight.range = 100f;
+            camLight.spotAngle = 120f;
+            camLight.intensity = 1.5f;
+            camLight.color = Color.white;
+            camLight.shadows = LightShadows.None;
 
             _gameCamera.gameObject.tag = "Untagged";
             _gameCamera.enabled = false;

@@ -1,7 +1,6 @@
 using System;
 using System.Globalization;
 using System.Linq;
-using Newtonsoft.Json;
 using UnityEngine;
 
 namespace MapLootEditorLite.Client
@@ -13,9 +12,8 @@ namespace MapLootEditorLite.Client
         private readonly MarkerRenderer _renderer;
         private readonly LootPreviewSpawner _previews;
 
-        private Rect _windowRect = new Rect(20, 20, 420, 640);
+        private Rect _windowRect = new Rect(20, 20, 420, 540);
         private Vector2 _scrollPos;
-        private string _importText = "";
         private string _packName = "MyLootPack";
 
         public Rect WindowRect => _windowRect;
@@ -59,18 +57,6 @@ namespace MapLootEditorLite.Client
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Save"))
                 _controller.Save();
-            if (GUILayout.Button("Copy JSON"))
-            {
-                try
-                {
-                    GUIUtility.systemCopyBuffer = JsonConvert.SerializeObject(_manager.Data, Formatting.Indented);
-                    Plugin.Log.LogInfo("Copied JSON to clipboard");
-                }
-                catch (Exception ex)
-                {
-                    Plugin.Log.LogError($"Copy failed: {ex.Message}");
-                }
-            }
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
@@ -79,21 +65,6 @@ namespace MapLootEditorLite.Client
             if (GUILayout.Button("Export Pack"))
                 _controller.ExportPack(_packName);
             GUILayout.EndHorizontal();
-
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Paste Map JSON"))
-                _importText = GUIUtility.systemCopyBuffer;
-            if (GUILayout.Button("Apply Map Import"))
-                ApplyImport();
-            GUILayout.EndHorizontal();
-
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Paste Pack JSON"))
-                _importText = GUIUtility.systemCopyBuffer;
-            if (GUILayout.Button("Apply Pack Import"))
-                ApplyPackImport();
-            GUILayout.EndHorizontal();
-            _importText = GUILayout.TextArea(_importText, GUILayout.Height(40));
         }
 
         private void DrawCreateButtons()
@@ -132,8 +103,6 @@ namespace MapLootEditorLite.Client
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Clear Previews"))
                 _controller.ClearPreviews();
-            if (GUILayout.Button("Clear Visuals"))
-                _controller.ClearVisuals();
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
@@ -208,21 +177,6 @@ namespace MapLootEditorLite.Client
             }
 
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Copy Spawn JSON"))
-            {
-                try
-                {
-                    GUIUtility.systemCopyBuffer = JsonConvert.SerializeObject(selected, Formatting.Indented);
-                    Plugin.Log.LogInfo("Copied selected marker JSON to clipboard");
-                }
-                catch (Exception ex)
-                {
-                    Plugin.Log.LogError($"Failed to copy marker JSON: {ex.Message}");
-                }
-            }
-            GUILayout.EndHorizontal();
-
-            GUILayout.BeginHorizontal();
             if (GUILayout.Button("Preview Item"))
             {
                 if (selected is LooseLootSpawn s)
@@ -239,11 +193,6 @@ namespace MapLootEditorLite.Client
 
         private void DrawLooseLootSpawn(LooseLootSpawn spawn)
         {
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Spawn Chance", GUILayout.Width(90));
-            spawn.spawnChance = FloatField("", spawn.spawnChance);
-            GUILayout.EndHorizontal();
-
             GUILayout.BeginHorizontal();
             GUILayout.Label("Respawnable", GUILayout.Width(90));
             spawn.respawnable = GUILayout.Toggle(spawn.respawnable, "");
@@ -275,11 +224,6 @@ namespace MapLootEditorLite.Client
                 zone.scale = TransformData.FromVector3(scale);
                 _manager.IsDirty = true;
             }
-
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Spawn Chance", GUILayout.Width(90));
-            zone.spawnChance = FloatField("", zone.spawnChance);
-            GUILayout.EndHorizontal();
 
             DrawItems(zone.items, true, (i) => _previews.SpawnAtZoneCenter(zone, i));
         }
@@ -394,63 +338,5 @@ namespace MapLootEditorLite.Client
             return value;
         }
 
-        private void ApplyImport()
-        {
-            try
-            {
-                var imported = JsonConvert.DeserializeObject<MapData>(_importText);
-                if (imported == null)
-                {
-                    Plugin.Log.LogWarning("Import JSON deserialized to null");
-                    return;
-                }
-
-                imported.map = _manager.Data?.map ?? imported.map;
-                JsonStorage.MigrateLegacyItems(imported);
-                _manager.SetMapData(imported);
-                _renderer.Rebuild();
-                Plugin.Log.LogInfo("Imported marker data from clipboard");
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.LogError($"Import failed: {ex.Message}");
-            }
-        }
-
-        private void ApplyPackImport()
-        {
-            try
-            {
-                var imported = JsonConvert.DeserializeObject<PackData>(_importText);
-                if (imported == null)
-                {
-                    Plugin.Log.LogWarning("Pack JSON deserialized to null");
-                    return;
-                }
-
-                var currentMap = _manager.Data?.map ?? _controller.CurrentMapId;
-                if (string.IsNullOrEmpty(currentMap))
-                {
-                    Plugin.Log.LogWarning("No current map to import into");
-                    return;
-                }
-
-                if (imported.maps == null || !imported.maps.TryGetValue(currentMap, out var mapData))
-                {
-                    Plugin.Log.LogWarning($"Pack does not contain map '{currentMap}'");
-                    return;
-                }
-
-                mapData.map = currentMap;
-                JsonStorage.MigrateLegacyItems(mapData);
-                _manager.SetMapData(mapData);
-                _renderer.Rebuild();
-                Plugin.Log.LogInfo($"Imported pack '{imported.name}' data for {currentMap} from clipboard");
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.LogError($"Pack import failed: {ex.Message}");
-            }
-        }
     }
 }
