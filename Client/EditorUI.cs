@@ -18,6 +18,8 @@ namespace MapLootEditorLite.Client
         private string _importText = "";
         private string _packName = "MyLootPack";
 
+        public Rect WindowRect => _windowRect;
+
         public EditorUI(MapEditorController controller, MarkerManager manager, MarkerRenderer renderer, LootPreviewSpawner previews)
         {
             _controller = controller;
@@ -52,7 +54,7 @@ namespace MapLootEditorLite.Client
         private void DrawHeader()
         {
             GUILayout.Label($"Map: {_manager.Data?.map ?? "none"} | Markers: {_manager.GetAllMarkers().Count()}");
-            GUILayout.Label("F8 = Toggle | E = Select under crosshair | Arrows = Move | R/F = Rotate");
+            GUILayout.Label("F8 = Toggle | F9 = Freecam | E = Select under crosshair | Arrows = Move | R/F = Rotate");
 
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Save"))
@@ -132,6 +134,11 @@ namespace MapLootEditorLite.Client
                 _controller.ClearPreviews();
             if (GUILayout.Button("Clear Visuals"))
                 _controller.ClearVisuals();
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button(_controller.IsFreeCam ? "Exit Freecam" : "Freecam (F9)"))
+                _controller.ToggleFreeCam();
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();

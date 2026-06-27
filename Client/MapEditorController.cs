@@ -24,6 +24,16 @@ namespace MapLootEditorLite.Client
         private float _autoSaveTimer;
         private int _lastToggleFrame = -1;
 
+        private bool _freeCam;
+        private Camera _freeCamCamera;
+        private Camera _gameCamera;
+        private Vector3 _freeCamEuler;
+        private const float _freeCamSpeed = 5f;
+        private const float _freeCamFastSpeed = 15f;
+        private const float _freeCamLookSpeed = 2f;
+
+        private bool _mouseDragging;
+
         private void Awake()
         {
             _manager = new MarkerManager();
@@ -66,12 +76,28 @@ namespace MapLootEditorLite.Client
             if (Plugin.PlaceStaticObjectAtLookHotkey?.Value.IsPressed() == true && _currentGameWorld != null)
                 CreateStaticObjectAtLook();
 
+            if (!_editorOpen && _freeCam)
+                ToggleFreeCam();
+
             if (_editorOpen)
             {
-                Cursor.visible = true;
-                Cursor.lockState = CursorLockMode.None;
-                HandleSelectionInput();
-                HandleMovementInput();
+                if (Input.GetKeyDown(KeyCode.F9))
+                    ToggleFreeCam();
+
+                if (_freeCam)
+                {
+                    Cursor.visible = false;
+                    Cursor.lockState = CursorLockMode.Locked;
+                    UpdateFreeCam();
+                }
+                else
+                {
+                    Cursor.visible = true;
+                    Cursor.lockState = CursorLockMode.None;
+                    HandleSelectionInput();
+                    HandleMovementInput();
+                    HandleMouseInput();
+                }
             }
 
             _renderer.Update();
@@ -101,6 +127,12 @@ namespace MapLootEditorLite.Client
                 _editorOpen = !_editorOpen;
                 _lastToggleFrame = Time.frameCount;
                 Plugin.Log.LogInfo($"Toggle key pressed via GUI: editor open = {_editorOpen}");
+            }
+
+            if (ev != null && ev.type == EventType.KeyDown && ev.keyCode == KeyCode.F9 && _lastToggleFrame != Time.frameCount)
+            {
+                _lastToggleFrame = Time.frameCount;
+                ToggleFreeCam();
             }
 
             if (_editorOpen)
@@ -312,6 +344,139 @@ namespace MapLootEditorLite.Client
             var marker = _manager.CreateStaticObject(GetLookPosition(), GetPlayerRotation());
             _manager.Selected = marker;
             _renderer.Rebuild();
+        }
+
+        public bool IsFreeCam => _freeCam;
+
+        public void ToggleFreeCam()
+        {
+            _freeCam = !_freeCam;
+            if (_freeCam)
+                EnterFreeCam();
+            else
+                ExitFreeCam();
+        }
+
+        private void EnterFreeCam()
+        {
+            _gameCamera = Camera.main;
+            if (_gameCamera == null)
+            {
+                _freeCam = false;
+                Plugin.Log.LogWarning("No main camera found; cannot enter freecam.");
+                return;
+            }
+
+            var go = new GameObject("MLE_FreeCam");
+            go.transform.position = _gameCamera.transform.position;
+            go.transform.rotation = _gameCamera.transform.rotation;
+            _freeCamCamera = go.AddComponent<Camera>();
+            _freeCamCamera.CopyFrom(_gameCamera);
+            _freeCamCamera.tag = "MainCamera";
+            _freeCamEuler = _gameCamera.transform.eulerAngles;
+
+            _gameCamera.gameObject.tag = "Untagged";
+            _gameCamera.enabled = false;
+
+            Cursor.visible = false;
+            Cursor.lockState = CursorLockMode.Locked;
+            Plugin.Log.LogInfo("Entered freecam.");
+        }
+
+        private void ExitFreeCam()
+        {
+            if (_freeCamCamera != null)
+            {
+                _freeCamCamera.gameObject.tag = "Untagged";
+                UnityEngine.Object.Destroy(_freeCamCamera.gameObject);
+                _freeCamCamera = null;
+            }
+            if (_gameCamera != null)
+            {
+                _gameCamera.gameObject.tag = "MainCamera";
+                _gameCamera.enabled = true;
+                _gameCamera = null;
+            }
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.None;
+            Plugin.Log.LogInfo("Exited freecam.");
+        }
+
+        private void UpdateFreeCam()
+        {
+            if (_freeCamCamera == null)
+                return;
+
+            _freeCamEuler.x -= Input.GetAxis("Mouse Y") * _freeCamLookSpeed;
+            _freeCamEuler.y += Input.GetAxis("Mouse X") * _freeCamLookSpeed;
+            _freeCamCamera.transform.eulerAngles = _freeCamEuler;
+
+            float speed = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)
+                ? _freeCamFastSpeed : _freeCamSpeed;
+            speed *= Time.deltaTime;
+
+            var forward = _freeCamCamera.transform.forward;
+            var right = _freeCamCamera.transform.right;
+            var move = Vector3.zero;
+            if (Input.GetKey(KeyCode.W)) move += forward;
+            if (Input.GetKey(KeyCode.S)) move -= forward;
+            if (Input.GetKey(KeyCode.A)) move -= right;
+            if (Input.GetKey(KeyCode.D)) move += right;
+            if (Input.GetKey(KeyCode.Space)) move += Vector3.up;
+            if (Input.GetKey(KeyCode.LeftControl)) move -= Vector3.up;
+
+            _freeCamCamera.transform.position += move.normalized * speed;
+        }
+
+        private void HandleMouseInput()
+        {
+            if (_freeCam)
+                return;
+            if (IsMouseOverUI())
+                return;
+
+            if (Input.GetMouseButtonDown(0))
+            {
+                var picked = PickMarkerFromMouse();
+                if (picked != null)
+                {
+                    _manager.Selected = picked;
+                    _mouseDragging = true;
+                }
+            }
+
+            if (Input.GetMouseButton(0) && _mouseDragging && _manager.Selected != null)
+            {
+                var markerPos = _manager.Selected.position.ToVector3();
+                var plane = new Plane(Vector3.up, markerPos);
+                var ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+                if (plane.Raycast(ray, out float distance))
+                {
+                    var point = ray.GetPoint(distance);
+                    var newPos = new Vector3(point.x, markerPos.y, point.z);
+                    _manager.Selected.position = TransformData.FromVector3(newPos);
+                    _manager.IsDirty = true;
+                }
+            }
+
+            if (Input.GetMouseButtonUp(0))
+                _mouseDragging = false;
+        }
+
+        private bool IsMouseOverUI()
+        {
+            var rect = _ui.WindowRect;
+            var mouse = Input.mousePosition;
+            mouse.y = Screen.height - mouse.y;
+            return rect.Contains(mouse);
+        }
+
+        private MarkerBase PickMarkerFromMouse()
+        {
+            var camera = Camera.main;
+            if (camera == null)
+                return null;
+            return _renderer.PickFromScreenPosition(camera, Input.mousePosition, 50f);
         }
 
         public void Save() => _manager.Save();

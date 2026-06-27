@@ -369,6 +369,11 @@ namespace MapLootEditorLite.Client
 
         public MarkerBase PickFromScreenCenter(Camera camera, Vector2 screenCenter, float maxDistance)
         {
+            return PickFromScreenPosition(camera, screenCenter, maxDistance);
+        }
+
+        public MarkerBase PickFromScreenPosition(Camera camera, Vector2 screenPos, float maxDistance)
+        {
             if (_manager?.Data == null || camera == null)
                 return null;
 
@@ -378,11 +383,11 @@ namespace MapLootEditorLite.Client
             foreach (var marker in _manager.GetAllMarkers())
             {
                 var worldPos = marker.position.ToVector3();
-                var screenPos = camera.WorldToScreenPoint(worldPos);
-                if (screenPos.z <= 0)
+                var projected = camera.WorldToScreenPoint(worldPos);
+                if (projected.z <= 0)
                     continue;
 
-                var dist2d = Vector2.Distance(screenCenter, new Vector2(screenPos.x, screenPos.y));
+                var dist2d = Vector2.Distance(screenPos, new Vector2(projected.x, projected.y));
                 var worldDist = Vector3.Distance(camera.transform.position, worldPos);
 
                 if (worldDist > maxDistance)
@@ -394,7 +399,6 @@ namespace MapLootEditorLite.Client
                     best = marker;
                 }
             }
-
             return best;
         }
     }
