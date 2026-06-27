@@ -184,11 +184,10 @@ namespace MapLootEditorLite.Client
             if (Selected == null)
                 return;
 
-            const float groundOffset = 0.05f;
             var ground = GetGroundPosition(Selected.position.ToVector3());
             if (ground.HasValue)
             {
-                Selected.position = TransformData.FromVector3(ground.Value + Vector3.up * groundOffset);
+                Selected.position = TransformData.FromVector3(ground.Value);
                 IsDirty = true;
             }
         }

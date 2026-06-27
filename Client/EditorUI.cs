@@ -235,7 +235,7 @@ namespace MapLootEditorLite.Client
             spawn.respawnable = GUILayout.Toggle(spawn.respawnable, "");
             GUILayout.EndHorizontal();
 
-            DrawItems(spawn.items);
+            DrawItems(spawn.items, false, (i) => _previews.SpawnAtMarker(spawn, i));
         }
 
         private void DrawLootZone(LootZone zone)
@@ -267,7 +267,7 @@ namespace MapLootEditorLite.Client
             zone.spawnChance = FloatField("", zone.spawnChance);
             GUILayout.EndHorizontal();
 
-            DrawItems(zone.items, true);
+            DrawItems(zone.items, true, (i) => _previews.SpawnAtZoneCenter(zone, i));
         }
 
         private void DrawStaticObject(StaticObject obj)
@@ -286,7 +286,7 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        private void DrawItems(System.Collections.Generic.List<LootItem> items, bool showRotation = false)
+        private void DrawItems(System.Collections.Generic.List<LootItem> items, bool showRotation = false, System.Action<int> onPreview = null)
         {
             if (items == null)
                 return;
@@ -303,6 +303,11 @@ namespace MapLootEditorLite.Client
                 item.template = GUILayout.TextField(item.template ?? "");
                 GUILayout.Label("%", GUILayout.Width(18));
                 item.chance = FloatField("", item.chance);
+                if (onPreview != null && GUILayout.Button("Prev", GUILayout.Width(40)))
+                {
+                    onPreview(i);
+                    break;
+                }
                 if (GUILayout.Button("-", GUILayout.Width(24)))
                 {
                     items.RemoveAt(i);

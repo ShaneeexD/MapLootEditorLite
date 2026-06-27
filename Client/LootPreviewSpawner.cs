@@ -25,20 +25,20 @@ namespace MapLootEditorLite.Client
             _runner = root.GetComponent<CoroutineRunner>() ?? root.AddComponent<CoroutineRunner>();
         }
 
-        public void SpawnAtMarker(LooseLootSpawn marker)
+        public void SpawnAtMarker(LooseLootSpawn marker, int itemIndex = 0)
         {
-            var tpl = GetFirstTpl(marker.items);
+            var tpl = GetItemTpl(marker.items, itemIndex);
             var pos = marker.position.ToVector3();
             var ground = MarkerManager.GetGroundPosition(pos);
             var rotation = marker.rotation.ToQuaternion();
             SpawnPreview(tpl, ground ?? pos, rotation, marker.name, marker.id);
         }
 
-        public void SpawnInZone(LootZone marker)
+        public void SpawnInZone(LootZone marker, int itemIndex = 0)
         {
-            var tpl = GetFirstTpl(marker.items);
+            var tpl = GetItemTpl(marker.items, itemIndex);
             var pos = RandomPointInZone(marker);
-            var rotation = GetZoneItemRotation(marker.items);
+            var rotation = GetZoneItemRotation(marker.items, itemIndex);
             SpawnPreview(tpl, pos, rotation, marker.name, marker.id);
         }
 
@@ -65,30 +65,30 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        public void SpawnAtZoneCenter(LootZone marker)
+        public void SpawnAtZoneCenter(LootZone marker, int itemIndex = 0)
         {
-            var tpl = GetFirstTpl(marker.items);
-            var rotation = GetZoneItemRotation(marker.items);
+            var tpl = GetItemTpl(marker.items, itemIndex);
+            var rotation = GetZoneItemRotation(marker.items, itemIndex);
             SpawnPreview(tpl, marker.position.ToVector3(), rotation, marker.name, marker.id);
         }
 
-        private string GetFirstTpl(List<LootItem> items)
+        private string GetItemTpl(List<LootItem> items, int index)
         {
-            if (items != null && items.Count > 0 && !string.IsNullOrEmpty(items[0].template))
-                return items[0].template;
+            if (items != null && index >= 0 && index < items.Count && !string.IsNullOrEmpty(items[index].template))
+                return items[index].template;
             return DefaultItemTpl;
         }
 
-        private LootItem GetFirstItem(List<LootItem> items)
+        private LootItem GetItem(List<LootItem> items, int index)
         {
-            if (items != null && items.Count > 0)
-                return items[0];
+            if (items != null && index >= 0 && index < items.Count)
+                return items[index];
             return null;
         }
 
-        private Quaternion GetZoneItemRotation(List<LootItem> items)
+        private Quaternion GetZoneItemRotation(List<LootItem> items, int index = 0)
         {
-            var item = GetFirstItem(items);
+            var item = GetItem(items, index);
             if (item == null)
                 return Quaternion.identity;
             if (item.randomRotation)
@@ -306,7 +306,7 @@ namespace MapLootEditorLite.Client
         {
             if (marker == null)
                 return;
-            var item = GetFirstItem(marker.items);
+            var item = GetItem(marker.items, 0);
             if (item == null)
                 return;
             if (item.randomRotation)

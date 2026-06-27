@@ -14,6 +14,7 @@ namespace MapLootEditorLite.Client
         private readonly Color _zoneWireColor = new Color(1f, 1f, 0f, 0.8f);
         private readonly Color _objectColor = new Color(0f, 0.4f, 1f, 0.6f);
         private readonly Color _selectedColor = Color.white;
+        private readonly Color _selectedZoneColor = new Color(0.2f, 0.6f, 1f, 0.25f);
 
         private Material _wireMaterial;
         private readonly Dictionary<string, ZoneShape> _zoneShapeCache = new Dictionary<string, ZoneShape>();
@@ -331,7 +332,11 @@ namespace MapLootEditorLite.Client
             }
 
             Color color;
-            if (selected)
+            if (selected && marker is LootZone)
+            {
+                color = _selectedZoneColor;
+            }
+            else if (selected)
             {
                 color = _selectedColor;
             }
