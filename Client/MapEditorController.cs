@@ -76,6 +76,14 @@ namespace MapLootEditorLite.Client
 
             _renderer.Update();
 
+            if (_editorOpen && _manager.Selected != null)
+            {
+                if (_manager.Selected is LooseLootSpawn spawn)
+                    _previews.UpdateSelected(spawn);
+                else if (_manager.Selected is LootZone zone)
+                    _previews.UpdateSelected(zone);
+            }
+
             _autoSaveTimer += Time.deltaTime;
             if (_autoSaveTimer > 30f)
             {

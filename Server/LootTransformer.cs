@@ -110,7 +110,7 @@ public static class LootTransformer
         var rootId = new MongoId();
         var composedKey = $"{zone.Id}_{itemTpl}_{index}";
         var position = RandomPointInShape(zone, random);
-        var rotation = item.RandomRotation ? RandomEuler(random) : item.Rotation;
+        var rotation = item.RandomRotation ? RandomYRotation(random) : item.Rotation;
 
         return new Spawnpoint
         {
@@ -121,7 +121,7 @@ public static class LootTransformer
                 Id = locationId,
                 IsContainer = false,
                 UseGravity = false,
-                RandomRotation = item.RandomRotation,
+                RandomRotation = false,
                 Position = new XYZ { X = position.X, Y = position.Y, Z = position.Z },
                 Rotation = new XYZ { X = rotation.X, Y = rotation.Y, Z = rotation.Z },
                 IsAlwaysSpawn = false,
@@ -260,6 +260,16 @@ public static class LootTransformer
             X = random.NextDouble() * 360,
             Y = random.NextDouble() * 360,
             Z = random.NextDouble() * 360
+        };
+    }
+
+    private static TransformData RandomYRotation(Random random)
+    {
+        return new TransformData
+        {
+            X = 0,
+            Y = random.NextDouble() * 360,
+            Z = 0
         };
     }
 }

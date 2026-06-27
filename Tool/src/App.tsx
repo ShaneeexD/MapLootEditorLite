@@ -463,10 +463,10 @@ function ItemListEditor({
           {showRotation && (
             <div className="flex items-center gap-2 pl-2">
               <Toggle
-                label="Random Rotation"
+                label={showRotation ? 'Random Y Rotation' : 'Random Rotation'}
                 checked={item.randomRotation ?? true}
                 onChange={(v) => update(i, { randomRotation: v })}
-                tooltip="Randomize the item rotation when it spawns."
+                tooltip={showRotation ? "Randomize the item yaw so it stays upright." : "Randomize the item rotation when it spawns."}
               />
               {!item.randomRotation && (
                 <div className="flex-1">

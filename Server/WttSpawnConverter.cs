@@ -146,7 +146,7 @@ public static class WttSpawnConverter
 
     private static WttSpawnpoint CreateWttZoneItemSpawnpoint(LootZone zone, LootItem item, SptLootItem sptItem, int chance, int index)
     {
-        var rotation = item.RandomRotation ? zone.Rotation : item.Rotation;
+        var rotation = item.RandomRotation ? RandomYRotation() : item.Rotation;
         var locationId = $"{zone.Id}_{index}";
         var position = RandomPointInShape(zone);
 
@@ -159,7 +159,7 @@ public static class WttSpawnConverter
                 Id = locationId,
                 IsContainer = false,
                 UseGravity = false,
-                RandomRotation = item.RandomRotation,
+                RandomRotation = false,
                 Position = new XYZ { X = position.X, Y = position.Y, Z = position.Z },
                 Rotation = new XYZ { X = rotation.X, Y = rotation.Y, Z = rotation.Z },
                 IsAlwaysSpawn = true,
@@ -316,6 +316,16 @@ public static class WttSpawnConverter
                     Z = zone.Position.Z + sphereR * Math.Sin(angle)
                 };
         }
+    }
+
+    private static TransformData RandomYRotation()
+    {
+        return new TransformData
+        {
+            X = 0,
+            Y = Random.Shared.NextDouble() * 360,
+            Z = 0
+        };
     }
 
     private class WttSpawnpoint
