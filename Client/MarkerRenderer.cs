@@ -263,7 +263,7 @@ namespace MapLootEditorLite.Client
             lr.startColor = _objectWireColor;
             lr.endColor = _objectWireColor;
 
-            DrawWireBox(lr, 0.25f);
+            DrawWireBox(lr, 0.5f);
             return go;
         }
 
