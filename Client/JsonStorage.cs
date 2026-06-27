@@ -74,6 +74,9 @@ namespace MapLootEditorLite.Client
 
                     zone.itemTpls.Clear();
                 }
+
+                if (zone.scale == null)
+                    zone.scale = new TransformData { x = 1f, y = 1f, z = 1f };
             }
         }
     }

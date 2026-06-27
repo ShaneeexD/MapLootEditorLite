@@ -109,7 +109,7 @@ public static class LootTransformer
         var locationId = $"{zone.Id}_{index}";
         var rootId = new MongoId();
         var composedKey = $"{zone.Id}_{itemTpl}_{index}";
-        var position = RandomPointInCylinder(zone.Position, zone.Radius, random);
+        var position = RandomPointInShape(zone, random);
         var rotation = item.RandomRotation ? RandomEuler(random) : item.Rotation;
 
         return new Spawnpoint
@@ -215,19 +215,42 @@ public static class LootTransformer
         return distribution;
     }
 
-    private static TransformData RandomPointInCylinder(TransformData center, double radius, Random random)
+    private static TransformData RandomPointInShape(LootZone zone, Random random)
     {
-        var angle = random.NextDouble() * Math.PI * 2;
-        var r = radius * Math.Sqrt(random.NextDouble());
-        var offsetX = r * Math.Cos(angle);
-        var offsetZ = r * Math.Sin(angle);
+        var scale = zone.Scale;
+        if (scale == null || (scale.X == 0 && scale.Y == 0 && scale.Z == 0))
+            scale = new TransformData { X = 1, Y = 1, Z = 1 };
 
-        return new TransformData
+        var angle = random.NextDouble() * Math.PI * 2;
+        var radius = zone.Radius * scale.X;
+
+        switch (zone.Shape)
         {
-            X = center.X + offsetX,
-            Y = center.Y,
-            Z = center.Z + offsetZ,
-        };
+            case ZoneShape.Box:
+                return new TransformData
+                {
+                    X = zone.Position.X + (random.NextDouble() - 0.5) * scale.X,
+                    Y = zone.Position.Y,
+                    Z = zone.Position.Z + (random.NextDouble() - 0.5) * scale.Z
+                };
+            case ZoneShape.Cylinder:
+            case ZoneShape.Capsule:
+                var cylR = radius * Math.Sqrt(random.NextDouble());
+                return new TransformData
+                {
+                    X = zone.Position.X + cylR * Math.Cos(angle),
+                    Y = zone.Position.Y,
+                    Z = zone.Position.Z + cylR * Math.Sin(angle)
+                };
+            default:
+                var sphereR = radius * Math.Sqrt(random.NextDouble());
+                return new TransformData
+                {
+                    X = zone.Position.X + sphereR * Math.Cos(angle),
+                    Y = zone.Position.Y,
+                    Z = zone.Position.Z + sphereR * Math.Sin(angle)
+                };
+        }
     }
 
     private static TransformData RandomEuler(Random random)

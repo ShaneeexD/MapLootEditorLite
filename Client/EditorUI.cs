@@ -240,10 +240,27 @@ namespace MapLootEditorLite.Client
 
         private void DrawLootZone(LootZone zone)
         {
+            if (zone.scale == null)
+                zone.scale = new TransformData { x = 1f, y = 1f, z = 1f };
+
+            var shapes = new[] { "Sphere", "Box", "Cylinder", "Capsule" };
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Shape", GUILayout.Width(90));
+            zone.shape = (ZoneShape)GUILayout.SelectionGrid((int)zone.shape, shapes, 2, GUILayout.Width(240));
+            GUILayout.EndHorizontal();
+
             GUILayout.BeginHorizontal();
             GUILayout.Label("Radius", GUILayout.Width(90));
             zone.radius = FloatField("", zone.radius);
             GUILayout.EndHorizontal();
+
+            GUILayout.Label("Scale:");
+            var scale = Vector3Field("Scale", zone.scale.ToVector3());
+            if (scale != zone.scale.ToVector3())
+            {
+                zone.scale = TransformData.FromVector3(scale);
+                _manager.IsDirty = true;
+            }
 
             GUILayout.BeginHorizontal();
             GUILayout.Label("Spawn Chance", GUILayout.Width(90));

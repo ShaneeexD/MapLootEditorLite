@@ -31,12 +31,21 @@ export interface LooseLootSpawn {
   forced: boolean
 }
 
+export enum ZoneShape {
+  Sphere = 'Sphere',
+  Box = 'Box',
+  Cylinder = 'Cylinder',
+  Capsule = 'Capsule',
+}
+
 export interface LootZone {
   id: string
   name: string
   position: TransformData
   rotation: TransformData
   radius: number
+  scale: TransformData
+  shape: ZoneShape
   items: LootItem[]
   spawnChance: number
   forced: boolean

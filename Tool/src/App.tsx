@@ -17,6 +17,7 @@ import {
 import { saveAs } from 'file-saver'
 import { ClipboardPaste } from 'lucide-react'
 import { ItemSelector } from './ItemSelector'
+import { Tooltip } from './Tooltip'
 import {
   type LootItem,
   type LootZone,
@@ -25,6 +26,7 @@ import {
   type PackData,
   type StaticObject,
   type TransformData,
+  ZoneShape,
   defaultLootItem,
   defaultMapData,
   defaultPackData,
@@ -46,6 +48,8 @@ function migratePackData(pack: PackData): PackData {
       })),
       lootZones: map.lootZones.map((zone) => ({
         ...zone,
+        scale: zone.scale ?? { x: 1, y: 1, z: 1 },
+        shape: (zone as any).shape ?? ZoneShape.Sphere,
         items: migrateItems(zone.items, (zone as any).itemTpls),
       })),
     }
@@ -173,7 +177,10 @@ export default function App() {
             <div className="p-4 border-b border-tarkov-border space-y-3">
               <h2 className="text-sm font-semibold text-tarkov-accent uppercase tracking-wider">Pack Info</h2>
               <div>
-                <label className="label">Name</label>
+                <label className="label flex items-center">
+                  Name
+                  <Tooltip text="Name of the exported pack." />
+                </label>
                 <input
                   className="input-field"
                   value={pack.name}
@@ -181,7 +188,10 @@ export default function App() {
                 />
               </div>
               <div>
-                <label className="label">Author</label>
+                <label className="label flex items-center">
+                  Author
+                  <Tooltip text="Author of the pack." />
+                </label>
                 <input
                   className="input-field"
                   value={pack.author}
@@ -189,7 +199,10 @@ export default function App() {
                 />
               </div>
               <div>
-                <label className="label">Version</label>
+                <label className="label flex items-center">
+                  Version
+                  <Tooltip text="Version of the pack." />
+                </label>
                 <input
                   className="input-field"
                   value={pack.version}
@@ -235,7 +248,10 @@ export default function App() {
               )}
 
               <div className="mt-4 pt-4 border-t border-tarkov-border space-y-2">
-                <label className="label">Add Map</label>
+                <label className="label flex items-center">
+                  Add Map
+                  <Tooltip text="Add a map to this pack to begin editing its spawns, zones, and objects." />
+                </label>
                 <select className="input-field" value={newMapId} onChange={(e) => setNewMapId(e.target.value)}>
                   {MAP_OPTIONS.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -427,15 +443,18 @@ function ItemListEditor({
 
   return (
     <div className="space-y-2">
-      <label className="label">Items (chance does not need to add to 100)</label>
+      <label className="label flex items-center">
+        Items (chance does not need to add to 100)
+        <Tooltip text="List of items that can spawn here. Percent values are relative and do not need to sum to 100." />
+      </label>
       {value.map((item, i) => (
         <div key={i} className="space-y-2">
           <div className="flex items-center gap-2">
             <div className="flex-1">
-              <ItemSelector label="" value={item.template} onChange={(v) => update(i, { template: v })} />
+              <ItemSelector label="" value={item.template} onChange={(v) => update(i, { template: v })} tooltip="Item template ID that can spawn." />
             </div>
             <div className="w-28">
-              <NumberField label="%" value={item.chance} onChange={(v) => update(i, { chance: v })} min={0} max={100} />
+              <NumberField label="%" value={item.chance} onChange={(v) => update(i, { chance: v })} min={0} max={100} tooltip="Relative chance for this item to be selected." />
             </div>
             <button onClick={() => onChange(removeAt(value, i))} className="btn-danger p-2">
               <Trash2 size={16} />
@@ -447,10 +466,11 @@ function ItemListEditor({
                 label="Random Rotation"
                 checked={item.randomRotation ?? true}
                 onChange={(v) => update(i, { randomRotation: v })}
+                tooltip="Randomize the item rotation when it spawns."
               />
               {!item.randomRotation && (
                 <div className="flex-1">
-                  <TransformField label="Rotation" value={item.rotation ?? defaultTransform()} onChange={(v) => update(i, { rotation: v })} />
+                  <TransformField label="Rotation" value={item.rotation ?? defaultTransform()} onChange={(v) => update(i, { rotation: v })} tooltip="Fixed rotation used when Random Rotation is off." />
                 </div>
               )}
             </div>
@@ -495,19 +515,21 @@ function SpawnList({
       <div className="card space-y-4">
         <h3 className="text-sm font-semibold text-tarkov-accent uppercase tracking-wider">Add Loose Loot Spawn</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <TextField label="Name" value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} />
+          <TextField label="Name" value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} tooltip="Unique name for this spawn." />
           <NumberField
             label="Spawn Chance"
             value={form.spawnChance}
             onChange={(v) => setForm((f) => ({ ...f, spawnChance: v }))}
             min={0}
             max={100}
+            tooltip="Percent chance this spawn is rolled (0-100)."
           />
           <div className="flex items-end">
             <Toggle
               label="Respawnable"
               checked={form.respawnable}
               onChange={(v) => setForm((f) => ({ ...f, respawnable: v }))}
+              tooltip="Whether this spawn can be looted again during the raid."
             />
           </div>
           <div className="flex items-end">
@@ -515,10 +537,11 @@ function SpawnList({
               label="Forced (Quest)"
               checked={form.forced}
               onChange={(v) => setForm((f) => ({ ...f, forced: v }))}
+              tooltip="Always spawn these items, typically used for quest items."
             />
           </div>
-          <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} />
-          <TransformField label="Rotation" value={form.rotation} onChange={(v) => setForm((f) => ({ ...f, rotation: v }))} />
+          <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} tooltip="World-space position of this spawn." />
+          <TransformField label="Rotation" value={form.rotation} onChange={(v) => setForm((f) => ({ ...f, rotation: v }))} tooltip="World-space rotation of this spawn." />
           <div className="md:col-span-2 lg:col-span-4">
             <ItemListEditor value={form.items} onChange={(v) => setForm((f) => ({ ...f, items: v }))} />
           </div>
@@ -568,13 +591,14 @@ function SpawnList({
         {data.map((spawn, i) => (
           <div key={spawn.id} className="card">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <TextField label="Name" value={spawn.name} onChange={(v) => update(i, { name: v })} />
+              <TextField label="Name" value={spawn.name} onChange={(v) => update(i, { name: v })} tooltip="Unique name for this spawn." />
               <NumberField
                 label="Spawn Chance"
                 value={spawn.spawnChance ?? 100}
                 onChange={(v) => update(i, { spawnChance: v })}
                 min={0}
                 max={100}
+                tooltip="Percent chance this spawn is rolled (0-100)."
               />
               <div className="flex items-end justify-between md:col-span-1 lg:col-span-2">
                 <div className="flex flex-col gap-1">
@@ -582,19 +606,21 @@ function SpawnList({
                     label="Respawnable"
                     checked={spawn.respawnable ?? false}
                     onChange={(v) => update(i, { respawnable: v })}
+                    tooltip="Whether this spawn can be looted again during the raid."
                   />
                   <Toggle
                     label="Forced (Quest)"
                     checked={spawn.forced ?? false}
                     onChange={(v) => update(i, { forced: v })}
+                    tooltip="Always spawn these items, typically used for quest items."
                   />
                 </div>
                 <button onClick={() => onChange(removeAt(data, i))} className="btn-danger p-2">
                   <Trash2 size={16} />
                 </button>
               </div>
-              <TransformField label="Position" value={spawn.position} onChange={(v) => update(i, { position: v })} />
-              <TransformField label="Rotation" value={spawn.rotation} onChange={(v) => update(i, { rotation: v })} />
+              <TransformField label="Position" value={spawn.position} onChange={(v) => update(i, { position: v })} tooltip="World-space position of this spawn." />
+              <TransformField label="Rotation" value={spawn.rotation} onChange={(v) => update(i, { rotation: v })} tooltip="World-space rotation of this spawn." />
               <div className="md:col-span-2 lg:col-span-4">
                 <ItemListEditor value={spawn.items} onChange={(v) => update(i, { items: v })} />
               </div>
@@ -620,6 +646,8 @@ function ZoneList({
     position: defaultTransform(),
     rotation: defaultTransform(),
     radius: 1,
+    scale: { x: 1, y: 1, z: 1 },
+    shape: ZoneShape.Sphere,
     items: [{ ...defaultLootItem(), template: '544fb45d4bdc2dee738b4568' }],
     spawnChance: 100,
     forced: false,
@@ -638,13 +666,26 @@ function ZoneList({
       <div className="card space-y-4">
         <h3 className="text-sm font-semibold text-tarkov-accent uppercase tracking-wider">Add Loot Zone</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <TextField label="Name" value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} />
+          <TextField label="Name" value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} tooltip="Unique name for this loot zone." />
+          <SelectField
+            label="Shape"
+            value={form.shape}
+            options={[
+              { value: ZoneShape.Sphere, label: 'Sphere' },
+              { value: ZoneShape.Box, label: 'Box' },
+              { value: ZoneShape.Cylinder, label: 'Cylinder' },
+              { value: ZoneShape.Capsule, label: 'Capsule' },
+            ]}
+            onChange={(v) => setForm((f) => ({ ...f, shape: v }))}
+            tooltip="Shape of the zone footprint. Items spawn inside this shape."
+          />
           <NumberField
             label="Radius"
             value={form.radius}
             onChange={(v) => setForm((f) => ({ ...f, radius: v }))}
             min={0}
             step={0.1}
+            tooltip="Base radius of the zone. Scaled by Scale X for sphere/cylinder/capsule."
           />
           <NumberField
             label="Spawn Chance"
@@ -652,15 +693,18 @@ function ZoneList({
             onChange={(v) => setForm((f) => ({ ...f, spawnChance: v }))}
             min={0}
             max={100}
+            tooltip="Percent chance this zone is rolled (0-100)."
           />
           <div className="flex items-end">
             <Toggle
               label="Forced (Quest)"
               checked={form.forced}
               onChange={(v) => setForm((f) => ({ ...f, forced: v }))}
+              tooltip="Always spawn these items, typically used for quest items."
             />
           </div>
-          <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} />
+          <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} tooltip="World-space center of the zone. Items spawn at this height." />
+          <TransformField label="Scale" value={form.scale} onChange={(v) => setForm((f) => ({ ...f, scale: v }))} tooltip="Box size for Box shape, or radius/height scale for the other shapes." />
           <div className="md:col-span-2 lg:col-span-4">
             <ItemListEditor value={form.items} onChange={(v) => setForm((f) => ({ ...f, items: v }))} showRotation />
           </div>
@@ -676,14 +720,27 @@ function ZoneList({
         {data.map((zone, i) => (
           <div key={zone.id} className="card">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <TextField label="Name" value={zone.name} onChange={(v) => update(i, { name: v })} />
-              <NumberField label="Radius" value={zone.radius ?? 1} onChange={(v) => update(i, { radius: v })} min={0} step={0.1} />
+              <TextField label="Name" value={zone.name} onChange={(v) => update(i, { name: v })} tooltip="Unique name for this loot zone." />
+              <SelectField
+                label="Shape"
+                value={zone.shape ?? ZoneShape.Sphere}
+                options={[
+                  { value: ZoneShape.Sphere, label: 'Sphere' },
+                  { value: ZoneShape.Box, label: 'Box' },
+                  { value: ZoneShape.Cylinder, label: 'Cylinder' },
+                  { value: ZoneShape.Capsule, label: 'Capsule' },
+                ]}
+                onChange={(v) => update(i, { shape: v })}
+                tooltip="Shape of the zone footprint. Items spawn inside this shape."
+              />
+              <NumberField label="Radius" value={zone.radius ?? 1} onChange={(v) => update(i, { radius: v })} min={0} step={0.1} tooltip="Base radius of the zone. Scaled by Scale X for sphere/cylinder/capsule." />
               <NumberField
                 label="Spawn Chance"
                 value={zone.spawnChance ?? 100}
                 onChange={(v) => update(i, { spawnChance: v })}
                 min={0}
                 max={100}
+                tooltip="Percent chance this zone is rolled (0-100)."
               />
               <div className="flex items-end justify-between">
                 <div className="flex flex-col gap-1">
@@ -691,13 +748,15 @@ function ZoneList({
                     label="Forced (Quest)"
                     checked={zone.forced ?? false}
                     onChange={(v) => update(i, { forced: v })}
+                    tooltip="Always spawn these items, typically used for quest items."
                   />
                 </div>
                 <button onClick={() => onChange(removeAt(data, i))} className="btn-danger p-2">
                   <Trash2 size={16} />
                 </button>
               </div>
-              <TransformField label="Position" value={zone.position} onChange={(v) => update(i, { position: v })} />
+              <TransformField label="Position" value={zone.position} onChange={(v) => update(i, { position: v })} tooltip="World-space center of the zone. Items spawn at this height." />
+              <TransformField label="Scale" value={zone.scale ?? { x: 1, y: 1, z: 1 }} onChange={(v) => update(i, { scale: v })} tooltip="Box size for Box shape, or radius/height scale for the other shapes." />
               <div className="md:col-span-2 lg:col-span-4">
                 <ItemListEditor value={zone.items} onChange={(v) => update(i, { items: v })} showRotation />
               </div>
@@ -739,11 +798,11 @@ function ObjectList({
       <div className="card space-y-4">
         <h3 className="text-sm font-semibold text-tarkov-accent uppercase tracking-wider">Add Static Object</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <TextField label="Name" value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} />
-          <TextField label="Prefab Path" value={form.prefabPath} onChange={(v) => setForm((f) => ({ ...f, prefabPath: v }))} />
-          <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} />
-          <TransformField label="Rotation" value={form.rotation} onChange={(v) => setForm((f) => ({ ...f, rotation: v }))} />
-          <TransformField label="Scale" value={form.scale} onChange={(v) => setForm((f) => ({ ...f, scale: v }))} />
+          <TextField label="Name" value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} tooltip="Unique name for the static object." />
+          <TextField label="Prefab Path" value={form.prefabPath} onChange={(v) => setForm((f) => ({ ...f, prefabPath: v }))} tooltip="Path to the Unity prefab asset to spawn." />
+          <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} tooltip="World-space position of the object." />
+          <TransformField label="Rotation" value={form.rotation} onChange={(v) => setForm((f) => ({ ...f, rotation: v }))} tooltip="World-space rotation of the object." />
+          <TransformField label="Scale" value={form.scale} onChange={(v) => setForm((f) => ({ ...f, scale: v }))} tooltip="World-space scale of the object." />
           <div className="flex items-end md:col-span-1 lg:col-span-3">
             <button onClick={add} className="btn-primary w-full flex items-center justify-center gap-2">
               <Plus size={16} /> Add Static Object
@@ -756,11 +815,11 @@ function ObjectList({
         {data.map((obj, i) => (
           <div key={obj.id} className="card">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <TextField label="Name" value={obj.name} onChange={(v) => update(i, { name: v })} />
-              <TextField label="Prefab Path" value={obj.prefabPath || ''} onChange={(v) => update(i, { prefabPath: v })} />
-              <TransformField label="Position" value={obj.position} onChange={(v) => update(i, { position: v })} />
-              <TransformField label="Rotation" value={obj.rotation} onChange={(v) => update(i, { rotation: v })} />
-              <TransformField label="Scale" value={obj.scale} onChange={(v) => update(i, { scale: v })} />
+              <TextField label="Name" value={obj.name} onChange={(v) => update(i, { name: v })} tooltip="Unique name for the static object." />
+              <TextField label="Prefab Path" value={obj.prefabPath || ''} onChange={(v) => update(i, { prefabPath: v })} tooltip="Path to the Unity prefab asset to spawn." />
+              <TransformField label="Position" value={obj.position} onChange={(v) => update(i, { position: v })} tooltip="World-space position of the object." />
+              <TransformField label="Rotation" value={obj.rotation} onChange={(v) => update(i, { rotation: v })} tooltip="World-space rotation of the object." />
+              <TransformField label="Scale" value={obj.scale} onChange={(v) => update(i, { scale: v })} tooltip="World-space scale of the object." />
               <div className="flex items-end justify-end md:col-span-1 lg:col-span-3">
                 <button onClick={() => onChange(removeAt(data, i))} className="btn-danger p-2">
                   <Trash2 size={16} />
@@ -779,15 +838,54 @@ function TextField({
   label,
   value,
   onChange,
+  tooltip,
 }: {
   label: string
   value: string
   onChange: (value: string) => void
+  tooltip?: string
 }) {
   return (
     <div>
-      <label className="label">{label}</label>
+      <label className="label flex items-center">
+        {label}
+        {tooltip && <Tooltip text={tooltip} />}
+      </label>
       <input className="input-field" value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  )
+}
+
+function SelectField<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  tooltip,
+}: {
+  label: string
+  value: T
+  options: { value: T; label: string }[]
+  onChange: (value: T) => void
+  tooltip?: string
+}) {
+  return (
+    <div>
+      <label className="label flex items-center">
+        {label}
+        {tooltip && <Tooltip text={tooltip} />}
+      </label>
+      <select
+        className="input-field"
+        value={value}
+        onChange={(e) => onChange(e.target.value as T)}
+      >
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
     </div>
   )
 }
@@ -799,6 +897,7 @@ function NumberField({
   min,
   max,
   step = 1,
+  tooltip,
 }: {
   label: string
   value: number
@@ -806,10 +905,14 @@ function NumberField({
   min?: number
   max?: number
   step?: number
+  tooltip?: string
 }) {
   return (
     <div>
-      <label className="label">{label}</label>
+      <label className="label flex items-center">
+        {label}
+        {tooltip && <Tooltip text={tooltip} />}
+      </label>
       <input
         className="input-field"
         type="number"
@@ -827,10 +930,12 @@ function TransformField({
   label,
   value,
   onChange,
+  tooltip,
 }: {
   label: string
   value: TransformData
   onChange: (value: TransformData) => void
+  tooltip?: string
 }) {
   const update = (axis: keyof TransformData, val: string) => {
     onChange({ ...value, [axis]: parseFloat(val) || 0 })
@@ -838,7 +943,10 @@ function TransformField({
 
   return (
     <div>
-      <label className="label">{label}</label>
+      <label className="label flex items-center">
+        {label}
+        {tooltip && <Tooltip text={tooltip} />}
+      </label>
       <div className="grid grid-cols-3 gap-2">
         <input
           className="input-field"
@@ -869,10 +977,13 @@ function TransformField({
   )
 }
 
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
+function Toggle({ label, checked, onChange, tooltip }: { label: string; checked: boolean; onChange: (value: boolean) => void; tooltip?: string }) {
   return (
     <label className="toggle">
-      <span className="text-sm text-tarkov-text-dim mr-2">{label}</span>
+      <span className="text-sm text-tarkov-text-dim mr-2 flex items-center">
+        {label}
+        {tooltip && <Tooltip text={tooltip} />}
+      </span>
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       <span className="toggle-track">
         <span className="toggle-thumb" />

@@ -79,6 +79,15 @@ public record LooseLootSpawn
     public bool Forced { get; set; } = false;
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ZoneShape
+{
+    Sphere,
+    Box,
+    Cylinder,
+    Capsule
+}
+
 public record LootZone
 {
     [JsonPropertyName("id")]
@@ -95,6 +104,12 @@ public record LootZone
 
     [JsonPropertyName("radius")]
     public double Radius { get; set; } = 1;
+
+    [JsonPropertyName("scale")]
+    public TransformData Scale { get; set; } = new() { X = 1, Y = 1, Z = 1 };
+
+    [JsonPropertyName("shape")]
+    public ZoneShape Shape { get; set; } = ZoneShape.Sphere;
 
     // Kept for loading legacy packs; new packs use items
     [JsonPropertyName("itemTpls")]

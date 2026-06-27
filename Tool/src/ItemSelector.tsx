@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search } from 'lucide-react'
+import { Tooltip } from './Tooltip'
 import { findItemName, loadItems, type ItemInfo } from './itemsApi'
 
 export function ItemSelector({
   value,
   onChange,
   label = 'Item',
+  tooltip,
 }: {
   value: string
   onChange: (id: string) => void
   label?: string
+  tooltip?: string
 }) {
   const [items, setItems] = useState<ItemInfo[] | null>(null)
   const [query, setQuery] = useState('')
@@ -52,7 +55,12 @@ export function ItemSelector({
 
   return (
     <div ref={ref} className="relative">
-      {label && <label className="label">{label}</label>}
+      {label && (
+        <label className="label flex items-center">
+          {label}
+          {tooltip && <Tooltip text={tooltip} />}
+        </label>
+      )}
       <div className="flex items-center gap-2">
         <Search size={16} className="text-tarkov-text-dim flex-shrink-0" />
         <input

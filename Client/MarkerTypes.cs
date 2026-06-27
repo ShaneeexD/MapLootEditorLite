@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 using UnityEngine;
 
 namespace MapLootEditorLite.Client
@@ -80,9 +81,20 @@ namespace MapLootEditorLite.Client
         public override MarkerKind Kind => MarkerKind.LooseLoot;
     }
 
+    [JsonConverter(typeof(StringEnumConverter))]
+    public enum ZoneShape
+    {
+        Sphere,
+        Box,
+        Cylinder,
+        Capsule
+    }
+
     public class LootZone : MarkerBase
     {
         public float radius = 1f;
+        public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
+        public ZoneShape shape = ZoneShape.Sphere;
         public List<string> itemTpls = new List<string>();
         public List<LootItem> items = new List<LootItem>();
         public float spawnChance = 100f;

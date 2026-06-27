@@ -77,6 +77,8 @@ namespace MapLootEditorLite.Client
                 position = TransformData.FromVector3(position),
                 rotation = TransformData.FromVector3(Vector3.zero),
                 radius = 1f,
+                scale = new TransformData { x = 1f, y = 1f, z = 1f },
+                shape = ZoneShape.Sphere,
                 items = new List<LootItem> { new LootItem { template = "544fb45d4bdc2dee738b4568", chance = 100f } }
             };
             Data.lootZones.Add(marker);
@@ -182,10 +184,11 @@ namespace MapLootEditorLite.Client
             if (Selected == null)
                 return;
 
+            const float groundOffset = 0.05f;
             var ground = GetGroundPosition(Selected.position.ToVector3());
             if (ground.HasValue)
             {
-                Selected.position = TransformData.FromVector3(ground.Value);
+                Selected.position = TransformData.FromVector3(ground.Value + Vector3.up * groundOffset);
                 IsDirty = true;
             }
         }

@@ -16,6 +16,7 @@ namespace MapLootEditorLite.Client
         private readonly Color _selectedColor = Color.white;
 
         private Material _wireMaterial;
+        private readonly Dictionary<string, ZoneShape> _zoneShapeCache = new Dictionary<string, ZoneShape>();
 
         public MarkerRenderer(MarkerManager manager, GameObject root)
         {
@@ -43,6 +44,15 @@ namespace MapLootEditorLite.Client
 
             foreach (var marker in _manager.GetAllMarkers())
             {
+                if (marker is LootZone currentZone && _visuals.TryGetValue(marker.id, out GameObject existingVisual))
+                {
+                    if (_zoneShapeCache.TryGetValue(marker.id, out ZoneShape cachedShape) && cachedShape != currentZone.shape)
+                    {
+                        UnityEngine.Object.Destroy(existingVisual);
+                        _visuals.Remove(marker.id);
+                    }
+                }
+
                 if (!_visuals.TryGetValue(marker.id, out GameObject visual))
                 {
                     visual = CreateVisual(marker);
@@ -55,7 +65,8 @@ namespace MapLootEditorLite.Client
 
                     if (marker is LootZone zone)
                     {
-                        visual.transform.localScale = Vector3.one * zone.radius * 2f;
+                        ApplyZoneScale(visual, zone);
+                        _zoneShapeCache[marker.id] = zone.shape;
                     }
                     else if (marker is StaticObject so)
                     {
@@ -75,6 +86,7 @@ namespace MapLootEditorLite.Client
                 {
                     UnityEngine.Object.Destroy(_visuals[id]);
                     _visuals.Remove(id);
+                    _zoneShapeCache.Remove(id);
                 }
             }
         }
@@ -114,6 +126,7 @@ namespace MapLootEditorLite.Client
                     UnityEngine.Object.Destroy(kvp.Value);
             }
             _visuals.Clear();
+            _zoneShapeCache.Clear();
         }
 
         private GameObject CreateVisual(MarkerBase marker)
@@ -124,8 +137,8 @@ namespace MapLootEditorLite.Client
                 case LooseLootSpawn _:
                     visual = CreatePrimitiveNoCollider(PrimitiveType.Sphere, 0.15f);
                     break;
-                case LootZone _:
-                    visual = CreateZoneVisual();
+                case LootZone zone:
+                    visual = CreateZoneVisual(zone);
                     break;
                 case StaticObject _:
                     visual = CreatePrimitiveNoCollider(PrimitiveType.Cube, 0.5f);
@@ -152,7 +165,22 @@ namespace MapLootEditorLite.Client
             return go;
         }
 
-        private GameObject CreateZoneVisual()
+        private GameObject CreateZoneVisual(LootZone zone)
+        {
+            switch (zone.shape)
+            {
+                case ZoneShape.Box:
+                    return CreateBoxVisual();
+                case ZoneShape.Cylinder:
+                    return CreateCylinderVisual();
+                case ZoneShape.Capsule:
+                    return CreateCapsuleVisual();
+                default:
+                    return CreateSphereVisual();
+            }
+        }
+
+        private GameObject CreateSphereVisual()
         {
             var go = CreatePrimitiveNoCollider(PrimitiveType.Sphere, 1f);
             var wire = new GameObject("wire_sphere");
@@ -171,6 +199,37 @@ namespace MapLootEditorLite.Client
 
             DrawWireSphere(lr, 0.5f);
             return go;
+        }
+
+        private GameObject CreateBoxVisual()
+        {
+            var go = CreatePrimitiveNoCollider(PrimitiveType.Cube, 1f);
+            var wire = new GameObject("wire_box");
+            wire.transform.SetParent(go.transform, false);
+            wire.transform.localScale = Vector3.one;
+            wire.transform.localPosition = Vector3.zero;
+
+            var lr = wire.AddComponent<LineRenderer>();
+            lr.useWorldSpace = false;
+            lr.startWidth = 0.03f;
+            lr.endWidth = 0.03f;
+            lr.positionCount = 0;
+            lr.material = GetWireMaterial();
+            lr.startColor = _zoneWireColor;
+            lr.endColor = _zoneWireColor;
+
+            DrawWireBox(lr, 0.5f);
+            return go;
+        }
+
+        private GameObject CreateCylinderVisual()
+        {
+            return CreatePrimitiveNoCollider(PrimitiveType.Cylinder, 1f);
+        }
+
+        private GameObject CreateCapsuleVisual()
+        {
+            return CreatePrimitiveNoCollider(PrimitiveType.Capsule, 1f);
         }
 
         private Material GetWireMaterial()
@@ -208,6 +267,55 @@ namespace MapLootEditorLite.Client
             lr.SetPositions(positions.ToArray());
         }
 
+        private void DrawWireBox(LineRenderer lr, float halfSize)
+        {
+            var corners = new Vector3[]
+            {
+                new Vector3(-halfSize, -halfSize, -halfSize),
+                new Vector3(halfSize, -halfSize, -halfSize),
+                new Vector3(halfSize, halfSize, -halfSize),
+                new Vector3(-halfSize, halfSize, -halfSize),
+                new Vector3(-halfSize, -halfSize, halfSize),
+                new Vector3(halfSize, -halfSize, halfSize),
+                new Vector3(halfSize, halfSize, halfSize),
+                new Vector3(-halfSize, halfSize, halfSize),
+            };
+
+            var indices = new int[]
+            {
+                0, 1, 1, 2, 2, 3, 3, 0,
+                4, 5, 5, 6, 6, 7, 7, 4,
+                0, 4, 1, 5, 2, 6, 3, 7
+            };
+
+            var positions = new List<Vector3>();
+            foreach (var index in indices)
+                positions.Add(corners[index]);
+
+            lr.positionCount = positions.Count;
+            lr.SetPositions(positions.ToArray());
+        }
+
+        private void ApplyZoneScale(GameObject visual, LootZone zone)
+        {
+            var scale = zone.scale ?? new TransformData { x = 1f, y = 1f, z = 1f };
+            switch (zone.shape)
+            {
+                case ZoneShape.Box:
+                    visual.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
+                    break;
+                case ZoneShape.Cylinder:
+                    visual.transform.localScale = new Vector3(zone.radius * 2f * scale.x, scale.y, zone.radius * 2f * scale.x);
+                    break;
+                case ZoneShape.Capsule:
+                    visual.transform.localScale = new Vector3(zone.radius * 2f * scale.x, scale.y, zone.radius * 2f * scale.x);
+                    break;
+                default:
+                    visual.transform.localScale = Vector3.one * zone.radius * 2f * scale.x;
+                    break;
+            }
+        }
+
         private void ApplyColor(GameObject visual, MarkerBase marker, bool selected)
         {
             var renderer = visual.GetComponent<Renderer>();
@@ -242,7 +350,7 @@ namespace MapLootEditorLite.Client
 
             mat.color = color;
 
-            var wire = visual.transform.Find("wire_sphere");
+            var wire = visual.transform.Find("wire_sphere") ?? visual.transform.Find("wire_box");
             if (wire != null)
             {
                 var lr = wire.GetComponent<LineRenderer>();

@@ -148,6 +148,7 @@ public static class WttSpawnConverter
     {
         var rotation = item.RandomRotation ? zone.Rotation : item.Rotation;
         var locationId = $"{zone.Id}_{index}";
+        var position = RandomPointInShape(zone);
 
         return new WttSpawnpoint
         {
@@ -159,7 +160,7 @@ public static class WttSpawnConverter
                 IsContainer = false,
                 UseGravity = false,
                 RandomRotation = item.RandomRotation,
-                Position = new XYZ { X = zone.Position.X, Y = zone.Position.Y, Z = zone.Position.Z },
+                Position = new XYZ { X = position.X, Y = position.Y, Z = position.Z },
                 Rotation = new XYZ { X = rotation.X, Y = rotation.Y, Z = rotation.Z },
                 IsAlwaysSpawn = true,
                 IsGroupPosition = false,
@@ -276,6 +277,44 @@ public static class WttSpawnConverter
         public override void Write(Utf8JsonWriter writer, MongoId value, JsonSerializerOptions options)
         {
             writer.WriteStringValue(value.ToString());
+        }
+    }
+
+    private static TransformData RandomPointInShape(LootZone zone)
+    {
+        var scale = zone.Scale;
+        if (scale == null || (scale.X == 0 && scale.Y == 0 && scale.Z == 0))
+            scale = new TransformData { X = 1, Y = 1, Z = 1 };
+
+        var angle = Random.Shared.NextDouble() * Math.PI * 2;
+        var radius = zone.Radius * scale.X;
+
+        switch (zone.Shape)
+        {
+            case ZoneShape.Box:
+                return new TransformData
+                {
+                    X = zone.Position.X + (Random.Shared.NextDouble() - 0.5) * scale.X,
+                    Y = zone.Position.Y,
+                    Z = zone.Position.Z + (Random.Shared.NextDouble() - 0.5) * scale.Z
+                };
+            case ZoneShape.Cylinder:
+            case ZoneShape.Capsule:
+                var cylR = radius * Math.Sqrt(Random.Shared.NextDouble());
+                return new TransformData
+                {
+                    X = zone.Position.X + cylR * Math.Cos(angle),
+                    Y = zone.Position.Y,
+                    Z = zone.Position.Z + cylR * Math.Sin(angle)
+                };
+            default:
+                var sphereR = radius * Math.Sqrt(Random.Shared.NextDouble());
+                return new TransformData
+                {
+                    X = zone.Position.X + sphereR * Math.Cos(angle),
+                    Y = zone.Position.Y,
+                    Z = zone.Position.Z + sphereR * Math.Sin(angle)
+                };
         }
     }
 

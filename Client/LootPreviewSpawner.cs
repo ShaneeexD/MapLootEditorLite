@@ -36,19 +36,37 @@ namespace MapLootEditorLite.Client
         public void SpawnInZone(LootZone marker)
         {
             var tpl = GetFirstTpl(marker.items);
-            var center = marker.position.ToVector3();
-            var randomPos = center + UnityEngine.Random.insideUnitSphere * marker.radius;
-            randomPos.y = center.y;
-            var ground = MarkerManager.GetGroundPosition(randomPos);
-            SpawnPreview(tpl, ground ?? randomPos, marker.name, marker.id);
+            var pos = RandomPointInZone(marker);
+            SpawnPreview(tpl, pos, marker.name, marker.id);
+        }
+
+        private Vector3 RandomPointInZone(LootZone zone)
+        {
+            var center = zone.position.ToVector3();
+            var scale = zone.scale ?? new TransformData { x = 1f, y = 1f, z = 1f };
+            switch (zone.shape)
+            {
+                case ZoneShape.Box:
+                    return new Vector3(
+                        center.x + UnityEngine.Random.Range(-0.5f, 0.5f) * scale.x,
+                        center.y,
+                        center.z + UnityEngine.Random.Range(-0.5f, 0.5f) * scale.z);
+                case ZoneShape.Cylinder:
+                case ZoneShape.Capsule:
+                    var angle = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
+                    var r = zone.radius * Mathf.Sqrt(UnityEngine.Random.Range(0f, 1f)) * scale.x;
+                    return new Vector3(center.x + r * Mathf.Cos(angle), center.y, center.z + r * Mathf.Sin(angle));
+                default:
+                    var point = center + UnityEngine.Random.insideUnitSphere * zone.radius * scale.x;
+                    point.y = center.y;
+                    return point;
+            }
         }
 
         public void SpawnAtZoneCenter(LootZone marker)
         {
             var tpl = GetFirstTpl(marker.items);
-            var pos = marker.position.ToVector3();
-            var ground = MarkerManager.GetGroundPosition(pos);
-            SpawnPreview(tpl, ground ?? pos, marker.name, marker.id);
+            SpawnPreview(tpl, marker.position.ToVector3(), marker.name, marker.id);
         }
 
         private string GetFirstTpl(List<LootItem> items)
@@ -92,6 +110,8 @@ namespace MapLootEditorLite.Client
                 preview.transform.position = position;
                 preview.transform.rotation = Quaternion.identity;
                 preview.transform.localScale = Vector3.one;
+                preview.SetActive(true);
+                EnableRenderers(preview);
                 DisablePhysics(preview);
                 return preview;
             }
@@ -200,6 +220,12 @@ namespace MapLootEditorLite.Client
 
             foreach (var collider in go.GetComponentsInChildren<Collider>(true))
                 collider.enabled = false;
+        }
+
+        private void EnableRenderers(GameObject go)
+        {
+            foreach (var renderer in go.GetComponentsInChildren<Renderer>(true))
+                renderer.enabled = true;
         }
 
         public void DrawLabels(bool editorOpen)
