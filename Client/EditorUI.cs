@@ -52,7 +52,7 @@ namespace MapLootEditorLite.Client
         private void DrawHeader()
         {
             GUILayout.Label($"Map: {_manager.Data?.map ?? "none"} | Markers: {_manager.GetAllMarkers().Count()}");
-            GUILayout.Label("F8 = Toggle | F9 = Freecam | MMB = Cursor | 1=T 2=R 3=S | E = Select | Arrows = Move | R/F = Rotate");
+            GUILayout.Label("F8 = Toggle | MMB = Cursor | 1=T 2=R 3=S | E = Select | Arrows = Move | R/F = Rotate");
 
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Save"))
@@ -106,7 +106,7 @@ namespace MapLootEditorLite.Client
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button(_controller.IsFreeCam ? "Exit Freecam" : "Freecam (F9)"))
+            if (GUILayout.Button(_controller.IsFreeCam ? "Exit Editor Mode" : "Editor Mode"))
                 _controller.ToggleFreeCam();
             GUILayout.EndHorizontal();
 

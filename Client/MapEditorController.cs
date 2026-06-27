@@ -151,11 +151,6 @@ namespace MapLootEditorLite.Client
 
             if (_editorOpen)
             {
-                if (Input.GetKeyDown(KeyCode.F9))
-                {
-                    _lastToggleFrame = Time.frameCount;
-                    ToggleFreeCam();
-                }
                 if (Input.GetKeyDown(KeyCode.Alpha1))
                     SetGizmoMode(GizmoMode.Translate);
                 if (Input.GetKeyDown(KeyCode.Alpha2))
@@ -221,12 +216,6 @@ namespace MapLootEditorLite.Client
                 _editorOpen = !_editorOpen;
                 _lastToggleFrame = Time.frameCount;
                 Plugin.Log.LogInfo($"Toggle key pressed via GUI: editor open = {_editorOpen}");
-            }
-
-            if (ev != null && ev.type == EventType.KeyDown && ev.keyCode == KeyCode.F9 && _lastToggleFrame != Time.frameCount)
-            {
-                _lastToggleFrame = Time.frameCount;
-                ToggleFreeCam();
             }
 
             if (_editorOpen)
