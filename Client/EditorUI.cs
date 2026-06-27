@@ -69,7 +69,7 @@ namespace MapLootEditorLite.Client
 
         private void DrawCreateButtons()
         {
-            GUILayout.Label("Create at player position:", GUILayout.Height(20));
+            GUILayout.Label("Create at crosshair:", GUILayout.Height(20));
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Loot Spawn"))
                 _controller.CreateLootSpawn();
@@ -77,12 +77,6 @@ namespace MapLootEditorLite.Client
                 _controller.CreateLootZone();
             if (GUILayout.Button("Static Object"))
                 _controller.CreateStaticObject();
-            GUILayout.EndHorizontal();
-
-            GUILayout.Label("Create at crosshair:", GUILayout.Height(20));
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Loot Spawn"))
-                _controller.CreateLootSpawnAtLook();
             GUILayout.EndHorizontal();
         }
 

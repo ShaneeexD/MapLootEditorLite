@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using Comfort.Common;
 using EFT;
+using EFT.Ballistics;
 using EFT.HealthSystem;
 using HarmonyLib;
 using Newtonsoft.Json;
@@ -74,48 +75,64 @@ namespace MapLootEditorLite.Client
                 return;
             _freecamPatchesApplied = true;
 
-            PatchMethod("ApplyDamage", nameof(ApplyDamagePrefix));
-            PatchMethod("ChangeHealth", nameof(ChangeHealthPrefix));
+            PatchMethod(typeof(ActiveHealthController), "ApplyDamage", nameof(ApplyDamagePrefix));
+            PatchMethod(typeof(ActiveHealthController), "ChangeHealth", nameof(ChangeHealthPrefix));
+            PatchMethod(typeof(Player), "ReceiveDamage", nameof(ReceiveDamagePrefix));
         }
 
-        private void PatchMethod(string methodName, string prefixName)
+        private void PatchMethod(System.Type type, string methodName, string prefixName)
         {
             try
             {
-                var method = AccessTools.Method(typeof(ActiveHealthController), methodName);
+                var method = AccessTools.Method(type, methodName);
                 if (method != null)
                 {
                     _freecamHarmony.Patch(method, prefix: new HarmonyMethod(typeof(MapEditorController), prefixName));
-                    Plugin.Log.LogInfo($"Patched ActiveHealthController.{methodName} for freecam invulnerability.");
+                    Plugin.Log.LogInfo($"Patched {type.Name}.{methodName} for editor mode invulnerability.");
                 }
                 else
                 {
-                    Plugin.Log.LogWarning($"Could not find ActiveHealthController.{methodName} to patch.");
+                    Plugin.Log.LogWarning($"Could not find {type.Name}.{methodName} to patch.");
                 }
             }
             catch (System.Exception ex)
             {
-                Plugin.Log.LogWarning($"Failed to patch ActiveHealthController.{methodName}: {ex.Message}");
+                Plugin.Log.LogWarning($"Failed to patch {type.Name}.{methodName}: {ex.Message}");
             }
         }
 
-        public static bool ApplyDamagePrefix(ActiveHealthController __instance, Player ___Player, ref float damage, EBodyPart bodyPart, DamageInfoStruct damageInfo)
+        public static bool ApplyDamagePrefix(EBodyPart bodyPart, ActiveHealthController __instance, ref float __result)
         {
-            if (!FreeCamInvulnerable || ___Player == null || !___Player.IsYourPlayer)
+            if (!FreeCamInvulnerable || __instance == null)
                 return true;
 
-            damage = 0f;
-            return true;
+            var player = __instance.Player;
+            if (player == null || !player.IsYourPlayer)
+                return true;
+
+            __result = 0f;
+            return false;
         }
 
-        public static bool ChangeHealthPrefix(ActiveHealthController __instance, Player ___Player, EBodyPart bodyPart, ref float value, DamageInfoStruct damageInfo)
+        public static bool ChangeHealthPrefix(EBodyPart bodyPart, ActiveHealthController __instance, ref float value, DamageInfoStruct damageInfo)
         {
-            if (!FreeCamInvulnerable || ___Player == null || !___Player.IsYourPlayer)
+            if (!FreeCamInvulnerable || __instance == null)
+                return true;
+
+            var player = __instance.Player;
+            if (player == null || !player.IsYourPlayer)
                 return true;
 
             if (value < 0f)
                 value = 0f;
             return true;
+        }
+
+        public static bool ReceiveDamagePrefix(float damage, EBodyPart part, EDamageType type, float absorbed, MaterialType special, Player __instance)
+        {
+            if (!FreeCamInvulnerable || __instance == null || !__instance.IsYourPlayer)
+                return true;
+            return false;
         }
 
         private void Update()
@@ -390,7 +407,7 @@ namespace MapLootEditorLite.Client
         public void CreateLootSpawn()
         {
             if (!EnsureMapLoaded()) return;
-            var marker = _manager.CreateLootSpawn(GetPlayerPosition(), GetPlayerRotation());
+            var marker = _manager.CreateLootSpawn(GetLookPosition(), GetPlayerRotation());
             _manager.Selected = marker;
             _renderer.Rebuild();
         }
@@ -398,7 +415,7 @@ namespace MapLootEditorLite.Client
         public void CreateLootZone()
         {
             if (!EnsureMapLoaded()) return;
-            var marker = _manager.CreateLootZone(GetPlayerPosition());
+            var marker = _manager.CreateLootZone(GetLookPosition());
             _manager.Selected = marker;
             _renderer.Rebuild();
         }
@@ -406,7 +423,7 @@ namespace MapLootEditorLite.Client
         public void CreateStaticObject()
         {
             if (!EnsureMapLoaded()) return;
-            var marker = _manager.CreateStaticObject(GetPlayerPosition(), GetPlayerRotation());
+            var marker = _manager.CreateStaticObject(GetLookPosition(), GetPlayerRotation());
             _manager.Selected = marker;
             _renderer.Rebuild();
         }
@@ -448,11 +465,13 @@ namespace MapLootEditorLite.Client
 
         private void EnterFreeCam()
         {
+            EnsureMapLoaded();
+
             _gameCamera = Camera.main;
             if (_gameCamera == null)
             {
                 _freeCam = false;
-                Plugin.Log.LogWarning("No main camera found; cannot enter freecam.");
+                Plugin.Log.LogWarning("No main camera found; cannot enter editor mode.");
                 return;
             }
 
@@ -488,7 +507,7 @@ namespace MapLootEditorLite.Client
             Cursor.visible = false;
             Cursor.lockState = CursorLockMode.Locked;
             FreeCamInvulnerable = true;
-            Plugin.Log.LogInfo("Entered freecam.");
+            Plugin.Log.LogInfo("Entered editor mode.");
         }
 
         private void ExitFreeCam()
@@ -525,7 +544,7 @@ namespace MapLootEditorLite.Client
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
             FreeCamInvulnerable = false;
-            Plugin.Log.LogInfo("Exited freecam.");
+            Plugin.Log.LogInfo("Exited editor mode.");
         }
 
         private void UpdateFreeCam()
