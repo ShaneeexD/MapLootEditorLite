@@ -56,6 +56,9 @@ public record LooseLootSpawn
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 
+    [JsonPropertyName("group")]
+    public string Group { get; set; } = string.Empty;
+
     [JsonPropertyName("position")]
     public TransformData Position { get; set; } = new();
 
@@ -96,6 +99,9 @@ public record LootZone
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 
+    [JsonPropertyName("group")]
+    public string Group { get; set; } = string.Empty;
+
     [JsonPropertyName("position")]
     public TransformData Position { get; set; } = new();
 
@@ -132,6 +138,9 @@ public record StaticObject
 
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("group")]
+    public string Group { get; set; } = string.Empty;
 
     [JsonPropertyName("position")]
     public TransformData Position { get; set; } = new();

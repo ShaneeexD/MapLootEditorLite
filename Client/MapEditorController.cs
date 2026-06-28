@@ -538,6 +538,25 @@ namespace MapLootEditorLite.Client
 
         public bool IsFreeCam => _freeCam;
 
+        public void GoToMarker(MarkerBase marker)
+        {
+            if (marker == null)
+                return;
+            if (!_freeCam)
+                ToggleFreeCam();
+            if (_freeCamCamera == null)
+                return;
+
+            var targetPos = marker.position.ToVector3();
+            var offset = _freeCamCamera.transform.position - targetPos;
+            if (offset.sqrMagnitude < 0.0001f)
+                offset = Vector3.back;
+            var cameraPos = targetPos + offset.normalized * 2f;
+            _freeCamCamera.transform.position = cameraPos;
+            _freeCamCamera.transform.LookAt(targetPos);
+            _freeCamEuler = _freeCamCamera.transform.eulerAngles;
+        }
+
         public void ToggleFreeCam()
         {
             _freeCam = !_freeCam;

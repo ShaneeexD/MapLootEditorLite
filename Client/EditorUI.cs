@@ -23,6 +23,7 @@ namespace MapLootEditorLite.Client
         private Rect _resizeStartRect;
         private Vector2 _resizeStartMouse;
         private bool _resizeHeld;
+        private ResizeCorner _resizeHeldCorner;
         private string _packName = "MyLootPack";
         private string _searchText = "";
         private string _newGroupName = "";
@@ -122,6 +123,8 @@ namespace MapLootEditorLite.Client
         {
             GUILayout.BeginVertical();
 
+            DrawResizeHandles(top: true);
+            GUILayout.Space(4);
             DrawHeader();
             GUILayout.Space(8);
             DrawCreateButtons();
@@ -133,35 +136,107 @@ namespace MapLootEditorLite.Client
             DrawSearchGroups();
             GUILayout.Space(8);
             DrawMarkerList();
+            GUILayout.FlexibleSpace();
+            DrawResizeHandles(top: false);
 
             GUILayout.EndVertical();
-            DrawResizeHandle();
-            GUI.DragWindow(new Rect(0, 0, 10000, 20));
+            GUI.DragWindow(new Rect(0, 20, 10000, 10000));
         }
 
-        private void DrawResizeHandle()
+        private enum ResizeCorner
         {
-            GUILayout.FlexibleSpace();
-            GUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-            if (GUILayout.RepeatButton("\u25E2", GUILayout.Width(16), GUILayout.Height(16)))
+            TopLeft,
+            TopRight,
+            BottomLeft,
+            BottomRight
+        }
+
+        private void DrawResizeHandles(bool top)
+        {
+            GUILayout.BeginHorizontal(GUILayout.Height(16));
+            if (top)
+            {
+                DrawCornerHandle(ResizeCorner.TopLeft);
+                GUILayout.FlexibleSpace();
+                DrawCornerHandle(ResizeCorner.TopRight);
+            }
+            else
+            {
+                DrawCornerHandle(ResizeCorner.BottomLeft);
+                GUILayout.FlexibleSpace();
+                DrawCornerHandle(ResizeCorner.BottomRight);
+            }
+            GUILayout.EndHorizontal();
+        }
+
+        private void DrawCornerHandle(ResizeCorner corner)
+        {
+            var label = corner switch
+            {
+                ResizeCorner.TopLeft => "\u25E4",
+                ResizeCorner.TopRight => "\u25E5",
+                ResizeCorner.BottomLeft => "\u25E3",
+                _ => "\u25E2"
+            };
+
+            if (GUILayout.RepeatButton(label, GUILayout.Width(16), GUILayout.Height(16)))
             {
                 var ev = Event.current;
                 if (!_resizeHeld)
                 {
                     _resizeHeld = true;
+                    _resizeHeldCorner = corner;
                     _resizeStartRect = _windowRect;
                     _resizeStartMouse = ev.mousePosition;
                 }
+
                 var delta = ev.mousePosition - _resizeStartMouse;
-                _windowRect.width = Mathf.Max(260, _resizeStartRect.width + delta.x);
-                _windowRect.height = Mathf.Max(300, _resizeStartRect.height + delta.y);
+                var newRect = _resizeStartRect;
+                switch (corner)
+                {
+                    case ResizeCorner.TopLeft:
+                        newRect.x = _resizeStartRect.x + delta.x;
+                        newRect.y = _resizeStartRect.y + delta.y;
+                        newRect.width = _resizeStartRect.width - delta.x;
+                        newRect.height = _resizeStartRect.height - delta.y;
+                        break;
+                    case ResizeCorner.TopRight:
+                        newRect.y = _resizeStartRect.y + delta.y;
+                        newRect.width = _resizeStartRect.width + delta.x;
+                        newRect.height = _resizeStartRect.height - delta.y;
+                        break;
+                    case ResizeCorner.BottomLeft:
+                        newRect.x = _resizeStartRect.x + delta.x;
+                        newRect.width = _resizeStartRect.width - delta.x;
+                        newRect.height = _resizeStartRect.height + delta.y;
+                        break;
+                    case ResizeCorner.BottomRight:
+                        newRect.width = _resizeStartRect.width + delta.x;
+                        newRect.height = _resizeStartRect.height + delta.y;
+                        break;
+                }
+
+                const float minWidth = 260f;
+                const float minHeight = 300f;
+                if (newRect.width < minWidth)
+                {
+                    newRect.width = minWidth;
+                    if (corner == ResizeCorner.TopLeft || corner == ResizeCorner.BottomLeft)
+                        newRect.x = _resizeStartRect.xMax - minWidth;
+                }
+                if (newRect.height < minHeight)
+                {
+                    newRect.height = minHeight;
+                    if (corner == ResizeCorner.TopLeft || corner == ResizeCorner.TopRight)
+                        newRect.y = _resizeStartRect.yMax - minHeight;
+                }
+
+                _windowRect = newRect;
             }
-            else
+            else if (_resizeHeld && _resizeHeldCorner == corner)
             {
                 _resizeHeld = false;
             }
-            GUILayout.EndHorizontal();
         }
 
         private void DrawHeader()
@@ -566,6 +641,9 @@ namespace MapLootEditorLite.Client
 
                 if (GUILayout.Button("Sel", GUILayout.Width(40)))
                     _manager.SelectOnly(marker);
+
+                if (GUILayout.Button("Go", GUILayout.Width(32)))
+                    _controller.GoToMarker(marker);
 
                 var groupLabel = string.IsNullOrWhiteSpace(marker.group) ? "-" : marker.group;
                 GUILayout.Label($"{marker.Kind} | {groupLabel} | {marker.name}");
