@@ -88,6 +88,9 @@ namespace MapLootEditorLite.Client
             {
                 Log.LogInfo("Editor is disabled in BepInEx config; set EnableEditor to true to use the F8 editor");
             }
+
+            gameObject.AddComponent<RuntimeStaticObjectSpawner>();
+            Log.LogInfo("Runtime static object spawner attached");
         }
 
         private static void DrawButtonPlaceLootSpawnAtPlayer(ConfigEntryBase entry)

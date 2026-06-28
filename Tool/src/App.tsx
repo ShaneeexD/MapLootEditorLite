@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import {
+  Archive,
   Box,
   Crosshair,
   Download,
@@ -17,7 +18,10 @@ import {
 import { saveAs } from 'file-saver'
 import { ClipboardPaste } from 'lucide-react'
 import { ItemSelector } from './ItemSelector'
+import { BundleBrowser } from './BundleBrowser'
+import { BundleSelector } from './BundleSelector'
 import { Tooltip } from './Tooltip'
+import { type BundleInfo, loadDefaultBundles } from './bundleApi'
 import {
   type LootItem,
   type LootZone,
@@ -35,7 +39,7 @@ import {
   MAP_OPTIONS,
 } from './types'
 
-type MarkerTab = 'spawns' | 'zones' | 'objects'
+type MarkerTab = 'spawns' | 'zones' | 'objects' | 'bundles'
 
 function migratePackData(pack: PackData): PackData {
   const maps: Record<string, MapData> = {}
@@ -78,8 +82,19 @@ export default function App() {
   const [tab, setTab] = useState<MarkerTab>('spawns')
   const [newMapId, setNewMapId] = useState<string>(MAP_OPTIONS[0].id)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [bundles, setBundles] = useState<BundleInfo[] | null>(null)
   const importRef = useRef<HTMLInputElement>(null)
   const [importKey, setImportKey] = useState(0)
+
+  useEffect(() => {
+    let mounted = true
+    loadDefaultBundles()
+      .then((data) => mounted && setBundles(data))
+      .catch((err) => console.warn('Failed to load default bundle manifest:', err))
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   const mapIds = useMemo(() => Object.keys(pack.maps), [pack.maps])
   const currentMap = selectedMapId ? pack.maps[selectedMapId] : null
@@ -267,71 +282,91 @@ export default function App() {
           </aside>
 
           <section className="flex-1 flex flex-col overflow-hidden bg-tarkov-bg">
-            {!currentMap ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-tarkov-text-dim p-8">
-                <Package size={48} className="mb-4 text-tarkov-accent/50" />
-                <p className="text-lg font-medium">Import a pack exported from the game to get started.</p>
-                <p className="text-sm mt-2 max-w-md text-center">
-                  This tool is designed to manage and refine the loot packs you export from the in-game editor.
-                  Set spawn chances, remove unwanted markers, and export a clean pack for distribution.
-                </p>
+            <div className="px-6 py-4 border-b border-tarkov-border flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-tarkov-text-dim">Map:</span>
+                <span className="font-semibold text-tarkov-accent">
+                  {MAP_OPTIONS.find((m) => m.id === selectedMapId)?.label || selectedMapId || 'none'}
+                </span>
               </div>
-            ) : (
-              <>
-                <div className="px-6 py-4 border-b border-tarkov-border flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-tarkov-text-dim">Map:</span>
-                    <span className="font-semibold text-tarkov-accent">
-                      {MAP_OPTIONS.find((m) => m.id === selectedMapId)?.label || selectedMapId}
-                    </span>
-                  </div>
-                  <div className="flex gap-2">
-                    <TabButton
-                      active={tab === 'spawns'}
-                      onClick={() => setTab('spawns')}
-                      icon={<Crosshair size={16} />}
-                      label={`Spawns (${currentMap.lootSpawns.length})`}
-                    />
-                    <TabButton
-                      active={tab === 'zones'}
-                      onClick={() => setTab('zones')}
-                      icon={<MapPin size={16} />}
-                      label={`Zones (${currentMap.lootZones.length})`}
-                    />
-                    <TabButton
-                      active={tab === 'objects'}
-                      onClick={() => setTab('objects')}
-                      icon={<Box size={16} />}
-                      label={`Objects (${currentMap.objects.length})`}
-                    />
-                  </div>
-                </div>
+              <div className="flex gap-2">
+                <TabButton
+                  active={tab === 'spawns'}
+                  onClick={() => setTab('spawns')}
+                  icon={<Crosshair size={16} />}
+                  label={`Spawns${currentMap ? ` (${currentMap.lootSpawns.length})` : ''}`}
+                  disabled={!currentMap}
+                />
+                <TabButton
+                  active={tab === 'zones'}
+                  onClick={() => setTab('zones')}
+                  icon={<MapPin size={16} />}
+                  label={`Zones${currentMap ? ` (${currentMap.lootZones.length})` : ''}`}
+                  disabled={!currentMap}
+                />
+                <TabButton
+                  active={tab === 'objects'}
+                  onClick={() => setTab('objects')}
+                  icon={<Box size={16} />}
+                  label={`Objects${currentMap ? ` (${currentMap.objects.length})` : ''}`}
+                  disabled={!currentMap}
+                />
+                <TabButton
+                  active={tab === 'bundles'}
+                  onClick={() => setTab('bundles')}
+                  icon={<Archive size={16} />}
+                  label="Bundles"
+                />
+              </div>
+            </div>
 
-                <div className="flex-1 overflow-y-auto p-6">
-                  {tab === 'spawns' && (
-                    <SpawnList
-                      data={currentMap.lootSpawns}
-                      onChange={(spawns) => updateMap(selectedMapId, (m) => ({ ...m, lootSpawns: spawns }))}
-                    />
-                  )}
-                  {tab === 'zones' && (
-                    <ZoneList
-                      data={currentMap.lootZones}
-                      onChange={(zones) => updateMap(selectedMapId, (m) => ({ ...m, lootZones: zones }))}
-                    />
-                  )}
-                  {tab === 'objects' && (
-                    <ObjectList
-                      data={currentMap.objects}
-                      onChange={(objects) => updateMap(selectedMapId, (m) => ({ ...m, objects }))}
-                    />
-                  )}
-                </div>
-              </>
-            )}
+            <div className="flex-1 overflow-y-auto p-6">
+              {tab === 'spawns' &&
+                (currentMap ? (
+                  <SpawnList
+                    data={currentMap.lootSpawns}
+                    onChange={(spawns) => updateMap(selectedMapId, (m) => ({ ...m, lootSpawns: spawns }))}
+                  />
+                ) : (
+                  <NoMapMessage />
+                ))}
+              {tab === 'zones' &&
+                (currentMap ? (
+                  <ZoneList
+                    data={currentMap.lootZones}
+                    onChange={(zones) => updateMap(selectedMapId, (m) => ({ ...m, lootZones: zones }))}
+                  />
+                ) : (
+                  <NoMapMessage />
+                ))}
+              {tab === 'objects' &&
+                (currentMap ? (
+                  <ObjectList
+                    data={currentMap.objects}
+                    onChange={(objects) => updateMap(selectedMapId, (m) => ({ ...m, objects }))}
+                    bundles={bundles}
+                  />
+                ) : (
+                  <NoMapMessage />
+                ))}
+              {tab === 'bundles' && <BundleBrowser bundles={bundles} onLoad={setBundles} />}
+            </div>
           </section>
         </main>
       </div>
+    </div>
+  )
+}
+
+function NoMapMessage() {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center text-tarkov-text-dim p-8">
+      <Package size={48} className="mb-4 text-tarkov-accent/50" />
+      <p className="text-lg font-medium">Import a pack or select a map to get started.</p>
+      <p className="text-sm mt-2 max-w-md text-center">
+        This tool is designed to manage and refine the loot packs you export from the in-game editor.
+        Set spawn chances, remove unwanted markers, and export a clean pack for distribution.
+      </p>
     </div>
   )
 }
@@ -407,16 +442,19 @@ function TabButton({
   onClick,
   icon,
   label,
+  disabled,
 }: {
   active: boolean
   onClick: () => void
   icon: ReactNode
   label: string
+  disabled?: boolean
 }) {
   return (
     <button
-      onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border disabled:opacity-50 disabled:cursor-not-allowed ${
         active
           ? 'bg-tarkov-accent/20 border-tarkov-accent/50 text-tarkov-accent'
           : 'bg-tarkov-surface border-tarkov-border text-tarkov-text hover:border-tarkov-accent'
@@ -772,9 +810,11 @@ function ZoneList({
 function ObjectList({
   data,
   onChange,
+  bundles,
 }: {
   data: StaticObject[]
   onChange: (objects: StaticObject[]) => void
+  bundles: BundleInfo[] | null
 }) {
   const [form, setForm] = useState<StaticObject>({
     id: generateId(),
@@ -799,7 +839,15 @@ function ObjectList({
         <h3 className="text-sm font-semibold text-tarkov-accent uppercase tracking-wider">Add Static Object</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <TextField label="Name" value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} tooltip="Unique name for the static object." />
-          <TextField label="Prefab Path" value={form.prefabPath} onChange={(v) => setForm((f) => ({ ...f, prefabPath: v }))} tooltip="Path to the Unity prefab asset to spawn." />
+          <div className="md:col-span-1 lg:col-span-1">
+            <BundleSelector
+              label="Prefab Path"
+              value={form.prefabPath}
+              onChange={(v) => setForm((f) => ({ ...f, prefabPath: v }))}
+              bundles={bundles}
+              tooltip="Path to the Unity prefab asset to spawn."
+            />
+          </div>
           <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} tooltip="World-space position of the object." />
           <TransformField label="Rotation" value={form.rotation} onChange={(v) => setForm((f) => ({ ...f, rotation: v }))} tooltip="World-space rotation of the object." />
           <TransformField label="Scale" value={form.scale} onChange={(v) => setForm((f) => ({ ...f, scale: v }))} tooltip="World-space scale of the object." />
@@ -816,7 +864,15 @@ function ObjectList({
           <div key={obj.id} className="card">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <TextField label="Name" value={obj.name} onChange={(v) => update(i, { name: v })} tooltip="Unique name for the static object." />
-              <TextField label="Prefab Path" value={obj.prefabPath || ''} onChange={(v) => update(i, { prefabPath: v })} tooltip="Path to the Unity prefab asset to spawn." />
+              <div className="md:col-span-1 lg:col-span-1">
+                <BundleSelector
+                  label="Prefab Path"
+                  value={obj.prefabPath || ''}
+                  onChange={(v) => update(i, { prefabPath: v })}
+                  bundles={bundles}
+                  tooltip="Path to the Unity prefab asset to spawn."
+                />
+              </div>
               <TransformField label="Position" value={obj.position} onChange={(v) => update(i, { position: v })} tooltip="World-space position of the object." />
               <TransformField label="Rotation" value={obj.rotation} onChange={(v) => update(i, { rotation: v })} tooltip="World-space rotation of the object." />
               <TransformField label="Scale" value={obj.scale} onChange={(v) => update(i, { scale: v })} tooltip="World-space scale of the object." />
