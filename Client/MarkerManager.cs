@@ -9,8 +9,36 @@ namespace MapLootEditorLite.Client
     public class MarkerManager
     {
         public MapData Data { get; private set; }
-        public MarkerBase Selected { get; set; }
+
+        private MarkerBase _selected;
+        public MarkerBase Selected
+        {
+            get => _selected;
+            set
+            {
+                _selected = value;
+                SelectedIds.Clear();
+                if (_selected != null)
+                    SelectedIds.Add(_selected.id);
+            }
+        }
+
+        public List<string> SelectedIds { get; } = new List<string>();
         public bool IsDirty { get; set; }
+
+        public Vector3 SelectionCenter
+        {
+            get
+            {
+                var selected = GetAllMarkers().Where(m => SelectedIds.Contains(m.id)).ToList();
+                if (selected.Count == 0)
+                    return Vector3.zero;
+                var sum = Vector3.zero;
+                foreach (var m in selected)
+                    sum += m.position.ToVector3();
+                return sum / selected.Count;
+            }
+        }
 
         private readonly List<string> _undoStack = new List<string>();
         private readonly List<string> _redoStack = new List<string>();
@@ -110,6 +138,145 @@ namespace MapLootEditorLite.Client
         public MarkerBase FindById(string id)
         {
             return GetAllMarkers().FirstOrDefault(m => m.id == id);
+        }
+
+        public bool IsSelected(MarkerBase marker)
+        {
+            return marker != null && SelectedIds.Contains(marker.id);
+        }
+
+        public void SelectOnly(MarkerBase marker)
+        {
+            Selected = marker;
+        }
+
+        public void AddToSelection(MarkerBase marker)
+        {
+            if (marker == null)
+                return;
+            if (!SelectedIds.Contains(marker.id))
+                SelectedIds.Add(marker.id);
+            _selected = marker;
+        }
+
+        public void RemoveFromSelection(MarkerBase marker)
+        {
+            if (marker == null)
+                return;
+            SelectedIds.Remove(marker.id);
+            if (_selected != null && _selected.id == marker.id)
+                _selected = SelectedIds.Count > 0 ? FindById(SelectedIds[SelectedIds.Count - 1]) : null;
+        }
+
+        public void ToggleSelected(MarkerBase marker)
+        {
+            if (marker == null)
+                return;
+            if (IsSelected(marker))
+                RemoveFromSelection(marker);
+            else
+                AddToSelection(marker);
+        }
+
+        public void ClearSelection()
+        {
+            SelectedIds.Clear();
+            _selected = null;
+        }
+
+        public void SelectGroup(string group)
+        {
+            SelectedIds.Clear();
+            foreach (var m in GetAllMarkers())
+            {
+                if (string.Equals(m.group ?? "", group ?? "", StringComparison.OrdinalIgnoreCase))
+                {
+                    SelectedIds.Add(m.id);
+                    if (_selected == null)
+                        _selected = m;
+                }
+            }
+        }
+
+        public IEnumerable<string> GetGroups()
+        {
+            return GetAllMarkers()
+                .Select(m => m.group ?? "")
+                .Where(g => !string.IsNullOrWhiteSpace(g))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(g => g, StringComparer.OrdinalIgnoreCase);
+        }
+
+        public void SetGroupOnSelection(string group)
+        {
+            foreach (var id in SelectedIds)
+            {
+                var m = FindById(id);
+                if (m != null)
+                    m.group = group ?? "";
+            }
+            IsDirty = true;
+        }
+
+        public void DeleteSelection()
+        {
+            if (Data == null)
+                return;
+
+            var toDelete = SelectedIds.ToList();
+            foreach (var id in toDelete)
+            {
+                var m = FindById(id);
+                if (m == null)
+                    continue;
+                switch (m)
+                {
+                    case LooseLootSpawn s: Data.lootSpawns.Remove(s); break;
+                    case LootZone z: Data.lootZones.Remove(z); break;
+                    case StaticObject o: Data.objects.Remove(o); break;
+                }
+            }
+            ClearSelection();
+            IsDirty = true;
+        }
+
+        public void DuplicateSelection()
+        {
+            if (Data == null)
+                return;
+
+            var originals = SelectedIds.Select(FindById).Where(m => m != null).ToList();
+            var newIds = new List<string>();
+            foreach (var m in originals)
+            {
+                var json = JsonConvert.SerializeObject(m);
+                MarkerBase copy;
+                switch (m)
+                {
+                    case LooseLootSpawn s:
+                        copy = JsonConvert.DeserializeObject<LooseLootSpawn>(json);
+                        Data.lootSpawns.Add((LooseLootSpawn)copy);
+                        break;
+                    case LootZone z:
+                        copy = JsonConvert.DeserializeObject<LootZone>(json);
+                        Data.lootZones.Add((LootZone)copy);
+                        break;
+                    case StaticObject o:
+                        copy = JsonConvert.DeserializeObject<StaticObject>(json);
+                        Data.objects.Add((StaticObject)copy);
+                        break;
+                    default:
+                        continue;
+                }
+                copy.id = Guid.NewGuid().ToString();
+                copy.name = copy.name + "_copy";
+                copy.position.x += 0.2f;
+                newIds.Add(copy.id);
+            }
+            SelectedIds.Clear();
+            SelectedIds.AddRange(newIds);
+            _selected = newIds.Count > 0 ? FindById(newIds[0]) : null;
+            IsDirty = true;
         }
 
         public LooseLootSpawn CreateLootSpawn(Vector3 position, Vector3 rotation)

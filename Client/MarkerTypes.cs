@@ -55,6 +55,7 @@ namespace MapLootEditorLite.Client
     {
         public string id = Guid.NewGuid().ToString();
         public string name = "marker";
+        public string group = "";
         public TransformData position = new TransformData();
         public TransformData rotation = new TransformData();
 

@@ -96,7 +96,7 @@ namespace MapLootEditorLite.Client
                         visual.transform.localScale = so.scale.ToVector3();
                     }
 
-                    bool isSelected = _manager.Selected != null && _manager.Selected.id == marker.id;
+                    bool isSelected = _manager.IsSelected(marker);
                     ApplyColor(visual, marker, isSelected);
                 }
             }
@@ -470,8 +470,8 @@ namespace MapLootEditorLite.Client
             if (_manager?.Selected == null || !ShowGizmo || camera == null)
                 return GizmoAxis.None;
 
-            var pos = _manager.Selected.position.ToVector3();
-            var rot = _manager.Selected.rotation.ToQuaternion();
+            var pos = GetGizmoPosition();
+            var rot = GetGizmoRotation();
             GizmoAxis best = GizmoAxis.None;
             float bestDist = maxPx;
 
@@ -514,6 +514,24 @@ namespace MapLootEditorLite.Client
             return best;
         }
 
+        private Vector3 GetGizmoPosition()
+        {
+            if (_manager?.Selected == null)
+                return Vector3.zero;
+            if (_manager.SelectedIds.Count > 1)
+                return _manager.SelectionCenter;
+            return _manager.Selected.position.ToVector3();
+        }
+
+        private Quaternion GetGizmoRotation()
+        {
+            if (_manager?.Selected == null)
+                return Quaternion.identity;
+            if (_manager.SelectedIds.Count > 1)
+                return Quaternion.identity;
+            return _manager.Selected.rotation.ToQuaternion();
+        }
+
         private void UpdateGizmo()
         {
             if (_manager?.Selected == null || !ShowGizmo)
@@ -523,9 +541,8 @@ namespace MapLootEditorLite.Client
             }
 
             EnsureGizmo();
-            var marker = _manager.Selected;
-            var pos = marker.position.ToVector3();
-            var rot = marker.rotation.ToQuaternion();
+            var pos = GetGizmoPosition();
+            var rot = GetGizmoRotation();
 
             foreach (var axis in new[] { GizmoAxis.X, GizmoAxis.Y, GizmoAxis.Z })
             {

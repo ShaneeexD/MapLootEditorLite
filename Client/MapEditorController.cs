@@ -56,6 +56,12 @@ namespace MapLootEditorLite.Client
         private Vector3 _gizmoDragStartMarkerRot;
         private Vector3 _gizmoDragStartMarkerScale;
         private Plane _gizmoDragPlane;
+        private Vector3 _gizmoDragStartCenter;
+        private Quaternion _gizmoDragStartCenterRot;
+        private Vector3 _gizmoDragStartCenterScale;
+        private readonly Dictionary<string, Vector3> _gizmoDragStartPositions = new Dictionary<string, Vector3>();
+        private readonly Dictionary<string, Quaternion> _gizmoDragStartRotations = new Dictionary<string, Quaternion>();
+        private readonly Dictionary<string, Vector3> _gizmoDragStartScales = new Dictionary<string, Vector3>();
 
         private void Awake()
         {
@@ -158,19 +164,6 @@ namespace MapLootEditorLite.Client
                 Plugin.Log.LogInfo($"Toggle key pressed via Input: editor open = {_editorOpen}");
             }
 
-            if (Plugin.PlaceLootSpawnHotkey?.Value.IsPressed() == true && _currentGameWorld != null)
-                CreateLootSpawn();
-            if (Plugin.PlaceLootZoneHotkey?.Value.IsPressed() == true && _currentGameWorld != null)
-                CreateLootZone();
-            if (Plugin.PlaceStaticObjectHotkey?.Value.IsPressed() == true && _currentGameWorld != null)
-                CreateStaticObject();
-            if (Plugin.PlaceLootSpawnAtLookHotkey?.Value.IsPressed() == true && _currentGameWorld != null)
-                CreateLootSpawnAtLook();
-            if (Plugin.PlaceLootZoneAtLookHotkey?.Value.IsPressed() == true && _currentGameWorld != null)
-                CreateLootZoneAtLook();
-            if (Plugin.PlaceStaticObjectAtLookHotkey?.Value.IsPressed() == true && _currentGameWorld != null)
-                CreateStaticObjectAtLook();
-
             if (!_editorOpen && _freeCam)
                 ToggleFreeCam();
 
@@ -237,7 +230,7 @@ namespace MapLootEditorLite.Client
             _renderer.Update();
 
             if (_editorOpen && _manager.Selected != null)
-                _previews.UpdateForMarker(_manager.Selected);
+                UpdatePreviewsForSelection();
         }
 
         private void OnGUI()
@@ -416,7 +409,7 @@ namespace MapLootEditorLite.Client
             if (Input.GetKey(KeyCode.KeypadMinus) || Input.GetKey(KeyCode.Minus))
                 _manager.ChangeRadius(-radiusSpeed);
 
-            _previews.UpdateForMarker(_manager.Selected);
+            UpdatePreviewsForSelection();
         }
 
         public Vector3 GetPlayerPosition()
@@ -724,34 +717,23 @@ namespace MapLootEditorLite.Client
                 {
                     _activeGizmoAxis = hoveredAxis;
                     _renderer.ActiveAxis = hoveredAxis;
-                    _gizmoDragStartMarkerPos = _manager.Selected.position.ToVector3();
-                    _gizmoDragStartMarkerRot = _manager.Selected.rotation.ToVector3();
-                    _gizmoDragStartMarkerScale = Vector3.one;
-                    if (_manager.Selected is StaticObject so)
-                        _gizmoDragStartMarkerScale = so.scale.ToVector3();
-                    else if (_manager.Selected is LootZone zone)
-                        _gizmoDragStartMarkerScale = zone.scale.ToVector3();
-
-                    if (GetGizmoDragPlane(camera, hoveredAxis, out _gizmoDragPlane))
-                    {
-                        var ray = camera.ScreenPointToRay(Input.mousePosition);
-                        if (_gizmoDragPlane.Raycast(ray, out float d))
-                            _gizmoDragStartWorld = ray.GetPoint(d);
-                        else
-                            _gizmoDragStartWorld = _gizmoDragStartMarkerPos;
-                    }
+                    RecordGizmoDragStart(camera);
                 }
                 else
                 {
                     var picked = _renderer.PickFromScreenPosition(camera, Input.mousePosition, 50f);
                     if (picked != null)
                     {
-                        _manager.Selected = picked;
+                        if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+                            _manager.ToggleSelected(picked);
+                        else
+                            _manager.SelectOnly(picked);
                         _mouseDragging = true;
+                        RecordDragStartPositions();
                     }
-                    else
+                    else if (!Input.GetKey(KeyCode.LeftControl) && !Input.GetKey(KeyCode.RightControl))
                     {
-                        _manager.Selected = null;
+                        _manager.ClearSelection();
                     }
                 }
             }
@@ -771,8 +753,21 @@ namespace MapLootEditorLite.Client
                     {
                         var point = ray.GetPoint(distance);
                         var newPos = new Vector3(point.x, markerPos.y, point.z);
-                        _manager.Selected.position = TransformData.FromVector3(newPos);
-                        _previews.UpdateForMarker(_manager.Selected);
+                        var delta = newPos - _gizmoDragStartPositions[_manager.Selected.id];
+                        if (_manager.SelectedIds.Count > 1)
+                        {
+                            foreach (var id in _manager.SelectedIds)
+                            {
+                                var m = _manager.FindById(id);
+                                if (m == null) continue;
+                                m.position = TransformData.FromVector3(_gizmoDragStartPositions[id] + delta);
+                            }
+                        }
+                        else
+                        {
+                            _manager.Selected.position = TransformData.FromVector3(newPos);
+                        }
+                        UpdatePreviewsForSelection();
                         _manager.IsDirty = true;
                     }
                 }
@@ -796,50 +791,181 @@ namespace MapLootEditorLite.Client
                 return;
 
             var point = ray.GetPoint(d);
-            var axisDir = GetGizmoAxisDirection(_activeGizmoAxis, _manager.Selected.rotation.ToQuaternion());
+            var axisDir = GetGizmoAxisDirection(_activeGizmoAxis, GetGizmoOrientation());
             var offset = Vector3.Dot(point - _gizmoDragStartWorld, axisDir);
+            var isGroup = _manager.SelectedIds.Count > 1;
 
             switch (_gizmoMode)
             {
                 case GizmoMode.Translate:
-                    var newPos = _gizmoDragStartMarkerPos + axisDir * offset;
-                    _manager.Selected.position = TransformData.FromVector3(newPos);
+                    var newCenter = _gizmoDragStartCenter + axisDir * offset;
+                    var delta = newCenter - _gizmoDragStartCenter;
+                    if (isGroup)
+                    {
+                        foreach (var id in _manager.SelectedIds)
+                        {
+                            var m = _manager.FindById(id);
+                            if (m == null) continue;
+                            m.position = TransformData.FromVector3(_gizmoDragStartPositions[id] + delta);
+                        }
+                    }
+                    else
+                    {
+                        _manager.Selected.position = TransformData.FromVector3(_gizmoDragStartPositions[_manager.Selected.id] + delta);
+                    }
                     break;
 
                 case GizmoMode.Rotate:
-                    var v0 = Vector3.ProjectOnPlane(_gizmoDragStartWorld - _gizmoDragStartMarkerPos, axisDir);
-                    var v1 = Vector3.ProjectOnPlane(point - _gizmoDragStartMarkerPos, axisDir);
+                    var v0 = Vector3.ProjectOnPlane(_gizmoDragStartWorld - _gizmoDragStartCenter, axisDir);
+                    var v1 = Vector3.ProjectOnPlane(point - _gizmoDragStartCenter, axisDir);
                     if (v0.sqrMagnitude > 0.0001f && v1.sqrMagnitude > 0.0001f)
                     {
                         var angle = Vector3.SignedAngle(v0, v1, axisDir);
-                        var newRot = Quaternion.AngleAxis(angle, axisDir) * Quaternion.Euler(_gizmoDragStartMarkerRot);
-                        _manager.Selected.rotation = TransformData.FromVector3(newRot.eulerAngles);
+                        var deltaRot = Quaternion.AngleAxis(angle, axisDir);
+                        if (isGroup)
+                        {
+                            foreach (var id in _manager.SelectedIds)
+                            {
+                                var m = _manager.FindById(id);
+                                if (m == null) continue;
+                                var startPos = _gizmoDragStartPositions[id];
+                                var startRot = _gizmoDragStartRotations[id];
+                                m.position = TransformData.FromVector3(_gizmoDragStartCenter + deltaRot * (startPos - _gizmoDragStartCenter));
+                                m.rotation = TransformData.FromVector3((deltaRot * startRot).eulerAngles);
+                            }
+                        }
+                        else
+                        {
+                            var newRot = deltaRot * Quaternion.Euler(_gizmoDragStartMarkerRot);
+                            _manager.Selected.rotation = TransformData.FromVector3(newRot.eulerAngles);
+                        }
                     }
                     break;
 
                 case GizmoMode.Scale:
-                    var newScale = _gizmoDragStartMarkerScale;
+                    var newCenterScale = _gizmoDragStartCenterScale;
                     switch (_activeGizmoAxis)
                     {
-                        case GizmoAxis.X: newScale.x += offset; break;
-                        case GizmoAxis.Y: newScale.y += offset; break;
-                        case GizmoAxis.Z: newScale.z += offset; break;
+                        case GizmoAxis.X: newCenterScale.x += offset; break;
+                        case GizmoAxis.Y: newCenterScale.y += offset; break;
+                        case GizmoAxis.Z: newCenterScale.z += offset; break;
                     }
-                    if (_manager.Selected is StaticObject so)
+                    var centerScaleDelta = newCenterScale - _gizmoDragStartCenterScale;
+                    var centerScaleFactor = new Vector3(
+                        Mathf.Abs(_gizmoDragStartCenterScale.x) > 0.0001f ? newCenterScale.x / _gizmoDragStartCenterScale.x : 1f,
+                        Mathf.Abs(_gizmoDragStartCenterScale.y) > 0.0001f ? newCenterScale.y / _gizmoDragStartCenterScale.y : 1f,
+                        Mathf.Abs(_gizmoDragStartCenterScale.z) > 0.0001f ? newCenterScale.z / _gizmoDragStartCenterScale.z : 1f);
+
+                    if (isGroup)
                     {
-                        so.scale = TransformData.FromVector3(newScale);
+                        foreach (var id in _manager.SelectedIds)
+                        {
+                            var m = _manager.FindById(id);
+                            if (m == null) continue;
+                            var startPos = _gizmoDragStartPositions[id];
+                            var startScale = _gizmoDragStartScales[id];
+                            m.position = TransformData.FromVector3(_gizmoDragStartCenter + Vector3.Scale(startPos - _gizmoDragStartCenter, centerScaleFactor));
+                            if (m is StaticObject so)
+                                so.scale = TransformData.FromVector3(startScale + centerScaleDelta);
+                            else if (m is LootZone zone)
+                                zone.scale = TransformData.FromVector3(startScale + centerScaleDelta);
+                        }
                         _renderer.Rebuild();
                     }
-                    else if (_manager.Selected is LootZone zone)
+                    else
                     {
-                        zone.scale = TransformData.FromVector3(newScale);
-                        _renderer.Rebuild();
+                        var newScale = _gizmoDragStartMarkerScale;
+                        switch (_activeGizmoAxis)
+                        {
+                            case GizmoAxis.X: newScale.x += offset; break;
+                            case GizmoAxis.Y: newScale.y += offset; break;
+                            case GizmoAxis.Z: newScale.z += offset; break;
+                        }
+                        if (_manager.Selected is StaticObject so)
+                        {
+                            so.scale = TransformData.FromVector3(newScale);
+                            _renderer.Rebuild();
+                        }
+                        else if (_manager.Selected is LootZone zone)
+                        {
+                            zone.scale = TransformData.FromVector3(newScale);
+                            _renderer.Rebuild();
+                        }
                     }
                     break;
             }
 
-            _previews.UpdateForMarker(_manager.Selected);
+            UpdatePreviewsForSelection();
             _manager.IsDirty = true;
+        }
+
+        private void UpdatePreviewsForSelection()
+        {
+            foreach (var id in _manager.SelectedIds)
+            {
+                var m = _manager.FindById(id);
+                if (m != null)
+                    _previews.UpdateForMarker(m);
+            }
+        }
+
+        private void RecordDragStartPositions()
+        {
+            _gizmoDragStartPositions.Clear();
+            foreach (var id in _manager.SelectedIds)
+            {
+                var m = _manager.FindById(id);
+                if (m != null)
+                    _gizmoDragStartPositions[id] = m.position.ToVector3();
+            }
+        }
+
+        private void RecordGizmoDragStart(Camera camera)
+        {
+            _gizmoDragStartMarkerPos = _manager.Selected.position.ToVector3();
+            _gizmoDragStartMarkerRot = _manager.Selected.rotation.ToVector3();
+            _gizmoDragStartMarkerScale = Vector3.one;
+            if (_manager.Selected is StaticObject so)
+                _gizmoDragStartMarkerScale = so.scale.ToVector3();
+            else if (_manager.Selected is LootZone zone)
+                _gizmoDragStartMarkerScale = zone.scale.ToVector3();
+
+            _gizmoDragStartCenter = _manager.SelectedIds.Count > 1 ? _manager.SelectionCenter : _gizmoDragStartMarkerPos;
+            _gizmoDragStartCenterRot = _manager.SelectedIds.Count > 1 ? Quaternion.identity : _manager.Selected.rotation.ToQuaternion();
+            _gizmoDragStartCenterScale = Vector3.one;
+
+            _gizmoDragStartPositions.Clear();
+            _gizmoDragStartRotations.Clear();
+            _gizmoDragStartScales.Clear();
+            foreach (var id in _manager.SelectedIds)
+            {
+                var m = _manager.FindById(id);
+                if (m == null) continue;
+                _gizmoDragStartPositions[id] = m.position.ToVector3();
+                _gizmoDragStartRotations[id] = m.rotation.ToQuaternion();
+                if (m is StaticObject mso)
+                    _gizmoDragStartScales[id] = mso.scale.ToVector3();
+                else if (m is LootZone mlz)
+                    _gizmoDragStartScales[id] = mlz.scale.ToVector3();
+                else
+                    _gizmoDragStartScales[id] = Vector3.one;
+            }
+
+            if (GetGizmoDragPlane(camera, _activeGizmoAxis, out _gizmoDragPlane))
+            {
+                var ray = camera.ScreenPointToRay(Input.mousePosition);
+                if (_gizmoDragPlane.Raycast(ray, out float d))
+                    _gizmoDragStartWorld = ray.GetPoint(d);
+                else
+                    _gizmoDragStartWorld = _gizmoDragStartCenter;
+            }
+        }
+
+        private Quaternion GetGizmoOrientation()
+        {
+            if (_manager.SelectedIds.Count > 1)
+                return Quaternion.identity;
+            return _manager.Selected?.rotation.ToQuaternion() ?? Quaternion.identity;
         }
 
         private bool GetGizmoDragPlane(Camera camera, GizmoAxis axis, out Plane plane)
@@ -848,11 +974,12 @@ namespace MapLootEditorLite.Client
             if (_manager.Selected == null)
                 return false;
 
-            var axisDir = GetGizmoAxisDirection(axis, _manager.Selected.rotation.ToQuaternion());
+            var axisDir = GetGizmoAxisDirection(axis, GetGizmoOrientation());
             if (axisDir == Vector3.zero)
                 return false;
 
-            plane = new Plane(camera.transform.forward, _manager.Selected.position.ToVector3());
+            var pos = _manager.SelectedIds.Count > 1 ? _manager.SelectionCenter : _manager.Selected.position.ToVector3();
+            plane = new Plane(camera.transform.forward, pos);
             return true;
         }
 
@@ -878,9 +1005,10 @@ namespace MapLootEditorLite.Client
 
         private bool IsMouseOverUI()
         {
+            var scale = Plugin.UIScale?.Value ?? 1f;
             var rect = _ui.WindowRect;
-            var mouse = Input.mousePosition;
-            mouse.y = Screen.height - mouse.y;
+            var mouse = Input.mousePosition / scale;
+            mouse.y = (Screen.height - Input.mousePosition.y) / scale;
             return rect.Contains(mouse);
         }
 
@@ -904,15 +1032,15 @@ namespace MapLootEditorLite.Client
         public void DuplicateSelected()
         {
             _manager.Snapshot();
-            _manager.DuplicateSelected();
+            _manager.DuplicateSelection();
             _renderer.Rebuild();
         }
 
         public void DeleteSelected()
         {
-            var markerId = _manager.Selected?.id;
-            _previews.ClearByMarkerId(markerId);
-            _manager.DeleteSelected();
+            foreach (var id in _manager.SelectedIds.ToList())
+                _previews.ClearByMarkerId(id);
+            _manager.DeleteSelection();
             _renderer.Rebuild();
         }
 

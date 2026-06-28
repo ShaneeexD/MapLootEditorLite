@@ -18,8 +18,14 @@ namespace MapLootEditorLite.Client
 
         private Rect _windowRect = new Rect(20, 20, 460, 540);
         private Rect _confirmRect = new Rect(0, 0, 300, 120);
-        private Vector2 _scrollPos;
+        private Vector2 _markerListScrollPos;
+        private Vector2 _groupScrollPos;
+        private Rect _resizeStartRect;
+        private Vector2 _resizeStartMouse;
+        private bool _resizeHeld;
         private string _packName = "MyLootPack";
+        private string _searchText = "";
+        private string _newGroupName = "";
         private bool _deletePending;
         private bool _pickingSource;
         private StaticObject _pickingSourceTarget;
@@ -41,13 +47,24 @@ namespace MapLootEditorLite.Client
 
         public void Draw()
         {
+            var scale = GetScale();
+            var prevMatrix = GUI.matrix;
+            GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(scale, scale, 1f));
+
             _windowRect = GUILayout.Window(12345, _windowRect, DrawWindow, "Map Loot Editor Lite");
             if (_deletePending)
             {
-                _confirmRect.x = Screen.width / 2f - 150;
-                _confirmRect.y = Screen.height / 2f - 60;
+                _confirmRect.x = Screen.width / 2f / scale - 150;
+                _confirmRect.y = Screen.height / 2f / scale - 60;
                 _confirmRect = GUILayout.Window(12346, _confirmRect, DrawConfirmDelete, "Confirm Delete");
             }
+
+            GUI.matrix = prevMatrix;
+        }
+
+        private float GetScale()
+        {
+            return Plugin.UIScale?.Value ?? 1f;
         }
 
         public StaticObject PickingSourceTarget => _pickingSourceTarget;
@@ -86,7 +103,9 @@ namespace MapLootEditorLite.Client
 
         private void DrawConfirmDelete(int id)
         {
-            GUILayout.Label($"Delete '{_manager.Selected?.name}'?");
+            var count = _manager.SelectedIds.Count;
+            var label = count > 1 ? $"Delete {count} selected markers?" : $"Delete '{_manager.Selected?.name}'?";
+            GUILayout.Label(label);
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Yes"))
             {
@@ -111,10 +130,38 @@ namespace MapLootEditorLite.Client
             GUILayout.Space(8);
             DrawSelectedMarker();
             GUILayout.Space(8);
+            DrawSearchGroups();
+            GUILayout.Space(8);
             DrawMarkerList();
 
             GUILayout.EndVertical();
+            DrawResizeHandle();
             GUI.DragWindow(new Rect(0, 0, 10000, 20));
+        }
+
+        private void DrawResizeHandle()
+        {
+            GUILayout.FlexibleSpace();
+            GUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            if (GUILayout.RepeatButton("\u25E2", GUILayout.Width(16), GUILayout.Height(16)))
+            {
+                var ev = Event.current;
+                if (!_resizeHeld)
+                {
+                    _resizeHeld = true;
+                    _resizeStartRect = _windowRect;
+                    _resizeStartMouse = ev.mousePosition;
+                }
+                var delta = ev.mousePosition - _resizeStartMouse;
+                _windowRect.width = Mathf.Max(260, _resizeStartRect.width + delta.x);
+                _windowRect.height = Mathf.Max(300, _resizeStartRect.height + delta.y);
+            }
+            else
+            {
+                _resizeHeld = false;
+            }
+            GUILayout.EndHorizontal();
         }
 
         private void DrawHeader()
@@ -200,9 +247,30 @@ namespace MapLootEditorLite.Client
                 return;
             }
 
-            GUILayout.Label($"Selected: {selected.Kind} - {selected.name}");
+            var selectedCount = _manager.SelectedIds.Count;
+            GUILayout.Label(selectedCount > 1 ? $"Selected {selectedCount} markers (primary: {selected.name})" : $"Selected: {selected.Kind} - {selected.name}");
 
             selected.name = GUILayout.TextField(selected.name);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Group", GUILayout.Width(60));
+            var group = GUILayout.TextField(selected.group ?? "");
+            if (group != selected.group)
+            {
+                selected.group = group;
+                _manager.IsDirty = true;
+            }
+            GUILayout.EndHorizontal();
+
+            if (selectedCount > 1)
+            {
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button("Assign Group to Selection"))
+                    _manager.SetGroupOnSelection(selected.group);
+                if (GUILayout.Button("Clear Group from Selection"))
+                    _manager.SetGroupOnSelection("");
+                GUILayout.EndHorizontal();
+            }
 
             var pos = Vector3Field("Position", selected.position.ToVector3());
             if (pos != selected.position.ToVector3())
@@ -287,7 +355,7 @@ namespace MapLootEditorLite.Client
         {
             GUILayout.BeginHorizontal();
             GUILayout.Label("Prefab Path", GUILayout.Width(90));
-            obj.prefabPath = GUILayout.TextField(obj.prefabPath ?? "");
+            obj.prefabPath = GUILayout.TextField(obj.prefabPath ?? "", GUILayout.MaxWidth(240));
             GUILayout.EndHorizontal();
 
             GUILayout.Label("Scale:");
@@ -449,24 +517,72 @@ namespace MapLootEditorLite.Client
             return null;
         }
 
+        private void DrawSearchGroups()
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Search", GUILayout.Width(45));
+            _searchText = GUILayout.TextField(_searchText ?? "", GUILayout.Width(180));
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Group", GUILayout.Width(45));
+            _newGroupName = GUILayout.TextField(_newGroupName ?? "");
+            if (GUILayout.Button("Assign", GUILayout.Width(60)) && _manager.Selected != null)
+                _manager.SetGroupOnSelection(_newGroupName);
+            GUILayout.EndHorizontal();
+
+            var groups = _manager.GetGroups().ToList();
+            if (groups.Count > 0)
+            {
+                GUILayout.Label("Existing groups:");
+                _groupScrollPos = GUILayout.BeginScrollView(_groupScrollPos, GUILayout.Height(60));
+                foreach (var group in groups)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label(group);
+                    if (GUILayout.Button("Select", GUILayout.Width(60)))
+                        _manager.SelectGroup(group);
+                    GUILayout.EndHorizontal();
+                }
+                GUILayout.EndScrollView();
+            }
+        }
+
         private void DrawMarkerList()
         {
             GUILayout.Label("Markers:");
-            _scrollPos = GUILayout.BeginScrollView(_scrollPos, GUILayout.Height(160));
+            _markerListScrollPos = GUILayout.BeginScrollView(_markerListScrollPos, GUILayout.Height(120));
 
             foreach (var marker in _manager.GetAllMarkers())
             {
+                if (!MatchesSearch(marker))
+                    continue;
+
                 GUILayout.BeginHorizontal();
-                bool isSelected = _manager.Selected != null && _manager.Selected.id == marker.id;
-                if (GUILayout.Button(isSelected ? ">>>" : "Sel", GUILayout.Width(40)))
-                {
-                    _manager.Selected = marker;
-                }
-                GUILayout.Label($"{marker.Kind} | {marker.name}", GUILayout.Width(220));
+                bool isSelected = _manager.IsSelected(marker);
+                bool newSelected = GUILayout.Toggle(isSelected, "", GUILayout.Width(20));
+                if (newSelected != isSelected)
+                    _manager.ToggleSelected(marker);
+
+                if (GUILayout.Button("Sel", GUILayout.Width(40)))
+                    _manager.SelectOnly(marker);
+
+                var groupLabel = string.IsNullOrWhiteSpace(marker.group) ? "-" : marker.group;
+                GUILayout.Label($"{marker.Kind} | {groupLabel} | {marker.name}");
                 GUILayout.EndHorizontal();
             }
 
             GUILayout.EndScrollView();
+        }
+
+        private bool MatchesSearch(MarkerBase marker)
+        {
+            if (string.IsNullOrWhiteSpace(_searchText))
+                return true;
+            var term = _searchText.Trim();
+            return (marker.name?.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0)
+                || (marker.group?.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0)
+                || (marker.Kind.ToString().IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         private Vector3 Vector3Field(string label, Vector3 value)
