@@ -281,11 +281,12 @@ namespace MapLootEditorLite.Client
             if (!string.IsNullOrEmpty(mapId) && mapId != _currentMapId)
             {
                 _currentMapId = mapId;
+                _previews.ClearAll();
                 var mapData = LoadMapDataFromPacks(mapId) ?? JsonStorage.Load(mapId);
                 mapData.map = mapId;
                 _manager.SetMapData(mapData);
                 _renderer.Rebuild();
-                _previews.ClearAll();
+                _previews.SpawnAllPreviews(_manager.Data);
                 Plugin.Log.LogInfo($"Loaded map: {mapId}");
             }
         }
@@ -489,6 +490,7 @@ namespace MapLootEditorLite.Client
             var marker = _manager.CreateLootSpawn(GetLookPosition(), GetPlayerRotation());
             _manager.Selected = marker;
             _renderer.Rebuild();
+            _previews.SpawnPreviewForMarker(marker);
         }
 
         public void CreateLootZone()
@@ -498,6 +500,7 @@ namespace MapLootEditorLite.Client
             var marker = _manager.CreateLootZone(GetLookPosition());
             _manager.Selected = marker;
             _renderer.Rebuild();
+            _previews.SpawnPreviewForMarker(marker);
         }
 
         public void CreateStaticObject()
@@ -507,6 +510,7 @@ namespace MapLootEditorLite.Client
             var marker = _manager.CreateStaticObject(GetLookPosition(), GetPlayerRotation());
             _manager.Selected = marker;
             _renderer.Rebuild();
+            _previews.SpawnPreviewForMarker(marker);
         }
 
         public void CreateLootSpawnAtLook()
@@ -516,6 +520,7 @@ namespace MapLootEditorLite.Client
             var marker = _manager.CreateLootSpawn(GetLookPosition(), GetPlayerRotation());
             _manager.Selected = marker;
             _renderer.Rebuild();
+            _previews.SpawnPreviewForMarker(marker);
         }
 
         public void CreateLootZoneAtLook()
@@ -525,6 +530,7 @@ namespace MapLootEditorLite.Client
             var marker = _manager.CreateLootZone(GetLookPosition());
             _manager.Selected = marker;
             _renderer.Rebuild();
+            _previews.SpawnPreviewForMarker(marker);
         }
 
         public void CreateStaticObjectAtLook()
@@ -534,6 +540,7 @@ namespace MapLootEditorLite.Client
             var marker = _manager.CreateStaticObject(GetLookPosition(), GetPlayerRotation());
             _manager.Selected = marker;
             _renderer.Rebuild();
+            _previews.SpawnPreviewForMarker(marker);
         }
 
         public bool IsFreeCam => _freeCam;
@@ -1053,6 +1060,7 @@ namespace MapLootEditorLite.Client
             _manager.Snapshot();
             _manager.DuplicateSelection();
             _renderer.Rebuild();
+            _previews.SpawnAllPreviews(_manager.Data);
         }
 
         public void DeleteSelected()
@@ -1071,6 +1079,7 @@ namespace MapLootEditorLite.Client
             _manager.Undo();
             _renderer.Rebuild();
             _previews.ClearAll();
+            _previews.SpawnAllPreviews(_manager.Data);
         }
 
         public void Redo()
@@ -1078,6 +1087,129 @@ namespace MapLootEditorLite.Client
             _manager.Redo();
             _renderer.Rebuild();
             _previews.ClearAll();
+            _previews.SpawnAllPreviews(_manager.Data);
+        }
+
+        public void SavePrefab(string name, string description)
+        {
+            if (_manager.Selected == null || _manager.SelectedIds.Count == 0)
+            {
+                Plugin.Log.LogWarning("No markers selected to save as prefab.");
+                return;
+            }
+
+            var pivot = _manager.Selected;
+            var pivotPos = pivot.position.ToVector3();
+            var pivotRot = pivot.rotation.ToQuaternion();
+            var prefab = new PrefabData { name = name, description = description };
+
+            foreach (var id in _manager.SelectedIds)
+            {
+                var marker = _manager.FindById(id);
+                if (marker == null)
+                    continue;
+
+                var localPos = Quaternion.Inverse(pivotRot) * (marker.position.ToVector3() - pivotPos);
+                var localRot = Quaternion.Inverse(pivotRot) * marker.rotation.ToQuaternion();
+
+                var data = JObject.FromObject(marker);
+                data["id"] = null;
+                data["position"] = JObject.FromObject(TransformData.FromVector3(localPos));
+                data["rotation"] = JObject.FromObject(TransformData.FromVector3(localRot.eulerAngles));
+                prefab.markers.Add(new PrefabEntry { kind = marker.Kind.ToString(), data = data });
+            }
+
+            PrefabStorage.Save(prefab);
+            Plugin.Log.LogInfo($"Saved prefab '{name}' with {prefab.markers.Count} markers.");
+        }
+
+        public void PlacePrefab(string name)
+        {
+            var prefab = PrefabStorage.Load(name);
+            if (prefab == null)
+            {
+                Plugin.Log.LogWarning($"Prefab '{name}' not found.");
+                return;
+            }
+            if (!EnsureMapLoaded())
+                return;
+
+            _manager.Snapshot();
+            var pivotPos = GetLookPosition();
+            var pivotRot = Quaternion.Euler(GetPlayerRotation());
+            var created = new List<MarkerBase>();
+
+            foreach (var entry in prefab.markers)
+            {
+                MarkerBase copy;
+                switch (entry.kind)
+                {
+                    case "LooseLoot":
+                        copy = entry.data.ToObject<LooseLootSpawn>();
+                        break;
+                    case "LootZone":
+                        copy = entry.data.ToObject<LootZone>();
+                        break;
+                    case "StaticObject":
+                        copy = entry.data.ToObject<StaticObject>();
+                        break;
+                    default:
+                        continue;
+                }
+
+                copy.id = Guid.NewGuid().ToString();
+                copy.name = copy.name + "_prefab";
+                var localPos = copy.position.ToVector3();
+                var localRotEuler = copy.rotation.ToVector3();
+                var localRot = Quaternion.Euler(localRotEuler);
+                copy.position = TransformData.FromVector3(pivotPos + pivotRot * localPos);
+                copy.rotation = TransformData.FromVector3((pivotRot * localRot).eulerAngles);
+                _manager.AddMarker(copy);
+                created.Add(copy);
+                _previews.SpawnPreviewForMarker(copy);
+            }
+
+            _manager.SetSelection(created);
+            _renderer.Rebuild();
+            _manager.IsDirty = true;
+            Plugin.Log.LogInfo($"Placed prefab '{name}' with {created.Count} markers.");
+        }
+
+        public void ScatterObjectsInZone(LootZone zone, string prefabPath, int count, float minHeight, float maxHeight, bool snapToGround)
+        {
+            if (!EnsureMapLoaded()) return;
+            if (zone == null || string.IsNullOrWhiteSpace(prefabPath))
+            {
+                Plugin.Log.LogWarning("Scatter requires a zone and a prefab path.");
+                return;
+            }
+
+            _manager.Snapshot();
+            var group = $"scatter_{zone.name}";
+            var created = new List<MarkerBase>();
+            for (int i = 0; i < count; i++)
+            {
+                var point = LootPreviewSpawner.GetRandomPointInZone(zone);
+                var position = point;
+                if (snapToGround)
+                {
+                    var ground = MarkerManager.GetGroundPosition(position);
+                    if (ground.HasValue)
+                        position.y = ground.Value.y;
+                }
+                position.y += UnityEngine.Random.Range(minHeight, maxHeight);
+                var rotation = new Vector3(0f, UnityEngine.Random.Range(0f, 360f), 0f);
+                var marker = _manager.CreateStaticObject(position, rotation);
+                marker.prefabPath = prefabPath;
+                marker.group = group;
+                marker.name = "scatter_object";
+                created.Add(marker);
+                _previews.SpawnPreviewForMarker(marker);
+            }
+            _manager.SetSelection(created);
+            _renderer.Rebuild();
+            _manager.IsDirty = true;
+            Plugin.Log.LogInfo($"Scattered {created.Count} objects in zone '{zone.name}'.");
         }
 
         public void CopySelected()
@@ -1136,6 +1268,7 @@ namespace MapLootEditorLite.Client
                 _manager.Selected = copy;
                 _manager.IsDirty = true;
                 _renderer.Rebuild();
+                _previews.SpawnPreviewForMarker(copy);
             }
             catch (Exception ex)
             {

@@ -47,10 +47,12 @@ namespace MapLootEditorLite.Client
             Directory.CreateDirectory(Path.Combine(ModDataDirectory, "spawns"));
             Directory.CreateDirectory(Path.Combine(ModDataDirectory, "imports"));
             Directory.CreateDirectory(Path.Combine(ModDataDirectory, "cache"));
+            Directory.CreateDirectory(Path.Combine(ModDataDirectory, "prefabs"));
             Directory.CreateDirectory(ServerModPacksDirectory);
             Directory.CreateDirectory(ServerModExportsDirectory);
 
             JsonStorage.Initialize(ModDataDirectory);
+            PrefabStorage.Initialize(ModDataDirectory);
 
             var toggleConfig = base.Config.Bind("General", "ToggleKey", KeyCode.F8, "Hotkey that opens/closes the editor window");
             ToggleKey = toggleConfig.Value;

@@ -41,7 +41,7 @@ namespace MapLootEditorLite.Client
         {
             var tpl = GetItemTpl(marker.items, itemIndex);
             var item = GetItem(marker.items, itemIndex);
-            var pos = RandomPointInZone(marker);
+            var pos = GetRandomPointInZone(marker);
             var rotation = GetZoneItemRotation(marker.items, itemIndex);
             var markerPos = marker.position.ToVector3();
             var markerRot = marker.rotation.ToQuaternion();
@@ -60,13 +60,13 @@ namespace MapLootEditorLite.Client
             {
                 var tpl = GetItemTpl(marker.items, i);
                 var item = GetItem(marker.items, i);
-                var pos = RandomPointInZone(marker);
+                var pos = GetRandomPointInZone(marker);
                 var rotation = GetZoneItemRotation(marker.items, i);
                 SpawnPreviewInternal(tpl, pos, rotation, markerPos, markerRot, item?.randomRotation != true, marker.name, marker.id, false);
             }
         }
 
-        private Vector3 RandomPointInZone(LootZone zone)
+        public static Vector3 GetRandomPointInZone(LootZone zone)
         {
             var center = zone.position.ToVector3();
             var scale = zone.scale ?? new TransformData { x = 1f, y = 1f, z = 1f };
@@ -378,6 +378,18 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        public void SpawnAllPreviews(MapData data)
+        {
+            if (data == null)
+                return;
+            foreach (var marker in data.lootSpawns ?? Enumerable.Empty<LooseLootSpawn>())
+                SpawnPreviewForMarker(marker);
+            foreach (var marker in data.lootZones ?? Enumerable.Empty<LootZone>())
+                SpawnPreviewForMarker(marker);
+            foreach (var marker in data.objects ?? Enumerable.Empty<StaticObject>())
+                SpawnPreviewForMarker(marker);
+        }
+
         public void ClearAll()
         {
             foreach (var preview in _previews)
@@ -428,6 +440,24 @@ namespace MapLootEditorLite.Client
                     _staticPreviews.RemoveAt(i);
                     UnityEngine.Object.Destroy(preview);
                 }
+            }
+        }
+
+        public void SpawnPreviewForMarker(MarkerBase marker)
+        {
+            if (marker == null)
+                return;
+            switch (marker.Kind)
+            {
+                case MarkerKind.LooseLoot:
+                    SpawnAtMarker((LooseLootSpawn)marker);
+                    break;
+                case MarkerKind.LootZone:
+                    SpawnAtZoneCenter((LootZone)marker);
+                    break;
+                case MarkerKind.StaticObject:
+                    SpawnStaticPreview((StaticObject)marker);
+                    break;
             }
         }
 

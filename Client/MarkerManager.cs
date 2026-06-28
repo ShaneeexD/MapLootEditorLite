@@ -184,6 +184,39 @@ namespace MapLootEditorLite.Client
             _selected = null;
         }
 
+        public void SetSelection(IEnumerable<MarkerBase> markers)
+        {
+            SelectedIds.Clear();
+            foreach (var m in markers)
+            {
+                if (m != null)
+                    SelectedIds.Add(m.id);
+            }
+            _selected = SelectedIds.Count > 0 ? FindById(SelectedIds[0]) : null;
+        }
+
+        public void AddMarker(MarkerBase marker)
+        {
+            if (Data == null || marker == null)
+                return;
+            switch (marker)
+            {
+                case LooseLootSpawn s:
+                    Data.lootSpawns ??= new List<LooseLootSpawn>();
+                    Data.lootSpawns.Add(s);
+                    break;
+                case LootZone z:
+                    Data.lootZones ??= new List<LootZone>();
+                    Data.lootZones.Add(z);
+                    break;
+                case StaticObject o:
+                    Data.objects ??= new List<StaticObject>();
+                    Data.objects.Add(o);
+                    break;
+            }
+            IsDirty = true;
+        }
+
         public void SelectGroup(string group)
         {
             SelectedIds.Clear();

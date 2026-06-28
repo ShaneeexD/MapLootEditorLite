@@ -20,10 +20,14 @@ namespace MapLootEditorLite.Client
         private Rect _confirmRect = new Rect(0, 0, 300, 120);
         private Vector2 _markerListScrollPos;
         private Vector2 _groupScrollPos;
-        private Rect _resizeStartRect;
-        private Vector2 _resizeStartMouse;
-        private bool _resizeHeld;
-        private ResizeCorner _resizeHeldCorner;
+        private Vector2 _prefabScrollPos;
+        private Vector2 _mainScrollPos;
+        private string _prefabName = "MyPrefab";
+        private string _scatterPrefabPath = "";
+        private int _scatterCount = 10;
+        private float _scatterMinHeight = 0f;
+        private float _scatterMaxHeight = 0f;
+        private bool _scatterSnapToGround = true;
         private string _packName = "MyLootPack";
         private string _searchText = "";
         private string _newGroupName = "";
@@ -52,7 +56,7 @@ namespace MapLootEditorLite.Client
             var prevMatrix = GUI.matrix;
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(scale, scale, 1f));
 
-            _windowRect = GUILayout.Window(12345, _windowRect, DrawWindow, "Map Loot Editor Lite");
+            _windowRect = GUI.Window(12345, _windowRect, DrawWindow, "Map Loot Editor Lite");
             if (_deletePending)
             {
                 _confirmRect.x = Screen.width / 2f / scale - 150;
@@ -121,122 +125,66 @@ namespace MapLootEditorLite.Client
 
         private void DrawWindow(int id)
         {
-            GUILayout.BeginVertical();
+            GUILayout.BeginArea(new Rect(0, 20, _windowRect.width, _windowRect.height - 20));
 
             DrawResizeHandles(top: true);
             GUILayout.Space(4);
+
+            var innerHeight = Mathf.Max(100f, _windowRect.height - 60f);
+            _mainScrollPos = GUILayout.BeginScrollView(_mainScrollPos, GUILayout.Height(innerHeight), GUILayout.Width(_windowRect.width));
+            GUILayout.BeginVertical(GUILayout.Width(_windowRect.width));
             DrawHeader();
             GUILayout.Space(8);
             DrawCreateButtons();
             GUILayout.Space(8);
             DrawUtilityButtons();
             GUILayout.Space(8);
+            DrawPrefabs();
+            GUILayout.Space(8);
             DrawSelectedMarker();
             GUILayout.Space(8);
             DrawSearchGroups();
             GUILayout.Space(8);
             DrawMarkerList();
-            GUILayout.FlexibleSpace();
-            DrawResizeHandles(top: false);
-
             GUILayout.EndVertical();
-            GUI.DragWindow(new Rect(0, 20, 10000, 10000));
-        }
+            GUILayout.EndScrollView();
 
-        private enum ResizeCorner
-        {
-            TopLeft,
-            TopRight,
-            BottomLeft,
-            BottomRight
+            DrawResizeHandles(top: false);
+            GUILayout.EndArea();
+
+            GUI.DragWindow(new Rect(0, 0, 10000, 20));
         }
 
         private void DrawResizeHandles(bool top)
         {
-            GUILayout.BeginHorizontal(GUILayout.Height(16));
+            GUILayout.BeginHorizontal(GUILayout.Height(18));
             if (top)
             {
-                DrawCornerHandle(ResizeCorner.TopLeft);
+                if (GUILayout.Button("H-", GUILayout.Width(28), GUILayout.Height(18)))
+                    AdjustHeight(-20);
                 GUILayout.FlexibleSpace();
-                DrawCornerHandle(ResizeCorner.TopRight);
+                if (GUILayout.Button("H+", GUILayout.Width(28), GUILayout.Height(18)))
+                    AdjustHeight(20);
             }
             else
             {
-                DrawCornerHandle(ResizeCorner.BottomLeft);
+                if (GUILayout.Button("W-", GUILayout.Width(28), GUILayout.Height(18)))
+                    AdjustWidth(-20);
                 GUILayout.FlexibleSpace();
-                DrawCornerHandle(ResizeCorner.BottomRight);
+                if (GUILayout.Button("W+", GUILayout.Width(28), GUILayout.Height(18)))
+                    AdjustWidth(20);
             }
             GUILayout.EndHorizontal();
         }
 
-        private void DrawCornerHandle(ResizeCorner corner)
+        private void AdjustWidth(int delta)
         {
-            var label = corner switch
-            {
-                ResizeCorner.TopLeft => "\u25E4",
-                ResizeCorner.TopRight => "\u25E5",
-                ResizeCorner.BottomLeft => "\u25E3",
-                _ => "\u25E2"
-            };
+            _windowRect.width = Mathf.Max(260, _windowRect.width + delta);
+        }
 
-            if (GUILayout.RepeatButton(label, GUILayout.Width(16), GUILayout.Height(16)))
-            {
-                var ev = Event.current;
-                if (!_resizeHeld)
-                {
-                    _resizeHeld = true;
-                    _resizeHeldCorner = corner;
-                    _resizeStartRect = _windowRect;
-                    _resizeStartMouse = ev.mousePosition;
-                }
-
-                var delta = ev.mousePosition - _resizeStartMouse;
-                var newRect = _resizeStartRect;
-                switch (corner)
-                {
-                    case ResizeCorner.TopLeft:
-                        newRect.x = _resizeStartRect.x + delta.x;
-                        newRect.y = _resizeStartRect.y + delta.y;
-                        newRect.width = _resizeStartRect.width - delta.x;
-                        newRect.height = _resizeStartRect.height - delta.y;
-                        break;
-                    case ResizeCorner.TopRight:
-                        newRect.y = _resizeStartRect.y + delta.y;
-                        newRect.width = _resizeStartRect.width + delta.x;
-                        newRect.height = _resizeStartRect.height - delta.y;
-                        break;
-                    case ResizeCorner.BottomLeft:
-                        newRect.x = _resizeStartRect.x + delta.x;
-                        newRect.width = _resizeStartRect.width - delta.x;
-                        newRect.height = _resizeStartRect.height + delta.y;
-                        break;
-                    case ResizeCorner.BottomRight:
-                        newRect.width = _resizeStartRect.width + delta.x;
-                        newRect.height = _resizeStartRect.height + delta.y;
-                        break;
-                }
-
-                const float minWidth = 260f;
-                const float minHeight = 300f;
-                if (newRect.width < minWidth)
-                {
-                    newRect.width = minWidth;
-                    if (corner == ResizeCorner.TopLeft || corner == ResizeCorner.BottomLeft)
-                        newRect.x = _resizeStartRect.xMax - minWidth;
-                }
-                if (newRect.height < minHeight)
-                {
-                    newRect.height = minHeight;
-                    if (corner == ResizeCorner.TopLeft || corner == ResizeCorner.TopRight)
-                        newRect.y = _resizeStartRect.yMax - minHeight;
-                }
-
-                _windowRect = newRect;
-            }
-            else if (_resizeHeld && _resizeHeldCorner == corner)
-            {
-                _resizeHeld = false;
-            }
+        private void AdjustHeight(int delta)
+        {
+            _windowRect.height = Mathf.Max(300, _windowRect.height + delta);
         }
 
         private void DrawHeader()
@@ -311,6 +259,36 @@ namespace MapLootEditorLite.Client
                     GUIUtility.systemCopyBuffer = MarkerManager.TransformToJson(_manager.Selected.position.ToVector3(), _manager.Selected.rotation.ToVector3());
             }
             GUILayout.EndHorizontal();
+        }
+
+        private void DrawPrefabs()
+        {
+            GUILayout.Label("Prefabs:");
+            GUILayout.BeginHorizontal();
+            _prefabName = GUILayout.TextField(_prefabName, GUILayout.Width(140));
+            GUI.enabled = _manager.Selected != null;
+            if (GUILayout.Button("Save", GUILayout.Width(50)))
+                _controller.SavePrefab(_prefabName, "");
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+
+            var prefabs = PrefabStorage.ListPrefabNames();
+            if (prefabs.Count == 0)
+            {
+                GUILayout.Label("No prefabs saved yet.");
+                return;
+            }
+
+            _prefabScrollPos = GUILayout.BeginScrollView(_prefabScrollPos, GUILayout.Height(80));
+            foreach (var name in prefabs)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(name);
+                if (GUILayout.Button("Place", GUILayout.Width(50)))
+                    _controller.PlacePrefab(name);
+                GUILayout.EndHorizontal();
+            }
+            GUILayout.EndScrollView();
         }
 
         private void DrawSelectedMarker()
@@ -424,6 +402,30 @@ namespace MapLootEditorLite.Client
             }
 
             DrawItems(zone.items, true, (i) => _previews.SpawnAtZoneCenter(zone, i));
+
+            GUILayout.Space(8);
+            GUILayout.Label("Scatter Objects:");
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Prefab", GUILayout.Width(90));
+            _scatterPrefabPath = GUILayout.TextField(_scatterPrefabPath);
+            GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Count", GUILayout.Width(90));
+            _scatterCount = IntField("", _scatterCount);
+            GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Min H", GUILayout.Width(90));
+            _scatterMinHeight = FloatField("", _scatterMinHeight);
+            GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Max H", GUILayout.Width(90));
+            _scatterMaxHeight = FloatField("", _scatterMaxHeight);
+            GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            _scatterSnapToGround = GUILayout.Toggle(_scatterSnapToGround, "Snap to ground");
+            GUILayout.EndHorizontal();
+            if (GUILayout.Button("Scatter"))
+                _controller.ScatterObjectsInZone(zone, _scatterPrefabPath, _scatterCount, _scatterMinHeight, _scatterMaxHeight, _scatterSnapToGround);
         }
 
         private void DrawStaticObject(StaticObject obj)
@@ -682,6 +684,19 @@ namespace MapLootEditorLite.Client
             GUILayout.EndHorizontal();
 
             if (float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var result))
+                return result;
+
+            return value;
+        }
+
+        private int IntField(string label, int value)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(label, GUILayout.Width(18));
+            var text = GUILayout.TextField(value.ToString(CultureInfo.InvariantCulture), GUILayout.Width(60));
+            GUILayout.EndHorizontal();
+
+            if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result))
                 return result;
 
             return value;
