@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { FileJson, Search } from 'lucide-react'
-import { loadBundles, type BundleInfo } from './bundleApi'
+import { FileJson, Search, Filter } from 'lucide-react'
+import { loadBundles, filterBundles, type BundleInfo, type BundleCategory } from './bundleApi'
 
-const MAX_RESULTS = 50
+const MAX_RESULTS = 200
 
 export function BundleBrowser({
   bundles,
@@ -12,6 +12,7 @@ export function BundleBrowser({
   onLoad: (bundles: BundleInfo[]) => void
 }) {
   const [search, setSearch] = useState('')
+  const [category, setCategory] = useState<BundleCategory>('all')
   const fileRef = useRef<HTMLInputElement>(null)
 
   const handleFile = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -27,12 +28,13 @@ export function BundleBrowser({
 
   const filtered = useMemo(() => {
     if (!bundles) return []
-    const q = search.toLowerCase().trim()
-    if (!q) return bundles.slice(0, MAX_RESULTS)
-    return bundles
-      .filter((b) => b.name.toLowerCase().includes(q) || b.path.toLowerCase().includes(q))
-      .slice(0, MAX_RESULTS)
-  }, [bundles, search])
+    return filterBundles(bundles, search, category).slice(0, MAX_RESULTS)
+  }, [bundles, search, category])
+
+  const totalMatching = useMemo(() => {
+    if (!bundles) return 0
+    return filterBundles(bundles, search, category).length
+  }, [bundles, search, category])
 
   return (
     <div className="space-y-4">
@@ -70,9 +72,20 @@ export function BundleBrowser({
               placeholder="Search bundle name or path"
             />
           </div>
+          <div className="flex items-center gap-2">
+            <Filter size={16} className="text-tarkov-text-dim" />
+            <select
+              className="input-field"
+              value={category}
+              onChange={(e) => setCategory(e.target.value as BundleCategory)}
+            >
+              <option value="all">All bundles</option>
+              <option value="environment">Environment props</option>
+            </select>
+          </div>
           <div className="text-xs text-tarkov-text-dim">
-            {search
-              ? `${filtered.length} matches (showing first ${Math.min(filtered.length, MAX_RESULTS)})`
+            {search || category !== 'all'
+              ? `${totalMatching} matches (showing first ${Math.min(filtered.length, MAX_RESULTS)})`
               : `Showing first ${Math.min(filtered.length, MAX_RESULTS)} of ${bundles.length} bundles`}
           </div>
         </div>

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search } from 'lucide-react'
 import { Tooltip } from './Tooltip'
-import { findBundleName, type BundleInfo } from './bundleApi'
+import { findBundleName, filterBundles, type BundleInfo } from './bundleApi'
+
+const MAX_RESULTS = 200
 
 export function BundleSelector({
   value,
@@ -38,11 +40,7 @@ export function BundleSelector({
 
   const filtered = useMemo(() => {
     if (!bundles) return []
-    const q = query.toLowerCase().trim()
-    if (!q) return bundles.slice(0, 50)
-    return bundles
-      .filter((b) => b.name.toLowerCase().includes(q) || b.path.toLowerCase().includes(q))
-      .slice(0, 50)
+    return filterBundles(bundles, query, 'all').slice(0, MAX_RESULTS)
   }, [bundles, query])
 
   return (
@@ -90,8 +88,8 @@ export function BundleSelector({
                   <div className="text-xs text-tarkov-text-dim font-mono truncate">{b.path}</div>
                 </button>
               ))}
-              {filtered.length >= 50 && (
-                <div className="px-3 py-1 text-xs text-tarkov-text-dim border-t border-tarkov-border">Showing first 50 results</div>
+              {filtered.length >= MAX_RESULTS && (
+                <div className="px-3 py-1 text-xs text-tarkov-text-dim border-t border-tarkov-border">Showing first {MAX_RESULTS} results</div>
               )}
             </>
           )}
