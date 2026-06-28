@@ -451,7 +451,17 @@ namespace MapLootEditorLite.Client
 
         private IEnumerator LoadStaticPreviewCoroutine(StaticObject marker)
         {
-            bool spawned = false;
+            if (!string.IsNullOrEmpty(marker.sourceObjectName))
+            {
+                var source = FindSourceObject(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
+                if (source != null)
+                {
+                    SpawnStaticInstance(source, marker, true);
+                    yield break;
+                }
+                Plugin.Log.LogWarning($"Could not find source scene object: {marker.sourceObjectName}");
+                yield break;
+            }
 
             if (!string.IsNullOrEmpty(marker.prefabPath))
             {
@@ -489,7 +499,6 @@ namespace MapLootEditorLite.Client
                     if (prefab != null)
                     {
                         SpawnStaticInstance(prefab, marker, false);
-                        spawned = true;
                     }
                     else
                     {
@@ -503,26 +512,10 @@ namespace MapLootEditorLite.Client
                 {
                     Plugin.Log.LogWarning($"Failed to load static object bundle: {path}");
                 }
+                yield break;
             }
 
-            if (!spawned && !string.IsNullOrEmpty(marker.sourceObjectName))
-            {
-                var source = FindSourceObject(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
-                if (source != null)
-                {
-                    SpawnStaticInstance(source, marker, true);
-                    spawned = true;
-                }
-                else
-                {
-                    Plugin.Log.LogWarning($"Could not find source scene object: {marker.sourceObjectName}");
-                }
-            }
-
-            if (!spawned)
-            {
-                Plugin.Log.LogWarning($"Failed to spawn static object preview for {marker.name}: no bundle or source object resolved.");
-            }
+            Plugin.Log.LogWarning($"Cannot preview static object {marker.name}: no prefab path or source object set.");
         }
 
         private GameObject FindSourceObject(string name, Vector3 position)

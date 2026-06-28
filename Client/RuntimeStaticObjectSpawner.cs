@@ -25,16 +25,18 @@ namespace MapLootEditorLite.Client
         private void Update()
         {
             var world = Singleton<GameWorld>.Instance;
-            if (world == _currentWorld)
-                return;
-
-            _currentWorld = world;
             if (world == null)
             {
-                ClearSpawned();
-                _currentMapId = null;
+                if (_currentWorld != null)
+                {
+                    ClearSpawned();
+                    _currentWorld = null;
+                    _currentMapId = null;
+                }
                 return;
             }
+
+            _currentWorld = world;
 
             var mapId = world.LocationId;
             if (string.IsNullOrEmpty(mapId) && world.MainPlayer != null)
@@ -44,6 +46,7 @@ namespace MapLootEditorLite.Client
             {
                 _currentMapId = mapId;
                 ClearSpawned();
+                Plugin.Log.LogInfo($"[MLEL Runtime] Map detected: {mapId}, spawning static objects");
                 SpawnForMap(mapId);
             }
         }
@@ -112,7 +115,33 @@ namespace MapLootEditorLite.Client
         {
             bool spawned = false;
 
-            if (!string.IsNullOrEmpty(obj.prefabPath))
+            if (!string.IsNullOrEmpty(obj.sourceObjectName))
+            {
+                GameObject source = null;
+                for (int attempt = 0; attempt < 5; attempt++)
+                {
+                    source = FindSourceObject(obj.sourceObjectName, obj.sourceObjectPosition.ToVector3());
+                    if (source != null)
+                        break;
+
+                    if (attempt == 0)
+                        Plugin.Log.LogInfo($"[MLEL Runtime] Source object '{obj.sourceObjectName}' for {obj.name} not ready, waiting...");
+
+                    yield return new WaitForSeconds(1f);
+                }
+
+                if (source != null)
+                {
+                    SpawnObjectInstance(source, obj, isFallback: true);
+                    spawned = true;
+                }
+                else
+                {
+                    Plugin.Log.LogWarning($"[MLEL Runtime] Could not find source scene object '{obj.sourceObjectName}' for {obj.name}");
+                }
+            }
+
+            if (!spawned && !string.IsNullOrEmpty(obj.prefabPath))
             {
                 string path = Path.Combine(Application.streamingAssetsPath, "Windows", obj.prefabPath.TrimStart('/'));
                 Plugin.Log.LogInfo($"[MLEL Runtime] Loading static object bundle: {path}");
@@ -146,7 +175,7 @@ namespace MapLootEditorLite.Client
                     var prefab = assetRequest.allAssets?.OfType<GameObject>().FirstOrDefault();
                     if (prefab != null)
                     {
-                        SpawnObjectInstance(prefab, obj);
+                        SpawnObjectInstance(prefab, obj, isFallback: false);
                         spawned = true;
                     }
                     else
@@ -160,20 +189,6 @@ namespace MapLootEditorLite.Client
                 else
                 {
                     Plugin.Log.LogWarning($"[MLEL Runtime] Failed to load bundle: {path}");
-                }
-            }
-
-            if (!spawned && !string.IsNullOrEmpty(obj.sourceObjectName))
-            {
-                var source = FindSourceObject(obj.sourceObjectName, obj.sourceObjectPosition.ToVector3());
-                if (source != null)
-                {
-                    SpawnObjectInstance(source, obj);
-                    spawned = true;
-                }
-                else
-                {
-                    Plugin.Log.LogWarning($"[MLEL Runtime] Could not find source scene object '{obj.sourceObjectName}' for {obj.name}");
                 }
             }
 
@@ -213,7 +228,7 @@ namespace MapLootEditorLite.Client
             return best;
         }
 
-        private void SpawnObjectInstance(GameObject source, StaticObject obj)
+        private void SpawnObjectInstance(GameObject source, StaticObject obj, bool isFallback)
         {
             var instance = Instantiate(source);
             instance.name = $"StaticObject_{obj.name}";
@@ -221,7 +236,8 @@ namespace MapLootEditorLite.Client
             instance.transform.rotation = obj.rotation.ToQuaternion();
             instance.transform.localScale = obj.scale.ToVector3();
             _spawned.Add(instance);
-            Plugin.Log.LogInfo($"[MLEL Runtime] Spawned static object {obj.name} (source={obj.prefabPath ?? obj.sourceObjectName})");
+            var sourceName = isFallback ? obj.sourceObjectName : obj.prefabPath;
+            Plugin.Log.LogInfo($"[MLEL Runtime] Spawned static object {obj.name} (fallback={isFallback}, source={sourceName})");
         }
 
         private void ClearSpawned()

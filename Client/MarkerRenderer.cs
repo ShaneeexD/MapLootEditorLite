@@ -536,6 +536,8 @@ namespace MapLootEditorLite.Client
                         ring.enabled = true;
                         ring.startColor = color;
                         ring.endColor = color;
+                        if (ring.material != null)
+                            ring.material.color = color;
                         ring.startWidth = isActive ? 0.04f : 0.025f;
                         ring.endWidth = isActive ? 0.04f : 0.025f;
                         DrawGizmoRing(ring, pos, dir, _gizmoSize);
@@ -588,7 +590,7 @@ namespace MapLootEditorLite.Client
                     var go = new GameObject($"MLE_GizmoRing_{axis}");
                     go.transform.SetParent(_gizmoRoot.transform, false);
                     ring = go.AddComponent<LineRenderer>();
-                    ring.material = GetWireMaterial();
+                    ring.material = new Material(GetWireMaterial());
                     ring.useWorldSpace = true;
                     ring.positionCount = _gizmoRingSegments + 1;
                     ring.loop = true;

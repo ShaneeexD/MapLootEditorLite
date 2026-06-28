@@ -265,17 +265,19 @@ namespace MapLootEditorLite.Client
         private void DetectRaid()
         {
             var world = Singleton<GameWorld>.Instance;
-            if (world == _currentGameWorld)
-                return;
-
-            _currentGameWorld = world;
             if (world == null)
             {
-                _previews.ClearAll();
-                _renderer.Clear();
-                _currentMapId = null;
+                if (_currentGameWorld != null)
+                {
+                    _previews.ClearAll();
+                    _renderer.Clear();
+                    _currentMapId = null;
+                }
+                _currentGameWorld = null;
                 return;
             }
+
+            _currentGameWorld = world;
 
             var mapId = world.LocationId;
             if (string.IsNullOrEmpty(mapId) && world.MainPlayer != null)
