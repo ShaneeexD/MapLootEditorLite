@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Comfort.Common;
@@ -25,7 +26,6 @@ namespace MapLootEditorLite.Client
         private KeyCode _toggleKey => Plugin.ToggleKey;
         private GameWorld _currentGameWorld;
         private string _currentMapId;
-        private float _autoSaveTimer;
         private int _lastToggleFrame = -1;
 
         private bool _freeCam;
@@ -146,6 +146,11 @@ namespace MapLootEditorLite.Client
                 Plugin.Log.LogError($"DetectRaid failed: {ex.Message}");
             }
 
+            if (_visualRoot != null)
+                _visualRoot.SetActive(_editorOpen);
+            if (_previewRoot != null)
+                _previewRoot.SetActive(_editorOpen);
+
             if (Input.GetKeyDown(_toggleKey) && _lastToggleFrame != Time.frameCount)
             {
                 _editorOpen = !_editorOpen;
@@ -196,10 +201,17 @@ namespace MapLootEditorLite.Client
                     if (Input.GetMouseButtonDown(2))
                         ToggleFreeCamCursor();
 
+                    bool rightClickPan = Input.GetMouseButton(1) && !IsMouseOverUI();
                     if (_freeCamCursorLocked)
                     {
                         Cursor.visible = false;
                         Cursor.lockState = CursorLockMode.Locked;
+                        UpdateFreeCam();
+                    }
+                    else if (rightClickPan)
+                    {
+                        Cursor.visible = true;
+                        Cursor.lockState = CursorLockMode.None;
                         UpdateFreeCam();
                     }
                     else
@@ -226,14 +238,6 @@ namespace MapLootEditorLite.Client
 
             if (_editorOpen && _manager.Selected != null)
                 _previews.UpdateForMarker(_manager.Selected);
-
-            _autoSaveTimer += Time.deltaTime;
-            if (_autoSaveTimer > 30f)
-            {
-                _autoSaveTimer = 0f;
-                if (_manager.IsDirty)
-                    _manager.Save();
-            }
         }
 
         private void OnGUI()
@@ -258,8 +262,6 @@ namespace MapLootEditorLite.Client
         {
             _previews?.ClearAll();
             _renderer?.Clear();
-            if (_manager?.IsDirty == true)
-                _manager.Save();
         }
 
         private void DetectRaid()
@@ -286,10 +288,76 @@ namespace MapLootEditorLite.Client
             if (!string.IsNullOrEmpty(mapId) && mapId != _currentMapId)
             {
                 _currentMapId = mapId;
-                _manager.LoadMap(mapId);
+                var mapData = LoadMapDataFromPacks(mapId) ?? JsonStorage.Load(mapId);
+                mapData.map = mapId;
+                _manager.SetMapData(mapData);
                 _renderer.Rebuild();
+                _previews.ClearAll();
                 Plugin.Log.LogInfo($"Loaded map: {mapId}");
             }
+        }
+
+        private MapData LoadMapDataFromPacks(string mapId)
+        {
+            var directories = new List<string>();
+            if (!string.IsNullOrEmpty(Plugin.ServerModExportsDirectory) && Directory.Exists(Plugin.ServerModExportsDirectory))
+                directories.Add(Plugin.ServerModExportsDirectory);
+            if (!string.IsNullOrEmpty(Plugin.ServerModPacksDirectory) && Directory.Exists(Plugin.ServerModPacksDirectory))
+                directories.Add(Plugin.ServerModPacksDirectory);
+
+            var preferredName = _ui?.PackName;
+            if (!string.IsNullOrEmpty(preferredName))
+            {
+                var safeName = SanitizePackName(preferredName);
+                if (!string.IsNullOrEmpty(safeName))
+                {
+                    foreach (var dir in directories)
+                    {
+                        var path = Path.Combine(dir, safeName + ".json");
+                        if (File.Exists(path))
+                        {
+                            try
+                            {
+                                var pack = JsonConvert.DeserializeObject<PackData>(File.ReadAllText(path));
+                                if (pack?.maps != null && pack.maps.TryGetValue(mapId, out var map))
+                                {
+                                    Plugin.Log.LogInfo($"Loaded map {mapId} from preferred pack '{safeName}'");
+                                    return map;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Plugin.Log.LogWarning($"Failed to read preferred pack {path}: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+            }
+
+            foreach (var dir in directories)
+            {
+                if (!Directory.Exists(dir))
+                    continue;
+
+                foreach (var file in Directory.GetFiles(dir, "*.json", SearchOption.AllDirectories))
+                {
+                    try
+                    {
+                        var pack = JsonConvert.DeserializeObject<PackData>(File.ReadAllText(file));
+                        if (pack?.maps != null && pack.maps.TryGetValue(mapId, out var map))
+                        {
+                            Plugin.Log.LogInfo($"Loaded map {mapId} from pack {file}");
+                            return map;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Plugin.Log.LogWarning($"Failed to read pack {file}: {ex.Message}");
+                    }
+                }
+            }
+
+            return null;
         }
 
         private void HandleSelectionInput()
@@ -623,6 +691,25 @@ namespace MapLootEditorLite.Client
                 return;
             if (IsMouseOverUI())
                 return;
+            if (_ui?.IsDeletePending == true)
+                return;
+
+            if (_ui?.IsPickingSource == true)
+            {
+                if (Input.GetMouseButtonDown(0))
+                {
+                    var picked = _ui.TryPickSourceSceneObject();
+                    var target = _ui.PickingSourceTarget;
+                    if (picked != null && target != null)
+                    {
+                        target.sourceObjectName = picked.name;
+                        target.sourceObjectPosition = TransformData.FromVector3(picked.transform.position);
+                        _manager.IsDirty = true;
+                    }
+                    _ui.ClearPickingSource();
+                }
+                return;
+            }
 
             var camera = Camera.main;
             if (camera == null)
@@ -661,6 +748,10 @@ namespace MapLootEditorLite.Client
                     {
                         _manager.Selected = picked;
                         _mouseDragging = true;
+                    }
+                    else
+                    {
+                        _manager.Selected = null;
                     }
                 }
             }
@@ -921,15 +1012,6 @@ namespace MapLootEditorLite.Client
                 return;
             }
 
-            var pack = new PackData
-            {
-                name = packName,
-                maps = new System.Collections.Generic.Dictionary<string, MapData>(System.StringComparer.OrdinalIgnoreCase)
-                {
-                    [_currentMapId] = _manager.Data
-                }
-            };
-
             var safeName = SanitizePackName(packName);
             if (string.IsNullOrEmpty(safeName))
             {
@@ -940,6 +1022,34 @@ namespace MapLootEditorLite.Client
             var exportsDir = Plugin.ServerModExportsDirectory;
             Directory.CreateDirectory(exportsDir);
             var path = Path.Combine(exportsDir, safeName + ".json");
+
+            PackData pack = null;
+            if (File.Exists(path))
+            {
+                try
+                {
+                    pack = JsonConvert.DeserializeObject<PackData>(File.ReadAllText(path));
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogWarning($"Failed to read existing pack {path}: {ex.Message}");
+                }
+            }
+
+            if (pack == null)
+            {
+                pack = new PackData
+                {
+                    name = packName,
+                    author = "",
+                    version = "1.0.0",
+                    maps = new System.Collections.Generic.Dictionary<string, MapData>(System.StringComparer.OrdinalIgnoreCase)
+                };
+            }
+
+            pack.name = packName;
+            pack.maps[_currentMapId] = _manager.Data;
+
             File.WriteAllText(path, JsonConvert.SerializeObject(pack, Formatting.Indented));
             Plugin.Log.LogInfo($"Exported pack '{safeName}' to {path}");
         }

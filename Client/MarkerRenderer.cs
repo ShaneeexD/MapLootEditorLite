@@ -24,6 +24,7 @@ namespace MapLootEditorLite.Client
         private readonly Color _gizmoZColor = new Color(0.2f, 0.4f, 1f, 0.9f);
 
         private Material _wireMaterial;
+        private Material _gizmoMaterial;
         private readonly Dictionary<string, ZoneShape> _zoneShapeCache = new Dictionary<string, ZoneShape>();
 
         public GizmoMode GizmoMode { get; set; } = GizmoMode.Translate;
@@ -287,6 +288,19 @@ namespace MapLootEditorLite.Client
             return _wireMaterial;
         }
 
+        private Material GetGizmoMaterial()
+        {
+            if (_gizmoMaterial == null)
+            {
+                var shader = Shader.Find("Hidden/Internal-Colored") ?? Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Color") ?? Shader.Find("Standard");
+                _gizmoMaterial = new Material(shader);
+                _gizmoMaterial.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
+                _gizmoMaterial.SetInt("_ZWrite", 0);
+                _gizmoMaterial.renderQueue = 5000;
+            }
+            return _gizmoMaterial;
+        }
+
         private void DrawWireSphere(LineRenderer lr, float radius)
         {
             const int segments = 48;
@@ -464,8 +478,27 @@ namespace MapLootEditorLite.Client
             foreach (var axis in new[] { GizmoAxis.X, GizmoAxis.Y, GizmoAxis.Z })
             {
                 var dir = GetGizmoAxisDirection(axis, rot);
-                var end = pos + dir * _gizmoSize;
-                var projected = camera.WorldToScreenPoint(end);
+                Vector3 targetPoint;
+
+                if (GizmoMode == GizmoMode.Rotate)
+                {
+                    // In rotation mode handles sit on the ring of the same color.
+                    Vector3 tangent;
+                    switch (axis)
+                    {
+                        case GizmoAxis.X: tangent = GetGizmoAxisDirection(GizmoAxis.Y, rot); break;
+                        case GizmoAxis.Y: tangent = GetGizmoAxisDirection(GizmoAxis.Z, rot); break;
+                        case GizmoAxis.Z: tangent = GetGizmoAxisDirection(GizmoAxis.X, rot); break;
+                        default: tangent = dir; break;
+                    }
+                    targetPoint = pos + tangent * _gizmoSize;
+                }
+                else
+                {
+                    targetPoint = pos + dir * _gizmoSize;
+                }
+
+                var projected = camera.WorldToScreenPoint(targetPoint);
                 if (projected.z <= 0)
                     continue;
 
@@ -502,8 +535,10 @@ namespace MapLootEditorLite.Client
                 var isActive = ActiveAxis == axis || HoveredAxis == axis;
 
                 var line = _gizmoLines[axis];
-                line.startColor = color;
-                line.endColor = color;
+                if (line.material != null)
+                    line.material.color = color;
+                line.startColor = Color.white;
+                line.endColor = Color.white;
                 line.startWidth = isActive ? 0.04f : 0.025f;
                 line.endWidth = isActive ? 0.04f : 0.025f;
 
@@ -520,13 +555,32 @@ namespace MapLootEditorLite.Client
                 }
 
                 var handle = _gizmoHandles[axis];
-                handle.transform.position = end;
+                Vector3 handlePos;
+                if (GizmoMode == GizmoMode.Rotate)
+                {
+                    // Place the handle on the ring of the same color.
+                    Vector3 tangent;
+                    switch (axis)
+                    {
+                        case GizmoAxis.X: tangent = GetGizmoAxisDirection(GizmoAxis.Y, rot); break;
+                        case GizmoAxis.Y: tangent = GetGizmoAxisDirection(GizmoAxis.Z, rot); break;
+                        case GizmoAxis.Z: tangent = GetGizmoAxisDirection(GizmoAxis.X, rot); break;
+                        default: tangent = dir; break;
+                    }
+                    handlePos = pos + tangent * _gizmoSize;
+                }
+                else
+                {
+                    handlePos = end;
+                }
+
+                handle.transform.position = handlePos;
                 handle.transform.rotation = Quaternion.identity;
                 var scale = isActive ? _gizmoHandleSize * 1.5f : _gizmoHandleSize;
                 handle.transform.localScale = Vector3.one * scale;
 
                 var renderer = handle.GetComponent<MeshRenderer>();
-                if (renderer != null)
+                if (renderer != null && renderer.material != null)
                     renderer.material.color = color;
 
                 if (_gizmoRings.TryGetValue(axis, out var ring))
@@ -534,10 +588,10 @@ namespace MapLootEditorLite.Client
                     if (GizmoMode == GizmoMode.Rotate)
                     {
                         ring.enabled = true;
-                        ring.startColor = color;
-                        ring.endColor = color;
                         if (ring.material != null)
                             ring.material.color = color;
+                        ring.startColor = Color.white;
+                        ring.endColor = Color.white;
                         ring.startWidth = isActive ? 0.04f : 0.025f;
                         ring.endWidth = isActive ? 0.04f : 0.025f;
                         DrawGizmoRing(ring, pos, dir, _gizmoSize);
@@ -571,7 +625,7 @@ namespace MapLootEditorLite.Client
                     var go = new GameObject($"MLE_GizmoLine_{axis}");
                     go.transform.SetParent(_gizmoRoot.transform, false);
                     lr = go.AddComponent<LineRenderer>();
-                    lr.material = GetWireMaterial();
+                    lr.material = new Material(GetGizmoMaterial());
                     lr.useWorldSpace = true;
                     lr.positionCount = 2;
                     _gizmoLines[axis] = lr;
@@ -582,6 +636,9 @@ namespace MapLootEditorLite.Client
                     handle = CreateGizmoHandle();
                     handle.name = $"MLE_GizmoHandle_{axis}";
                     handle.transform.SetParent(_gizmoRoot.transform, false);
+                    var renderer = handle.GetComponent<MeshRenderer>();
+                    if (renderer != null)
+                        renderer.material = new Material(GetGizmoMaterial());
                     _gizmoHandles[axis] = handle;
                 }
 
@@ -590,7 +647,7 @@ namespace MapLootEditorLite.Client
                     var go = new GameObject($"MLE_GizmoRing_{axis}");
                     go.transform.SetParent(_gizmoRoot.transform, false);
                     ring = go.AddComponent<LineRenderer>();
-                    ring.material = new Material(GetWireMaterial());
+                    ring.material = new Material(GetGizmoMaterial());
                     ring.useWorldSpace = true;
                     ring.positionCount = _gizmoRingSegments + 1;
                     ring.loop = true;

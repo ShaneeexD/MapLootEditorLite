@@ -27,6 +27,9 @@ namespace MapLootEditorLite.Client
         private readonly Dictionary<string, string> _itemNameCache = new Dictionary<string, string>();
 
         public Rect WindowRect => _windowRect;
+        public string PackName => _packName;
+        public bool IsPickingSource => _pickingSource;
+        public bool IsDeletePending => _deletePending;
 
         public EditorUI(MapEditorController controller, MarkerManager manager, MarkerRenderer renderer, LootPreviewSpawner previews)
         {
@@ -45,23 +48,34 @@ namespace MapLootEditorLite.Client
                 _confirmRect.y = Screen.height / 2f - 60;
                 _confirmRect = GUILayout.Window(12346, _confirmRect, DrawConfirmDelete, "Confirm Delete");
             }
+        }
 
-            if (_pickingSource && Event.current.type == EventType.MouseDown && Event.current.button == 0)
+        public StaticObject PickingSourceTarget => _pickingSourceTarget;
+
+        public void ClearPickingSource()
+        {
+            _pickingSource = false;
+            _pickingSourceTarget = null;
+        }
+
+        public GameObject TryPickSourceSceneObject()
+        {
+            var cam = Camera.main;
+            if (cam == null)
+                return null;
+
+            var ray = cam.ScreenPointToRay(Input.mousePosition);
+            if (Physics.Raycast(ray, out var hit, 100f))
             {
-                if (!_windowRect.Contains(Event.current.mousePosition))
-                {
-                    var picked = PickSceneObjectAtMouse();
-                    if (picked != null && _pickingSourceTarget != null)
-                    {
-                        _pickingSourceTarget.sourceObjectName = picked.name;
-                        _pickingSourceTarget.sourceObjectPosition = TransformData.FromVector3(picked.transform.position);
-                        _manager.IsDirty = true;
-                    }
-                    _pickingSource = false;
-                    _pickingSourceTarget = null;
-                    Event.current.Use();
-                }
+                var picked = hit.transform.gameObject;
+                if (_pickUseParent && picked.transform.parent != null)
+                    picked = picked.transform.parent.gameObject;
+                Plugin.Log.LogInfo($"Picked scene object: {picked.name} at {picked.transform.position}");
+                return picked;
             }
+
+            Plugin.Log.LogWarning("Scene picker raycast did not hit anything.");
+            return null;
         }
 
         public void RequestDelete()
@@ -108,11 +122,6 @@ namespace MapLootEditorLite.Client
             GUILayout.Label($"Map: {_manager.Data?.map ?? "none"} | Markers: {_manager.GetAllMarkers().Count()}");
             GUILayout.Label("F8 = Toggle | MMB = Cursor | 1=T 2=R 3=S | E = Select | Arrows = Move | WASD = Cam | Space/Ctrl = Up/Down | Shift = Fast");
             GUILayout.Label("Ctrl+C = Copy | Ctrl+V = Paste | Ctrl+Z = Undo | Ctrl+Y = Redo | Delete = Delete selected");
-
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Save"))
-                _controller.Save();
-            GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
             GUILayout.Label("Pack:", GUILayout.Width(40));
