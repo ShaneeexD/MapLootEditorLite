@@ -144,6 +144,12 @@ public record StaticObject
 
     [JsonPropertyName("prefabPath")]
     public string PrefabPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("sourceObjectName")]
+    public string SourceObjectName { get; set; } = string.Empty;
+
+    [JsonPropertyName("sourceObjectPosition")]
+    public TransformData SourceObjectPosition { get; set; } = new();
 }
 
 public record TransformData

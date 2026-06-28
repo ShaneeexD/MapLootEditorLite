@@ -433,9 +433,15 @@ namespace MapLootEditorLite.Client
 
         public void SpawnStaticPreview(StaticObject marker)
         {
-            if (marker == null || string.IsNullOrEmpty(marker.prefabPath))
+            if (marker == null)
             {
-                Plugin.Log.LogWarning("Cannot preview static object: no prefab path set.");
+                Plugin.Log.LogWarning("Cannot preview static object: marker is null.");
+                return;
+            }
+
+            if (string.IsNullOrEmpty(marker.prefabPath) && string.IsNullOrEmpty(marker.sourceObjectName))
+            {
+                Plugin.Log.LogWarning("Cannot preview static object: no prefab path or source object set.");
                 return;
             }
 
@@ -445,49 +451,114 @@ namespace MapLootEditorLite.Client
 
         private IEnumerator LoadStaticPreviewCoroutine(StaticObject marker)
         {
-            string path = Path.Combine(Application.streamingAssetsPath, "Windows", marker.prefabPath.TrimStart('/'));
-            Plugin.Log.LogInfo($"Loading static object bundle: {path}");
+            bool spawned = false;
 
-            AssetBundle bundle = null;
-            bool bundleOwned = false;
-            string fileName = Path.GetFileName(path);
-            foreach (var b in AssetBundle.GetAllLoadedAssetBundles())
+            if (!string.IsNullOrEmpty(marker.prefabPath))
             {
-                if (b.name == fileName || b.name == marker.prefabPath)
+                string path = Path.Combine(Application.streamingAssetsPath, "Windows", marker.prefabPath.TrimStart('/'));
+                Plugin.Log.LogInfo($"Loading static object bundle: {path}");
+
+                AssetBundle bundle = null;
+                bool bundleOwned = false;
+                string fileName = Path.GetFileName(path);
+                foreach (var b in AssetBundle.GetAllLoadedAssetBundles())
                 {
-                    bundle = b;
-                    Plugin.Log.LogInfo($"Using already loaded bundle: {b.name}");
-                    break;
+                    if (b.name == fileName || b.name == marker.prefabPath)
+                    {
+                        bundle = b;
+                        Plugin.Log.LogInfo($"Using already loaded bundle: {b.name}");
+                        break;
+                    }
                 }
-            }
 
-            if (bundle == null)
-            {
-                var request = AssetBundle.LoadFromFileAsync(path);
-                yield return request;
-
-                bundle = request.assetBundle;
-                bundleOwned = true;
                 if (bundle == null)
                 {
+                    var request = AssetBundle.LoadFromFileAsync(path);
+                    yield return request;
+
+                    bundle = request.assetBundle;
+                    bundleOwned = true;
+                }
+
+                if (bundle != null)
+                {
+                    var assetRequest = bundle.LoadAllAssetsAsync<GameObject>();
+                    yield return assetRequest;
+
+                    var prefab = assetRequest.allAssets?.OfType<GameObject>().FirstOrDefault();
+                    if (prefab != null)
+                    {
+                        SpawnStaticInstance(prefab, marker, false);
+                        spawned = true;
+                    }
+                    else
+                    {
+                        Plugin.Log.LogWarning($"No GameObject asset found in bundle: {path}");
+                    }
+
+                    if (bundleOwned)
+                        bundle.Unload(false);
+                }
+                else
+                {
                     Plugin.Log.LogWarning($"Failed to load static object bundle: {path}");
-                    yield break;
                 }
             }
 
-            var assetRequest = bundle.LoadAllAssetsAsync<GameObject>();
-            yield return assetRequest;
-
-            var prefab = assetRequest.allAssets?.OfType<GameObject>().FirstOrDefault();
-            if (prefab == null)
+            if (!spawned && !string.IsNullOrEmpty(marker.sourceObjectName))
             {
-                Plugin.Log.LogWarning($"No GameObject asset found in bundle: {path}");
-                if (bundleOwned)
-                    bundle.Unload(true);
-                yield break;
+                var source = FindSourceObject(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
+                if (source != null)
+                {
+                    SpawnStaticInstance(source, marker, true);
+                    spawned = true;
+                }
+                else
+                {
+                    Plugin.Log.LogWarning($"Could not find source scene object: {marker.sourceObjectName}");
+                }
             }
 
-            var instance = UnityEngine.Object.Instantiate(prefab);
+            if (!spawned)
+            {
+                Plugin.Log.LogWarning($"Failed to spawn static object preview for {marker.name}: no bundle or source object resolved.");
+            }
+        }
+
+        private GameObject FindSourceObject(string name, Vector3 position)
+        {
+            GameObject best = null;
+            float bestDist = float.MaxValue;
+            var sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
+
+            for (int i = 0; i < sceneCount; i++)
+            {
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
+                if (!scene.isLoaded)
+                    continue;
+
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    if (root == _root) continue;
+                    foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                    {
+                        if (t.name != name) continue;
+                        var dist = (t.position - position).sqrMagnitude;
+                        if (dist < bestDist)
+                        {
+                            bestDist = dist;
+                            best = t.gameObject;
+                        }
+                    }
+                }
+            }
+
+            return best;
+        }
+
+        private void SpawnStaticInstance(GameObject source, StaticObject marker, bool isFallback)
+        {
+            var instance = UnityEngine.Object.Instantiate(source);
             instance.name = $"StaticPreview_{marker.name}";
             instance.transform.SetParent(_root.transform, false);
             instance.transform.position = marker.position.ToVector3();
@@ -497,12 +568,10 @@ namespace MapLootEditorLite.Client
             var meta = instance.AddComponent<PreviewStaticObjectMarker>();
             meta.sourceMarkerId = marker.id;
             meta.prefabPath = marker.prefabPath;
+            meta.isFallback = isFallback;
 
             _staticPreviews.Add(instance);
-            Plugin.Log.LogInfo($"Spawned static object preview for {marker.name} from {path}");
-
-            if (bundleOwned)
-                bundle.Unload(false);
+            Plugin.Log.LogInfo($"Spawned static object preview for {marker.name} (fallback={isFallback})");
         }
 
         private void DestroyPreview(GameObject preview)
@@ -536,6 +605,7 @@ namespace MapLootEditorLite.Client
     {
         public string sourceMarkerId;
         public string prefabPath;
+        public bool isFallback;
     }
 
     public class CoroutineRunner : MonoBehaviour

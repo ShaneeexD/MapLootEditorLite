@@ -58,6 +58,8 @@ export interface StaticObject {
   rotation: TransformData
   scale: TransformData
   prefabPath: string
+  sourceObjectName?: string
+  sourceObjectPosition?: TransformData
 }
 
 export interface MapData {

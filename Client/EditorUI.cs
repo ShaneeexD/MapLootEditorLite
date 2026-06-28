@@ -21,6 +21,9 @@ namespace MapLootEditorLite.Client
         private Vector2 _scrollPos;
         private string _packName = "MyLootPack";
         private bool _deletePending;
+        private bool _pickingSource;
+        private StaticObject _pickingSourceTarget;
+        private bool _pickUseParent;
         private readonly Dictionary<string, string> _itemNameCache = new Dictionary<string, string>();
 
         public Rect WindowRect => _windowRect;
@@ -41,6 +44,23 @@ namespace MapLootEditorLite.Client
                 _confirmRect.x = Screen.width / 2f - 150;
                 _confirmRect.y = Screen.height / 2f - 60;
                 _confirmRect = GUILayout.Window(12346, _confirmRect, DrawConfirmDelete, "Confirm Delete");
+            }
+
+            if (_pickingSource && Event.current.type == EventType.MouseDown && Event.current.button == 0)
+            {
+                if (!_windowRect.Contains(Event.current.mousePosition))
+                {
+                    var picked = PickSceneObjectAtMouse();
+                    if (picked != null && _pickingSourceTarget != null)
+                    {
+                        _pickingSourceTarget.sourceObjectName = picked.name;
+                        _pickingSourceTarget.sourceObjectPosition = TransformData.FromVector3(picked.transform.position);
+                        _manager.IsDirty = true;
+                    }
+                    _pickingSource = false;
+                    _pickingSourceTarget = null;
+                    Event.current.Use();
+                }
             }
         }
 
@@ -269,8 +289,65 @@ namespace MapLootEditorLite.Client
                 _manager.IsDirty = true;
             }
 
+            GUILayout.BeginHorizontal();
+            if (_pickingSource && _pickingSourceTarget == obj)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("Click an object in the world...", GUILayout.ExpandWidth(true));
+                _pickUseParent = GUILayout.Toggle(_pickUseParent, "Parent object");
+                if (GUILayout.Button("Cancel", GUILayout.Width(60)))
+                {
+                    _pickingSource = false;
+                    _pickingSourceTarget = null;
+                }
+                GUILayout.EndHorizontal();
+            }
+            else
+            {
+                if (GUILayout.Button("Pick from Scene"))
+                {
+                    _pickingSource = true;
+                    _pickingSourceTarget = obj;
+                }
+            }
+            if (!string.IsNullOrEmpty(obj.sourceObjectName) && GUILayout.Button("Clear Source", GUILayout.Width(90)))
+            {
+                obj.sourceObjectName = "";
+                obj.sourceObjectPosition = new TransformData();
+                _manager.IsDirty = true;
+            }
+            GUILayout.EndHorizontal();
+
+            if (!string.IsNullOrEmpty(obj.sourceObjectName))
+            {
+                GUILayout.Label($"Source: {obj.sourceObjectName} @ {obj.sourceObjectPosition.x:F2}, {obj.sourceObjectPosition.y:F2}, {obj.sourceObjectPosition.z:F2}");
+            }
+
             if (GUILayout.Button("Preview Object"))
                 _previews.SpawnStaticPreview(obj);
+        }
+
+        private GameObject PickSceneObjectAtMouse()
+        {
+            var cam = Camera.main;
+            if (cam == null)
+            {
+                Plugin.Log.LogWarning("No main camera found for scene picking.");
+                return null;
+            }
+
+            var ray = cam.ScreenPointToRay(Input.mousePosition);
+            if (Physics.Raycast(ray, out var hit, 100f))
+            {
+                var picked = hit.transform.gameObject;
+                if (_pickUseParent && picked.transform.parent != null)
+                    picked = picked.transform.parent.gameObject;
+                Plugin.Log.LogInfo($"Picked scene object: {picked.name} at {picked.transform.position}");
+                return picked;
+            }
+
+            Plugin.Log.LogWarning("Scene picker raycast did not hit anything.");
+            return null;
         }
 
         private void DrawItems(List<LootItem> items, bool showRotation = false, System.Action<int> onPreview = null)

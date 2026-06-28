@@ -823,6 +823,8 @@ function ObjectList({
     rotation: defaultTransform(),
     scale: { x: 1, y: 1, z: 1 },
     prefabPath: '',
+    sourceObjectName: '',
+    sourceObjectPosition: defaultTransform(),
   })
 
   const add = () => {
@@ -848,6 +850,18 @@ function ObjectList({
               tooltip="Path to the Unity prefab asset to spawn."
             />
           </div>
+          <TextField
+            label="Source Object Name"
+            value={form.sourceObjectName || ''}
+            onChange={(v) => setForm((f) => ({ ...f, sourceObjectName: v }))}
+            tooltip="Fallback: name of an existing vanilla scene object to copy."
+          />
+          <TransformField
+            label="Source Object Position"
+            value={form.sourceObjectPosition ?? defaultTransform()}
+            onChange={(v) => setForm((f) => ({ ...f, sourceObjectPosition: v }))}
+            tooltip="Original position of the source object used to find it."
+          />
           <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} tooltip="World-space position of the object." />
           <TransformField label="Rotation" value={form.rotation} onChange={(v) => setForm((f) => ({ ...f, rotation: v }))} tooltip="World-space rotation of the object." />
           <TransformField label="Scale" value={form.scale} onChange={(v) => setForm((f) => ({ ...f, scale: v }))} tooltip="World-space scale of the object." />
@@ -873,6 +887,18 @@ function ObjectList({
                   tooltip="Path to the Unity prefab asset to spawn."
                 />
               </div>
+              <TextField
+                label="Source Object Name"
+                value={obj.sourceObjectName || ''}
+                onChange={(v) => update(i, { sourceObjectName: v })}
+                tooltip="Fallback: name of an existing vanilla scene object to copy."
+              />
+              <TransformField
+                label="Source Object Position"
+                value={obj.sourceObjectPosition ?? defaultTransform()}
+                onChange={(v) => update(i, { sourceObjectPosition: v })}
+                tooltip="Original position of the source object used to find it."
+              />
               <TransformField label="Position" value={obj.position} onChange={(v) => update(i, { position: v })} tooltip="World-space position of the object." />
               <TransformField label="Rotation" value={obj.rotation} onChange={(v) => update(i, { rotation: v })} tooltip="World-space rotation of the object." />
               <TransformField label="Scale" value={obj.scale} onChange={(v) => update(i, { scale: v })} tooltip="World-space scale of the object." />

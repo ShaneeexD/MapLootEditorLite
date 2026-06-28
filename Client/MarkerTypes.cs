@@ -108,6 +108,10 @@ namespace MapLootEditorLite.Client
         public string prefabPath = "";
         public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
 
+        // Fallback: copy an existing vanilla scene object instead of loading a bundle.
+        public string sourceObjectName = "";
+        public TransformData sourceObjectPosition = new TransformData();
+
         public override MarkerKind Kind => MarkerKind.StaticObject;
     }
 }
