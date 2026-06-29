@@ -39,8 +39,8 @@ namespace MapLootEditorLite.Client
         private InputField _searchInput;
         private InputField _groupInput;
         private InputField _prefabNameInput;
-        private InputField _scatterPrefabInput;
         private InputField _scatterCountInput;
+        private RectTransform _scatterPickRow;
         private InputField _scatterMinHeightInput;
         private InputField _scatterMaxHeightInput;
         private Toggle _scatterSnapToggle;
@@ -57,6 +57,7 @@ namespace MapLootEditorLite.Client
         private bool _isPickingSource;
         private StaticObject _pickingSourceTarget;
         private bool _pickUseParent;
+        private bool _isPickingScatter;
         private string _prefabName = "MyPrefab";
         private string _scatterPrefabPath = "";
         private int _scatterCount = 10;
@@ -107,6 +108,7 @@ namespace MapLootEditorLite.Client
         }
 
         public bool IsPickingSource => _isPickingSource;
+        public bool IsPickingScatter => _isPickingScatter;
         public bool IsDeletePending => _isDeletePending;
         public bool IsDeleteConfirmed => _isDeleteConfirmed;
         public bool IsVisible => _isVisible;
@@ -274,11 +276,11 @@ namespace MapLootEditorLite.Client
             UIBuilder.AddLayoutElement(row1, null, 28, null, 28, null, 0);
 
             _titleText = UIBuilder.CreateText(row1, "Map Loot Editor Lite", 12, Color.white, FontStyle.Bold);
-            UIBuilder.AddLayoutElement(_titleText.gameObject, null, 22, 148, 22, null, null);
+            _titleText.rectTransform.sizeDelta = new Vector2(300, 22);
             // Small gap between title and buttons
             var sep = UIBuilder.CreatePanel("TitleSep", row1, new Color(0, 0, 0, 0));
             sep.GetComponent<Image>().raycastTarget = false;
-            UIBuilder.AddLayoutElement(sep, 18, 22, 18, 22, 0, 0);
+            sep.sizeDelta = new Vector2(6, 22);
             UIBuilder.CreateButton(row1, "Loot Spawn",   () => controller.CreateLootSpawn(),  82, 22);
             UIBuilder.CreateButton(row1, "Loot Zone",    () => controller.CreateLootZone(),   72, 22);
             UIBuilder.CreateButton(row1, "Static Object",() => controller.CreateStaticObject(),92, 22);
@@ -299,12 +301,15 @@ namespace MapLootEditorLite.Client
             UIBuilder.CreateLabel(row1, "Search", 11, 38, 22);
             _searchInput = UIBuilder.CreateInputField(row1, "Search", _searchText, (v) => { _searchText = v; _hierarchyRefreshPending = true; }, 86, 22);
 
-            // Row 2 – keybind hints
+            // Row 2 – keybind hints (fill-anchored, centred)
             var row2 = UIBuilder.CreatePanel("TopRow2", _topPanel, new Color(0.06f, 0.06f, 0.06f, 1f));
-            UIBuilder.AddHorizontalLayout(row2, 6, 0, false, false);
             UIBuilder.AddLayoutElement(row2, null, 22, null, 22, null, 0);
-            var hints = UIBuilder.CreateLabel(row2, "[Del] Delete  |  [Ctrl+Z] Undo  |  [Ctrl+Y] Redo  |  [Ctrl+C] Copy  |  [Ctrl+V] Paste  |  [1] Move  |  [2] Rotate  |  [3] Scale  |  [F] Focus  |  [MMB] Toggle Cursor", 10, 0, 20);
-            hints.color = new Color(0.6f, 0.6f, 0.6f, 1f);
+            var hints = UIBuilder.CreateText(row2, "[Del] Delete  |  [Ctrl+Z] Undo  |  [Ctrl+Y] Redo  |  [Ctrl+C] Copy  |  [Ctrl+V] Paste  |  [1] Move  |  [2] Rotate  |  [3] Scale  |  [F] Focus  |  [MMB] Toggle Cursor", 10, new Color(0.6f, 0.6f, 0.6f, 1f));
+            hints.alignment = TextAnchor.MiddleCenter;
+            hints.rectTransform.anchorMin = Vector2.zero;
+            hints.rectTransform.anchorMax = Vector2.one;
+            hints.rectTransform.offsetMin = Vector2.zero;
+            hints.rectTransform.offsetMax = Vector2.zero;
         }
 
         private void BuildHierarchyPanel()
@@ -487,7 +492,7 @@ namespace MapLootEditorLite.Client
             UIBuilder.CreateText(rightCol, "Saved Prefabs (click to place)", 11, new Color(0.6f, 0.6f, 0.6f, 1f));
             var prefabsScroll = UIBuilder.CreateScrollView(rightCol, out _prefabsContent, out _, 0, 0, 14);
             UIBuilder.AddLayoutElement(prefabsScroll.gameObject, null, null, null, null, null, 1);
-            UIBuilder.AddVerticalLayout(_prefabsContent, 2, 2, true, false);
+            UIBuilder.AddVerticalLayout(_prefabsContent, 2, 2, true, true);
         }
 
         private void BuildScatterTab(RectTransform parent)
@@ -500,11 +505,18 @@ namespace MapLootEditorLite.Client
             UIBuilder.AddVerticalLayout(_scatterTab, 4, 4, true, true);
 
             UIBuilder.CreateText(_scatterTab, "Scatter (select LootZone)", 12, Color.white, FontStyle.Bold);
-            var row = UIBuilder.CreatePanel("ScatterInputRow", _scatterTab, new Color(0, 0, 0, 0));
+
+            // Dynamic pick-from-scene row
+            _scatterPickRow = UIBuilder.CreatePanel("ScatterPickRow", _scatterTab, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(_scatterPickRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(_scatterPickRow, null, 22, null, 22, null, 0);
+            RefreshScatterPickRow();
+
+            var row = UIBuilder.CreatePanel("ScatterCountRow", _scatterTab, new Color(0, 0, 0, 0));
             UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
             UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
-            _scatterPrefabInput = UIBuilder.CreateInputField(row, "Prefab path", _scatterPrefabPath, (v) => _scatterPrefabPath = v, 140, 22);
-            _scatterCountInput = UIBuilder.CreateInputField(row, "Count", _scatterCount.ToString(), (v) => int.TryParse(v, out _scatterCount), 60, 22);
+            UIBuilder.CreateLabel(row, "Count", 11, 40, 22);
+            _scatterCountInput = UIBuilder.CreateInputField(row, "Count", _scatterCount.ToString(), (v) => int.TryParse(v, out _scatterCount), 50, 22);
 
             var row2 = UIBuilder.CreatePanel("ScatterHeightRow", _scatterTab, new Color(0, 0, 0, 0));
             UIBuilder.AddHorizontalLayout(row2, 2, 2, false, false);
@@ -870,7 +882,7 @@ namespace MapLootEditorLite.Client
                 UIBuilder.CreateButton(row, "Ren", () =>
                 {
                     var renRow = UIBuilder.CreatePanel("RenameRow", _prefabsContent, new Color(0.2f, 0.2f, 0.2f, 1f));
-                    UIBuilder.AddHorizontalLayout(renRow, 2, 2, false, false);
+                    UIBuilder.AddHorizontalLayout(renRow, 2, 2, true, true);
                     UIBuilder.AddLayoutElement(renRow, null, 22, null, 22, null, 0);
                     renRow.transform.SetSiblingIndex(row.transform.GetSiblingIndex() + 1);
                     var input = UIBuilder.CreateInputField(renRow, "New name", capturedName, null, 0, 20);
@@ -881,8 +893,7 @@ namespace MapLootEditorLite.Client
                         if (!string.IsNullOrEmpty(newName) && newName != capturedName)
                         {
                             var data = PrefabStorage.Load(capturedName);
-                            if (data != null) { data.name = newName; PrefabStorage.Save(data); }
-                            System.IO.File.Delete(PrefabStorage.PrefabPath(capturedName));
+                            if (data != null) { data.name = newName; PrefabStorage.Save(data); System.IO.File.Delete(PrefabStorage.PrefabPath(capturedName)); }
                         }
                         RequestRefresh();
                     }, 36, 20);
@@ -1071,6 +1082,37 @@ namespace MapLootEditorLite.Client
             _isPickingSource = false;
             _pickingSourceTarget = null;
             RefreshInspector();
+        }
+
+        public void OnScatterObjectPicked(string objectName)
+        {
+            _scatterPrefabPath = objectName;
+            _isPickingScatter = false;
+            RefreshScatterPickRow();
+        }
+
+        public void ClearPickingScatter()
+        {
+            _isPickingScatter = false;
+            RefreshScatterPickRow();
+        }
+
+        private void RefreshScatterPickRow()
+        {
+            if (_scatterPickRow == null) return;
+            ClearChildren(_scatterPickRow);
+            if (_isPickingScatter)
+            {
+                UIBuilder.CreateLabel(_scatterPickRow, "Click object in world...", 11, 136, 22);
+                UIBuilder.CreateButton(_scatterPickRow, "Cancel", () => { _isPickingScatter = false; RefreshScatterPickRow(); }, 54, 22);
+            }
+            else
+            {
+                UIBuilder.CreateButton(_scatterPickRow, "Pick from Scene", () => { _isPickingScatter = true; RefreshScatterPickRow(); }, 100, 22);
+                UIBuilder.CreateToggle(_scatterPickRow, "Use Parent", _pickUseParent, (v) => _pickUseParent = v, 18);
+                if (!string.IsNullOrEmpty(_scatterPrefabPath))
+                    UIBuilder.CreateText(_scatterPickRow, $"  {_scatterPrefabPath}", 10, new Color(0.5f, 0.85f, 0.5f, 1f));
+            }
         }
 
         public GameObject TryPickSourceSceneObject() => PickSceneObjectAtMouse();

@@ -734,6 +734,19 @@ namespace MapLootEditorLite.Client
                 return;
             }
 
+            if (_ui?.IsPickingScatter == true)
+            {
+                if (Input.GetMouseButtonDown(0))
+                {
+                    var picked = _ui.TryPickSourceSceneObject();
+                    if (picked != null)
+                        _ui.OnScatterObjectPicked(picked.name);
+                    else
+                        _ui.ClearPickingScatter();
+                }
+                return;
+            }
+
             var camera = Camera.main;
             if (camera == null)
                 return;
@@ -1173,6 +1186,8 @@ namespace MapLootEditorLite.Client
             }
 
             _manager.SetSelection(created);
+            if (created.Count > 0)
+                _manager.SetGroupOnSelection(name);
             _renderer.Rebuild();
             _manager.IsDirty = true;
             Plugin.Log.LogInfo($"Placed prefab '{name}' with {created.Count} markers.");
