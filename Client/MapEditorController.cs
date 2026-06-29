@@ -549,7 +549,7 @@ namespace MapLootEditorLite.Client
         {
             if (!EnsureMapLoaded() || go == null) return;
             _manager.Snapshot();
-            var marker = _manager.CreateStaticObject(GetLookPosition(), GetPlayerRotation());
+            var marker = _manager.CreateStaticObject(GetLookPosition(), go.transform.rotation.eulerAngles);
             marker.name = go.name;
             marker.sourceObjectName = go.name;
             marker.sourceObjectPosition = TransformData.FromVector3(go.transform.position);
@@ -749,6 +749,7 @@ namespace MapLootEditorLite.Client
                     {
                         target.sourceObjectName = picked.name;
                         target.sourceObjectPosition = TransformData.FromVector3(picked.transform.position);
+                        target.rotation = TransformData.FromVector3(picked.transform.rotation.eulerAngles);
                         _manager.IsDirty = true;
                     }
                     _ui.ClearPickingSource();

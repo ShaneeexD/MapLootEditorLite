@@ -28,6 +28,7 @@ namespace MapLootEditorLite.Client
         private RectTransform _inspectorPanel;
         private RectTransform _bottomPanel;
         private RectTransform _deleteConfirmPanel;
+        private RectTransform _exportDialogPanel;
 
         private RectTransform _hierarchyContent;
         private RectTransform _inspectorContent;
@@ -36,7 +37,7 @@ namespace MapLootEditorLite.Client
 
         private Text _titleText;
         private Text _deleteConfirmText;
-        private InputField _packNameInput;
+        private InputField _exportPackInput;
         private InputField _searchInput;
         private InputField _groupInput;
         private InputField _prefabNameInput;
@@ -208,6 +209,7 @@ namespace MapLootEditorLite.Client
         public void Hide()
         {
             _isVisible = false;
+            CloseAllMenus();
             if (_canvas != null)
                 _canvas.SetActive(false);
             if (_deleteConfirmPanel != null)
@@ -265,6 +267,7 @@ namespace MapLootEditorLite.Client
             BuildInspectorPanel();
             BuildBottomPanel();
             BuildDeleteConfirm();
+            BuildExportDialog();
             BuildResizeHandles();
 
             if (manager != null && controller != null)
@@ -294,9 +297,25 @@ namespace MapLootEditorLite.Client
             var sep = UIBuilder.CreatePanel("TitleSep", row1, new Color(0, 0, 0, 0));
             sep.GetComponent<Image>().raycastTarget = false;
             sep.sizeDelta = new Vector2(6, 22);
-            UIBuilder.CreateButton(row1, "Loot Spawn",   () => controller.CreateLootSpawn(),  82, 22);
-            UIBuilder.CreateButton(row1, "Loot Zone",    () => controller.CreateLootZone(),   72, 22);
-            UIBuilder.CreateButton(row1, "Static Object",() => controller.CreateStaticObject(),92, 22);
+            BuildMenuButton(row1, "File", new List<MenuItem>
+            {
+                new MenuItem("Export", () => DirectExport()),
+                new MenuItem("Export As", () => ShowExportDialog())
+            }, 40, 22);
+            BuildMenuButton(row1, "Add Spawn", new List<MenuItem>
+            {
+                new MenuItem("Common", subItems: new List<MenuItem>
+                {
+                    new MenuItem("Loot Spawn", () => controller.CreateLootSpawn()),
+                    new MenuItem("Loot Zone", () => controller.CreateLootZone()),
+                    new MenuItem("Static Object", () => controller.CreateStaticObject())
+                }),
+                new MenuItem("WTT", subItems: new List<MenuItem>
+                {
+                    new MenuItem("WTT Quest Area", () => { Plugin.Log.LogInfo("WTT Quest Area selected (placeholder)"); }),
+                    new MenuItem("WTT Static Object", () => { Plugin.Log.LogInfo("WTT Static Object selected (placeholder)"); })
+                })
+            }, 84, 22);
             UIBuilder.CreateButton(row1, "Snap",         () => controller.SnapSelected(),     46, 22);
             UIBuilder.CreateButton(row1, "Duplicate",    () => controller.DuplicateSelected(),68, 22);
             UIBuilder.CreateButton(row1, "Delete",       () => RequestDelete(),               54, 22);
@@ -308,9 +327,6 @@ namespace MapLootEditorLite.Client
             _gizmoButtons.Add(_translateButton);
             _gizmoButtons.Add(_rotateButton);
             _gizmoButtons.Add(_scaleButton);
-            UIBuilder.CreateLabel(row1, "Pack", 11, 28, 22);
-            _packNameInput = UIBuilder.CreateInputField(row1, "Pack", _packName, (v) => _packName = v, 86, 22);
-            UIBuilder.CreateButton(row1, "Export", () => controller.ExportPack(_packName), 50, 22);
             UIBuilder.CreateLabel(row1, "Search", 11, 38, 22);
             _searchInput = UIBuilder.CreateInputField(row1, "Search", _searchText, (v) => { _searchText = v; _hierarchyRefreshPending = true; }, 86, 22);
 
@@ -817,6 +833,59 @@ namespace MapLootEditorLite.Client
             UIBuilder.CreateButton(row, "Cancel", () => CancelDelete(), 100, 28);
 
             _deleteConfirmPanel.gameObject.SetActive(false);
+        }
+
+        private void BuildExportDialog()
+        {
+            _exportDialogPanel = UIBuilder.CreatePanel("ExportDialog", _canvas.transform, new Color(0.08f, 0.08f, 0.08f, 0.95f));
+            _exportDialogPanel.anchorMin = new Vector2(0.5f, 0.5f);
+            _exportDialogPanel.anchorMax = new Vector2(0.5f, 0.5f);
+            _exportDialogPanel.pivot = new Vector2(0.5f, 0.5f);
+            _exportDialogPanel.sizeDelta = new Vector2(340, 140);
+            UIBuilder.AddVerticalLayout(_exportDialogPanel, 12, 8, true, true);
+
+            UIBuilder.CreateText(_exportDialogPanel, "Export As", 13, Color.white, FontStyle.Bold);
+            UIBuilder.CreateText(_exportDialogPanel, "Enter pack name:", 11, new Color(0.7f, 0.7f, 0.7f, 1f));
+            _exportPackInput = UIBuilder.CreateInputField(_exportDialogPanel, "Pack name", _packName, null, 240, 22);
+
+            var row = UIBuilder.CreatePanel("ExportDialogRow", _exportDialogPanel, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row, 8, 8, false, false);
+            UIBuilder.AddLayoutElement(row, null, 32, null, 32, null, null);
+
+            UIBuilder.CreateButton(row, "Export", () => ConfirmExport(), 100, 28);
+            UIBuilder.CreateButton(row, "Cancel", () => CancelExport(), 100, 28);
+
+            _exportDialogPanel.gameObject.SetActive(false);
+        }
+
+        private void DirectExport()
+        {
+            CloseAllMenus();
+            if (!string.IsNullOrEmpty(_packName))
+                controller.ExportPack(_packName);
+        }
+
+        private void ShowExportDialog()
+        {
+            CloseAllMenus();
+            if (_exportDialogPanel == null || _exportPackInput == null) return;
+            _exportPackInput.text = _packName;
+            _exportDialogPanel.gameObject.SetActive(true);
+        }
+
+        private void ConfirmExport()
+        {
+            if (_exportDialogPanel == null || _exportPackInput == null) return;
+            _packName = _exportPackInput.text.Trim();
+            if (!string.IsNullOrEmpty(_packName))
+                controller.ExportPack(_packName);
+            _exportDialogPanel.gameObject.SetActive(false);
+        }
+
+        private void CancelExport()
+        {
+            if (_exportDialogPanel != null)
+                _exportDialogPanel.gameObject.SetActive(false);
         }
 
         private void RefreshAll()
@@ -1446,6 +1515,167 @@ namespace MapLootEditorLite.Client
                 var text = _editorModeButton.GetComponentInChildren<Text>();
                 if (text != null)
                     text.text = controller.IsFreeCam ? "Exit Editor Mode" : "Editor Mode";
+            }
+        }
+
+        // ── Menu System ─────────────────────────────────────────────────
+
+        private readonly List<RectTransform> _openMenus = new List<RectTransform>();
+
+        private struct MenuItem
+        {
+            public string Label;
+            public System.Action Action;
+            public List<MenuItem> SubItems;
+            public bool IsHeader;
+
+            public MenuItem(string label, System.Action action = null, List<MenuItem> subItems = null, bool isHeader = false)
+            {
+                Label = label;
+                Action = action;
+                SubItems = subItems;
+                IsHeader = isHeader;
+            }
+        }
+
+        private void CloseAllMenus()
+        {
+            foreach (var menu in _openMenus)
+            {
+                if (menu != null)
+                    Destroy(menu.gameObject);
+            }
+            _openMenus.Clear();
+        }
+
+        private Button BuildMenuButton(Transform parent, string label, List<MenuItem> items, int width, int height)
+        {
+            Button btn = null;
+            btn = UIBuilder.CreateButton(parent, label, () => ShowMenu(btn.GetComponent<RectTransform>(), Vector2.zero, items, false), width, height, 11);
+            return btn;
+        }
+
+        private void ShowMenu(RectTransform anchor, Vector2 offset, List<MenuItem> items, bool isSubMenu)
+        {
+            if (!isSubMenu)
+                CloseAllMenus();
+            else
+                CloseChildMenus(anchor);
+
+            var canvasRect = _canvas.GetComponent<RectTransform>();
+            var corners = new Vector3[4];
+            Vector2 localPos;
+            if (isSubMenu)
+            {
+                anchor.GetWorldCorners(corners);
+                var topRight = RectTransformUtility.WorldToScreenPoint(null, corners[2]);
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, topRight, null, out localPos);
+            }
+            else
+            {
+                anchor.GetWorldCorners(corners);
+                var bottomLeft = RectTransformUtility.WorldToScreenPoint(null, corners[0]);
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, bottomLeft, null, out localPos);
+            }
+
+            // localPos is in canvas-local space (origin at screen centre). Convert to top-left anchored offset.
+            var anchorOffset = new Vector2(canvasRect.rect.width / 2f, -canvasRect.rect.height / 2f);
+            var menuPos = localPos + anchorOffset + offset;
+
+            if (!isSubMenu)
+            {
+                var overlay = UIBuilder.CreatePanel("MenuOverlay", _canvas.transform, new Color(0, 0, 0, 0));
+                overlay.anchorMin = Vector2.zero;
+                overlay.anchorMax = Vector2.one;
+                overlay.offsetMin = Vector2.zero;
+                overlay.offsetMax = Vector2.zero;
+                var overlayBtn = overlay.gameObject.AddComponent<Button>();
+                overlayBtn.targetGraphic = overlay.GetComponent<Image>();
+                overlayBtn.onClick.AddListener(CloseAllMenus);
+                overlay.transform.SetAsLastSibling();
+                _openMenus.Add(overlay);
+            }
+
+            var menu = UIBuilder.CreatePanel("Menu", _canvas.transform, new Color(0.12f, 0.12f, 0.12f, 0.98f));
+            menu.anchorMin = new Vector2(0, 1);
+            menu.anchorMax = new Vector2(0, 1);
+            menu.pivot = new Vector2(0, 1);
+            menu.anchoredPosition = menuPos;
+            menu.sizeDelta = new Vector2(160, 0);
+            menu.transform.SetAsLastSibling();
+            UIBuilder.AddVerticalLayout(menu, 2, 1, true, true);
+            UIBuilder.AddContentSizeFitter(menu, ContentSizeFitter.FitMode.Unconstrained, ContentSizeFitter.FitMode.PreferredSize);
+
+            foreach (var item in items)
+            {
+                if (item.IsHeader)
+                {
+                    var header = UIBuilder.CreateText(menu, item.Label, 10, new Color(0.6f, 0.6f, 0.6f, 1f), FontStyle.Bold);
+                    if (header != null)
+                    {
+                        header.alignment = TextAnchor.MiddleLeft;
+                        var headerRt = header.rectTransform;
+                        UIBuilder.AddLayoutElement(headerRt, null, 16, null, 16, null, 0);
+                    }
+                    continue;
+                }
+
+                var row = UIBuilder.CreatePanel("MenuItem", menu, new Color(0.14f, 0.14f, 0.14f, 1f));
+                UIBuilder.AddHorizontalLayout(row, 4, 0, true, false);
+                UIBuilder.AddLayoutElement(row, null, 20, null, 20, null, 0);
+
+                var hasSubItems = item.SubItems != null && item.SubItems.Count > 0;
+                var btn = UIBuilder.CreateButton(row, item.Label, () => { }, 0, 18, 10);
+                UIBuilder.AddLayoutElement(btn.gameObject, null, 18, null, 18, 1, 0);
+                btn.GetComponent<Image>().color = new Color(0, 0, 0, 0);
+                var btnColors = btn.colors;
+                btnColors.normalColor = Color.white;
+                btnColors.highlightedColor = new Color(0.85f, 0.9f, 1f, 1f);
+                btnColors.pressedColor = new Color(0.7f, 0.8f, 1f, 1f);
+                btn.colors = btnColors;
+                var lbl = btn.GetComponentInChildren<Text>();
+                if (lbl != null)
+                {
+                    lbl.alignment = TextAnchor.MiddleLeft;
+                    lbl.fontSize = 10;
+                }
+
+                if (hasSubItems)
+                {
+                    var arrow = UIBuilder.CreateLabel(row, "►", 10, 14, 18);
+                    if (arrow != null)
+                        arrow.alignment = TextAnchor.MiddleRight;
+                    btn.onClick.AddListener(() => ShowMenu(row, Vector2.zero, item.SubItems, true));
+                }
+                else if (item.Action != null)
+                {
+                    btn.onClick.AddListener(() =>
+                    {
+                        item.Action();
+                        CloseAllMenus();
+                    });
+                }
+            }
+
+            _openMenus.Add(menu);
+        }
+
+        private void CloseChildMenus(RectTransform anchor)
+        {
+            var parentMenu = anchor.parent?.GetComponent<RectTransform>();
+            if (parentMenu == null)
+            {
+                CloseAllMenus();
+                return;
+            }
+            int parentIndex = _openMenus.IndexOf(parentMenu);
+            if (parentIndex < 0) parentIndex = 0;
+            for (int i = _openMenus.Count - 1; i > parentIndex; i--)
+            {
+                var menu = _openMenus[i];
+                if (menu != null && menu.name != "MenuOverlay")
+                    Destroy(menu.gameObject);
+                _openMenus.RemoveAt(i);
             }
         }
     }
