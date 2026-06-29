@@ -1,0 +1,1143 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Reflection;
+using Comfort.Common;
+using EFT.InventoryLogic;
+using UnityEngine;
+using UnityEngine.Events;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
+
+namespace MapLootEditorLite.Client
+{
+    public class CustomEditorUI : MonoBehaviour
+    {
+        public MapEditorController controller;
+        public MarkerManager manager;
+        public MarkerRenderer renderer;
+        public LootPreviewSpawner previews;
+
+        private GameObject _canvas;
+        private CanvasScaler _canvasScaler;
+        private RectTransform _mainWindow;
+        private RectTransform _topPanel;
+        private RectTransform _hierarchyPanel;
+        private RectTransform _inspectorPanel;
+        private RectTransform _bottomPanel;
+        private RectTransform _deleteConfirmPanel;
+
+        private RectTransform _hierarchyContent;
+        private RectTransform _inspectorContent;
+        private RectTransform _prefabsContent;
+        private RectTransform _groupsContent;
+
+        private Text _titleText;
+        private Text _deleteConfirmText;
+        private InputField _packNameInput;
+        private InputField _searchInput;
+        private InputField _groupInput;
+        private InputField _prefabNameInput;
+        private InputField _scatterPrefabInput;
+        private InputField _scatterCountInput;
+        private InputField _scatterMinHeightInput;
+        private InputField _scatterMaxHeightInput;
+        private Toggle _scatterSnapToggle;
+
+        private Button _editorModeButton;
+        private Button _translateButton;
+        private Button _rotateButton;
+        private Button _scaleButton;
+        private List<Button> _gizmoButtons = new List<Button>();
+
+        private bool _isVisible;
+        private bool _isDeletePending;
+        private bool _isDeleteConfirmed;
+        private bool _isPickingSource;
+        private StaticObject _pickingSourceTarget;
+        private bool _pickUseParent;
+        private string _prefabName = "MyPrefab";
+        private string _scatterPrefabPath = "";
+        private int _scatterCount = 10;
+        private float _scatterMinHeight = 0f;
+        private float _scatterMaxHeight = 0f;
+        private bool _scatterSnapToGround = true;
+        private string _packName = "MyLootPack";
+        private string _searchText = "";
+        private string _newGroupName = "";
+        private readonly HashSet<string> _collapsedGroups = new HashSet<string>();
+        private const int TopPanelHeight = 56;
+        private int _hierarchyWidth = 240;
+        private int _inspectorWidth = 280;
+        private const int BottomPanelHeight = 180;
+
+        private RectTransform _hierarchyResizeHandle;
+        private RectTransform _inspectorResizeHandle;
+
+
+        private RectTransform _prefabsTab;
+        private RectTransform _scatterTab;
+        private RectTransform _groupsTab;
+        private Button _prefabsTabButton;
+        private Button _scatterTabButton;
+        private Button _groupsTabButton;
+        private int _activeBottomTab;
+
+        private MarkerBase _lastSelected;
+        private int _lastMarkerCount = -1;
+        private int _lastSelectedCount = -1;
+        private bool _refreshPending;
+        private bool _hierarchyRefreshPending;
+        private bool _inspectorRefreshPending;
+
+        private readonly Dictionary<string, string> _itemNameCache = new Dictionary<string, string>();
+
+        public Rect WindowRect
+        {
+            get
+            {
+                if (_mainWindow == null)
+                    return new Rect(0, 0, Screen.width, Screen.height);
+                var corners = new Vector3[4];
+                _mainWindow.GetWorldCorners(corners);
+                var scale = _canvasScaler?.scaleFactor ?? 1f;
+                return new Rect(corners[0].x / scale, corners[0].y / scale, _mainWindow.rect.width / scale, _mainWindow.rect.height / scale);
+            }
+        }
+
+        public bool IsPickingSource => _isPickingSource;
+        public bool IsDeletePending => _isDeletePending;
+        public bool IsDeleteConfirmed => _isDeleteConfirmed;
+        public bool IsVisible => _isVisible;
+        public string PackName => _packName;
+
+        public bool IsAnyInputFocused
+        {
+            get
+            {
+                if (EventSystem.current == null)
+                    return false;
+                var selected = EventSystem.current.currentSelectedGameObject;
+                if (selected == null)
+                    return false;
+                return selected.GetComponent<InputField>() != null || selected.GetComponentInParent<InputField>() != null;
+            }
+        }
+
+        public void Init(MapEditorController ctrl, MarkerManager mgr, MarkerRenderer rnd, LootPreviewSpawner prw)
+        {
+            controller = ctrl;
+            manager = mgr;
+            renderer = rnd;
+            previews = prw;
+        }
+
+        private void Awake()
+        {
+            BuildUI();
+            Hide();
+        }
+
+        private void Start()
+        {
+            UIBuilder.EnsureEventSystem(transform);
+        }
+
+        private void Update()
+        {
+            if (!_isVisible)
+                return;
+
+            UpdateCanvasScale();
+            UpdateGizmoButtons();
+            UpdateEditorModeButton();
+
+            if (manager == null || controller == null)
+                return;
+
+            if (_refreshPending || _lastMarkerCount != manager.GetAllMarkers().Count())
+            {
+                _refreshPending = false;
+                RefreshAll();
+            }
+            else if (_hierarchyRefreshPending)
+            {
+                _hierarchyRefreshPending = false;
+                RefreshHierarchy();
+            }
+            else if (_inspectorRefreshPending || _lastSelected != manager.Selected || _lastSelectedCount != manager.SelectedIds.Count)
+            {
+                _inspectorRefreshPending = false;
+                _hierarchyRefreshPending = false;
+                RefreshHierarchy();
+                RefreshInspector();
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (_canvas != null)
+                Destroy(_canvas);
+        }
+
+        public void Show()
+        {
+            _isVisible = true;
+            if (_canvas != null)
+                _canvas.SetActive(true);
+            _refreshPending = true;
+            UpdateCanvasScale();
+        }
+
+        public void Hide()
+        {
+            _isVisible = false;
+            if (_canvas != null)
+                _canvas.SetActive(false);
+            if (_deleteConfirmPanel != null)
+                _deleteConfirmPanel.gameObject.SetActive(false);
+        }
+
+        public void Toggle()
+        {
+            if (_isVisible)
+                Hide();
+            else
+                Show();
+        }
+
+        public void RequestRefresh()
+        {
+            _refreshPending = true;
+        }
+
+        public void RequestHierarchyRefresh()
+        {
+            _hierarchyRefreshPending = true;
+        }
+
+        public void RequestInspectorRefresh()
+        {
+            _inspectorRefreshPending = true;
+        }
+
+        private void UpdateCanvasScale()
+        {
+            if (_canvasScaler == null)
+                return;
+            var scale = Plugin.UIScale?.Value ?? 1f;
+            if (Math.Abs(_canvasScaler.scaleFactor - scale) > 0.001f)
+                _canvasScaler.scaleFactor = scale;
+        }
+
+        private void BuildUI()
+        {
+            _canvas = UIBuilder.CreateCanvas("MLE_Canvas", transform, 1000);
+            _canvasScaler = _canvas.GetComponent<CanvasScaler>();
+            _canvasScaler.scaleFactor = Plugin.UIScale?.Value ?? 1f;
+
+            _mainWindow = UIBuilder.CreatePanel("MainWindow", _canvas.transform, new Color(0, 0, 0, 0));
+            _mainWindow.anchorMin = Vector2.zero;
+            _mainWindow.anchorMax = Vector2.one;
+            _mainWindow.offsetMin = Vector2.zero;
+            _mainWindow.offsetMax = Vector2.zero;
+            _mainWindow.GetComponent<Image>().raycastTarget = false;
+            // No layout group — each panel is independently anchored
+
+            BuildTopPanel();
+            BuildHierarchyPanel();
+            BuildInspectorPanel();
+            BuildBottomPanel();
+            BuildDeleteConfirm();
+            BuildResizeHandles();
+
+            if (manager != null && controller != null)
+                RefreshAll();
+        }
+
+        private void BuildTopPanel()
+        {
+            _topPanel = UIBuilder.CreatePanel("TopPanel", _mainWindow, new Color(0.08f, 0.08f, 0.08f, 0.97f));
+            // Anchor to top edge, full width
+            _topPanel.anchorMin = new Vector2(0f, 1f);
+            _topPanel.anchorMax = new Vector2(1f, 1f);
+            _topPanel.pivot     = new Vector2(0f, 1f);
+            _topPanel.offsetMin = new Vector2(0, -TopPanelHeight);
+            _topPanel.offsetMax = Vector2.zero;
+            UIBuilder.AddVerticalLayout(_topPanel, 2, 2, true, true);
+
+            // Row 1 – action buttons
+            var row1 = UIBuilder.CreatePanel("TopRow1", _topPanel, new Color(0, 0, 0, 0));
+            var hlg1 = UIBuilder.AddHorizontalLayout(row1, 3, 3, false, false);
+            hlg1.childAlignment = TextAnchor.MiddleLeft;
+            UIBuilder.AddLayoutElement(row1, null, 28, null, 28, null, 0);
+
+            _titleText = UIBuilder.CreateText(row1, "Map Loot Editor Lite", 12, Color.white, FontStyle.Bold);
+            UIBuilder.AddLayoutElement(_titleText.gameObject, null, 22, 148, 22, null, null);
+            // Small gap between title and buttons
+            var sep = UIBuilder.CreatePanel("TitleSep", row1, new Color(0, 0, 0, 0));
+            sep.GetComponent<Image>().raycastTarget = false;
+            UIBuilder.AddLayoutElement(sep, 18, 22, 18, 22, 0, 0);
+            UIBuilder.CreateButton(row1, "Loot Spawn",   () => controller.CreateLootSpawn(),  82, 22);
+            UIBuilder.CreateButton(row1, "Loot Zone",    () => controller.CreateLootZone(),   72, 22);
+            UIBuilder.CreateButton(row1, "Static Object",() => controller.CreateStaticObject(),92, 22);
+            UIBuilder.CreateButton(row1, "Snap",         () => controller.SnapSelected(),     46, 22);
+            UIBuilder.CreateButton(row1, "Duplicate",    () => controller.DuplicateSelected(),68, 22);
+            UIBuilder.CreateButton(row1, "Delete",       () => RequestDelete(),               54, 22);
+            UIBuilder.CreateButton(row1, "Clear Prev",   () => controller.ClearPreviews(),    76, 22);
+            _editorModeButton = UIBuilder.CreateButton(row1, "Editor Mode", () => controller.ToggleFreeCam(), 92, 22);
+            _translateButton = UIBuilder.CreateButton(row1, "T", () => controller.SetGizmoMode(GizmoMode.Translate), 24, 22, 10);
+            _rotateButton    = UIBuilder.CreateButton(row1, "R", () => controller.SetGizmoMode(GizmoMode.Rotate),    24, 22, 10);
+            _scaleButton     = UIBuilder.CreateButton(row1, "S", () => controller.SetGizmoMode(GizmoMode.Scale),     24, 22, 10);
+            _gizmoButtons.Add(_translateButton);
+            _gizmoButtons.Add(_rotateButton);
+            _gizmoButtons.Add(_scaleButton);
+            UIBuilder.CreateLabel(row1, "Pack", 11, 28, 22);
+            _packNameInput = UIBuilder.CreateInputField(row1, "Pack", _packName, (v) => _packName = v, 86, 22);
+            UIBuilder.CreateButton(row1, "Export", () => controller.ExportPack(_packName), 50, 22);
+            UIBuilder.CreateLabel(row1, "Search", 11, 38, 22);
+            _searchInput = UIBuilder.CreateInputField(row1, "Search", _searchText, (v) => { _searchText = v; _hierarchyRefreshPending = true; }, 86, 22);
+
+            // Row 2 – keybind hints
+            var row2 = UIBuilder.CreatePanel("TopRow2", _topPanel, new Color(0.06f, 0.06f, 0.06f, 1f));
+            UIBuilder.AddHorizontalLayout(row2, 6, 0, false, false);
+            UIBuilder.AddLayoutElement(row2, null, 22, null, 22, null, 0);
+            var hints = UIBuilder.CreateLabel(row2, "[Del] Delete  |  [Ctrl+Z] Undo  |  [Ctrl+Y] Redo  |  [Ctrl+C] Copy  |  [Ctrl+V] Paste  |  [1] Move  |  [2] Rotate  |  [3] Scale  |  [F] Focus  |  [MMB] Toggle Cursor", 10, 0, 20);
+            hints.color = new Color(0.6f, 0.6f, 0.6f, 1f);
+        }
+
+        private void BuildHierarchyPanel()
+        {
+            _hierarchyPanel = UIBuilder.CreatePanel("HierarchyPanel", _mainWindow, new Color(0.12f, 0.12f, 0.12f, 0.97f));
+            _hierarchyPanel.anchorMin = new Vector2(0f, 0f);
+            _hierarchyPanel.anchorMax = new Vector2(0f, 1f);
+            _hierarchyPanel.pivot     = new Vector2(0f, 0.5f);
+            _hierarchyPanel.offsetMin = new Vector2(0, BottomPanelHeight);
+            _hierarchyPanel.offsetMax = new Vector2(_hierarchyWidth, -TopPanelHeight);
+            UIBuilder.AddVerticalLayout(_hierarchyPanel, 0, 0, true, true);
+
+            // Header — first child in VLG = always at visual top; scroll mask clips content below it
+            var header = UIBuilder.CreatePanel("HierarchyHeader", _hierarchyPanel, new Color(0.1f, 0.1f, 0.1f, 1f));
+            UIBuilder.AddLayoutElement(header, null, 24, null, 24, null, 0);
+            UIBuilder.AddHorizontalLayout(header, 4, 0, false, false);
+            UIBuilder.CreateText(header, "Hierarchy", 12, Color.white, FontStyle.Bold);
+
+            // Scroll — second child, fills remaining height
+            var scroll = UIBuilder.CreateScrollView(_hierarchyPanel, out _hierarchyContent, out _, 0, 0, 14);
+            UIBuilder.AddLayoutElement(scroll.gameObject, null, null, null, null, null, 1);
+            UIBuilder.AddVerticalLayout(_hierarchyContent, 1, 0, true, true);
+        }
+
+        private void BuildInspectorPanel()
+        {
+            _inspectorPanel = UIBuilder.CreatePanel("InspectorPanel", _mainWindow, new Color(0.12f, 0.12f, 0.12f, 0.97f));
+            _inspectorPanel.anchorMin = new Vector2(1f, 0f);
+            _inspectorPanel.anchorMax = new Vector2(1f, 1f);
+            _inspectorPanel.pivot     = new Vector2(1f, 0.5f);
+            _inspectorPanel.offsetMin = new Vector2(-_inspectorWidth, BottomPanelHeight);
+            _inspectorPanel.offsetMax = new Vector2(0, -TopPanelHeight);
+            UIBuilder.AddVerticalLayout(_inspectorPanel, 0, 0, true, true);
+
+            // Header — first child in VLG = always at visual top; scroll mask clips content below it
+            var header = UIBuilder.CreatePanel("InspectorHeader", _inspectorPanel, new Color(0.1f, 0.1f, 0.1f, 1f));
+            UIBuilder.AddLayoutElement(header, null, 24, null, 24, null, 0);
+            UIBuilder.AddHorizontalLayout(header, 4, 0, false, false);
+            UIBuilder.CreateText(header, "Inspector", 12, Color.white, FontStyle.Bold);
+
+            // Scroll — second child, fills remaining height
+            var scroll = UIBuilder.CreateScrollView(_inspectorPanel, out _inspectorContent, out _, 0, 0, 14);
+            UIBuilder.AddLayoutElement(scroll.gameObject, null, null, null, null, null, 1);
+            UIBuilder.AddVerticalLayout(_inspectorContent, 1, 0, true, true);
+        }
+
+        private void BuildResizeHandles()
+        {
+            // Hierarchy right-edge drag handle
+            _hierarchyResizeHandle = UIBuilder.CreatePanel("HierarchyResize", _mainWindow, new Color(0.4f, 0.55f, 0.8f, 0.18f));
+            _hierarchyResizeHandle.anchorMin = new Vector2(0f, 0f);
+            _hierarchyResizeHandle.anchorMax = new Vector2(0f, 1f);
+            _hierarchyResizeHandle.pivot     = new Vector2(0f, 0.5f);
+            // Inspector left-edge drag handle
+            _inspectorResizeHandle = UIBuilder.CreatePanel("InspectorResize", _mainWindow, new Color(0.4f, 0.55f, 0.8f, 0.18f));
+            _inspectorResizeHandle.anchorMin = new Vector2(1f, 0f);
+            _inspectorResizeHandle.anchorMax = new Vector2(1f, 1f);
+            _inspectorResizeHandle.pivot     = new Vector2(1f, 0.5f);
+            UpdateResizeHandles();
+            AddDragResize(_hierarchyResizeHandle, isHierarchy: true);
+            AddDragResize(_inspectorResizeHandle, isHierarchy: false);
+        }
+
+        private void UpdateResizeHandles()
+        {
+            if (_hierarchyResizeHandle != null)
+            {
+                _hierarchyResizeHandle.offsetMin = new Vector2(_hierarchyWidth - 3, BottomPanelHeight);
+                _hierarchyResizeHandle.offsetMax = new Vector2(_hierarchyWidth + 3, -TopPanelHeight);
+            }
+            if (_inspectorResizeHandle != null)
+            {
+                _inspectorResizeHandle.offsetMin = new Vector2(-_inspectorWidth - 3, BottomPanelHeight);
+                _inspectorResizeHandle.offsetMax = new Vector2(-_inspectorWidth + 3, -TopPanelHeight);
+            }
+        }
+
+        private void AddDragResize(RectTransform handle, bool isHierarchy)
+        {
+            var et = handle.gameObject.AddComponent<EventTrigger>();
+            var entry = new EventTrigger.Entry { eventID = EventTriggerType.Drag };
+            entry.callback.AddListener((data) =>
+            {
+                var scale = _canvasScaler != null ? _canvasScaler.scaleFactor : 1f;
+                var dx = Mathf.RoundToInt(((PointerEventData)data).delta.x / scale);
+                if (isHierarchy)
+                {
+                    _hierarchyWidth = Mathf.Clamp(_hierarchyWidth + dx, 140, 500);
+                    _hierarchyPanel.offsetMax = new Vector2(_hierarchyWidth, -TopPanelHeight);
+                }
+                else
+                {
+                    _inspectorWidth = Mathf.Clamp(_inspectorWidth - dx, 160, 500);
+                    _inspectorPanel.offsetMin = new Vector2(-_inspectorWidth, BottomPanelHeight);
+                }
+                UpdateResizeHandles();
+            });
+            et.triggers.Add(entry);
+        }
+
+        private void BuildBottomPanel()
+        {
+            _bottomPanel = UIBuilder.CreatePanel("BottomPanel", _mainWindow, new Color(0.1f, 0.1f, 0.1f, 0.97f));
+            // Anchor: bottom edge, full width
+            _bottomPanel.anchorMin = new Vector2(0f, 0f);
+            _bottomPanel.anchorMax = new Vector2(1f, 0f);
+            _bottomPanel.pivot     = new Vector2(0f, 0f);
+            _bottomPanel.offsetMin = Vector2.zero;
+            _bottomPanel.offsetMax = new Vector2(0, BottomPanelHeight);
+            UIBuilder.AddVerticalLayout(_bottomPanel, 4, 4, true, true);
+
+            var tabBar = UIBuilder.CreatePanel("TabBar", _bottomPanel, new Color(0.08f, 0.08f, 0.08f, 1f));
+            UIBuilder.AddHorizontalLayout(tabBar, 4, 4, false, false);
+            UIBuilder.AddLayoutElement(tabBar, null, 26, null, 26, null, 0);
+            _prefabsTabButton = UIBuilder.CreateButton(tabBar, "Prefabs", () => SelectBottomTab(0), 80, 22);
+            _scatterTabButton = UIBuilder.CreateButton(tabBar, "Scatter", () => SelectBottomTab(1), 80, 22);
+            _groupsTabButton = UIBuilder.CreateButton(tabBar, "Groups", () => SelectBottomTab(2), 80, 22);
+
+            var tabContent = UIBuilder.CreatePanel("TabContent", _bottomPanel, new Color(0, 0, 0, 0));
+            tabContent.anchorMin = Vector2.zero;
+            tabContent.anchorMax = Vector2.one;
+            tabContent.offsetMin = Vector2.zero;
+            tabContent.offsetMax = Vector2.zero;
+            UIBuilder.AddLayoutElement(tabContent, null, null, null, null, null, 1);
+
+            BuildPrefabsTab(tabContent);
+            BuildScatterTab(tabContent);
+            BuildGroupsTab(tabContent);
+
+            SelectBottomTab(0);
+        }
+
+        private void SelectBottomTab(int index)
+        {
+            _activeBottomTab = index;
+            _prefabsTab.gameObject.SetActive(index == 0);
+            _scatterTab.gameObject.SetActive(index == 1);
+            _groupsTab.gameObject.SetActive(index == 2);
+
+            UpdateTabButton(_prefabsTabButton, index == 0);
+            UpdateTabButton(_scatterTabButton, index == 1);
+            UpdateTabButton(_groupsTabButton, index == 2);
+        }
+
+        private void UpdateTabButton(Button btn, bool active)
+        {
+            if (btn == null)
+                return;
+            btn.GetComponent<Image>().color = active
+                ? new Color(0.25f, 0.45f, 0.75f, 1f)
+                : new Color(0.24f, 0.24f, 0.24f, 1f);
+        }
+
+        private void BuildPrefabsTab(RectTransform parent)
+        {
+            _prefabsTab = UIBuilder.CreatePanel("PrefabsTab", parent, new Color(0.14f, 0.14f, 0.14f, 1f));
+            _prefabsTab.anchorMin = Vector2.zero;
+            _prefabsTab.anchorMax = Vector2.one;
+            _prefabsTab.offsetMin = Vector2.zero;
+            _prefabsTab.offsetMax = Vector2.zero;
+            UIBuilder.AddHorizontalLayout(_prefabsTab, 4, 4, true, true);
+
+            // Left column: save controls
+            var leftCol = UIBuilder.CreatePanel("PrefabsLeft", _prefabsTab, new Color(0, 0, 0, 0));
+            leftCol.GetComponent<Image>().raycastTarget = false;
+            UIBuilder.AddLayoutElement(leftCol, 180, null, 180, null, 0, 1);
+            UIBuilder.AddVerticalLayout(leftCol, 2, 3, true, true);
+
+            UIBuilder.CreateText(leftCol, "Prefabs", 12, Color.white, FontStyle.Bold);
+            var saveRow = UIBuilder.CreatePanel("PrefabSaveRow", leftCol, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(saveRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(saveRow, null, 22, null, 22, null, 0);
+            _prefabNameInput = UIBuilder.CreateInputField(saveRow, "Prefab name", _prefabName, (v) => _prefabName = v, 100, 22);
+            UIBuilder.CreateButton(saveRow, "Save", () => { controller.SavePrefab(_prefabName, ""); RequestRefresh(); }, 46, 22);
+
+            // Right column: list of saved prefabs
+            var rightCol = UIBuilder.CreatePanel("PrefabsList", _prefabsTab, new Color(0.1f, 0.1f, 0.1f, 1f));
+            UIBuilder.AddLayoutElement(rightCol, null, null, null, null, 1, 1);
+            UIBuilder.AddVerticalLayout(rightCol, 2, 2, true, true);
+            UIBuilder.CreateText(rightCol, "Saved Prefabs (click to place)", 11, new Color(0.6f, 0.6f, 0.6f, 1f));
+            var prefabsScroll = UIBuilder.CreateScrollView(rightCol, out _prefabsContent, out _, 0, 0, 14);
+            UIBuilder.AddLayoutElement(prefabsScroll.gameObject, null, null, null, null, null, 1);
+            UIBuilder.AddVerticalLayout(_prefabsContent, 2, 2, true, false);
+        }
+
+        private void BuildScatterTab(RectTransform parent)
+        {
+            _scatterTab = UIBuilder.CreatePanel("ScatterTab", parent, new Color(0.14f, 0.14f, 0.14f, 1f));
+            _scatterTab.anchorMin = Vector2.zero;
+            _scatterTab.anchorMax = Vector2.one;
+            _scatterTab.offsetMin = Vector2.zero;
+            _scatterTab.offsetMax = Vector2.zero;
+            UIBuilder.AddVerticalLayout(_scatterTab, 4, 4, true, true);
+
+            UIBuilder.CreateText(_scatterTab, "Scatter (select LootZone)", 12, Color.white, FontStyle.Bold);
+            var row = UIBuilder.CreatePanel("ScatterInputRow", _scatterTab, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
+            _scatterPrefabInput = UIBuilder.CreateInputField(row, "Prefab path", _scatterPrefabPath, (v) => _scatterPrefabPath = v, 140, 22);
+            _scatterCountInput = UIBuilder.CreateInputField(row, "Count", _scatterCount.ToString(), (v) => int.TryParse(v, out _scatterCount), 60, 22);
+
+            var row2 = UIBuilder.CreatePanel("ScatterHeightRow", _scatterTab, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row2, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(row2, null, 22, null, 22, null, 0);
+            _scatterMinHeightInput = UIBuilder.CreateInputField(row2, "Min H", _scatterMinHeight.ToString("F2", CultureInfo.InvariantCulture), (v) => float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out _scatterMinHeight), 60, 22);
+            _scatterMaxHeightInput = UIBuilder.CreateInputField(row2, "Max H", _scatterMaxHeight.ToString("F2", CultureInfo.InvariantCulture), (v) => float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out _scatterMaxHeight), 60, 22);
+            _scatterSnapToggle = UIBuilder.CreateToggle(row2, "Snap to ground", _scatterSnapToGround, (v) => _scatterSnapToGround = v, 20);
+
+            UIBuilder.CreateButton(_scatterTab, "Scatter", () =>
+            {
+                if (manager.Selected is LootZone zone)
+                    controller.ScatterObjectsInZone(zone, _scatterPrefabPath, _scatterCount, _scatterMinHeight, _scatterMaxHeight, _scatterSnapToGround);
+            }, 80, 24);
+        }
+
+        private void BuildGroupsTab(RectTransform parent)
+        {
+            _groupsTab = UIBuilder.CreatePanel("GroupsTab", parent, new Color(0.14f, 0.14f, 0.14f, 1f));
+            _groupsTab.anchorMin = Vector2.zero;
+            _groupsTab.anchorMax = Vector2.one;
+            _groupsTab.offsetMin = Vector2.zero;
+            _groupsTab.offsetMax = Vector2.zero;
+            UIBuilder.AddVerticalLayout(_groupsTab, 4, 4, true, true);
+
+            UIBuilder.CreateText(_groupsTab, "Groups", 12, Color.white, FontStyle.Bold);
+            var row = UIBuilder.CreatePanel("GroupAssignRow", _groupsTab, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
+            _groupInput = UIBuilder.CreateInputField(row, "Group", _newGroupName, (v) => _newGroupName = v, 80, 22);
+            UIBuilder.CreateButton(row, "Assign", () => { if (manager.Selected != null) { manager.SetGroupOnSelection(_newGroupName); RequestRefresh(); } }, 60, 22);
+            UIBuilder.CreateButton(row, "Clear", () => { if (manager.Selected != null) manager.SetGroupOnSelection(""); }, 50, 22);
+
+            var groupsScroll = UIBuilder.CreateScrollView(_groupsTab, out _groupsContent, out _, 0, 0, 14);
+            UIBuilder.AddLayoutElement(groupsScroll.gameObject, null, null, null, null, null, 1);
+            UIBuilder.AddVerticalLayout(_groupsContent, 4, 2, true, false);
+        }
+
+        private void BuildDeleteConfirm()
+        {
+            _deleteConfirmPanel = UIBuilder.CreatePanel("DeleteConfirm", _canvas.transform, new Color(0.08f, 0.08f, 0.08f, 0.95f));
+            _deleteConfirmPanel.anchorMin = new Vector2(0.5f, 0.5f);
+            _deleteConfirmPanel.anchorMax = new Vector2(0.5f, 0.5f);
+            _deleteConfirmPanel.pivot = new Vector2(0.5f, 0.5f);
+            _deleteConfirmPanel.sizeDelta = new Vector2(340, 120);
+            UIBuilder.AddVerticalLayout(_deleteConfirmPanel, 12, 8, true, true);
+
+            _deleteConfirmText = UIBuilder.CreateText(_deleteConfirmPanel, "Delete selected marker(s)?", 13, Color.white, FontStyle.Bold);
+
+            var row = UIBuilder.CreatePanel("ConfirmRow", _deleteConfirmPanel, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row, 8, 8, false, false);
+            UIBuilder.AddLayoutElement(row, null, 32, null, 32, null, null);
+
+            UIBuilder.CreateButton(row, "Confirm", () => ConfirmDelete(), 100, 28);
+            UIBuilder.CreateButton(row, "Cancel", () => CancelDelete(), 100, 28);
+
+            _deleteConfirmPanel.gameObject.SetActive(false);
+        }
+
+        private void RefreshAll()
+        {
+            if (manager == null || controller == null)
+                return;
+            RefreshTitle();
+            RefreshHierarchy();
+            RefreshInspector();
+            RefreshPrefabs();
+            RefreshGroups();
+            UpdateGizmoButtons();
+            UpdateEditorModeButton();
+            _lastMarkerCount = manager.GetAllMarkers().Count();
+        }
+
+        private void RefreshTitle()
+        {
+            var map = manager.Data?.map ?? "none";
+            var count = manager.GetAllMarkers().Count();
+            _titleText.text = $"Map Loot Editor Lite - {map} ({count} markers)";
+        }
+
+        private void RefreshHierarchy()
+        {
+            if (_hierarchyContent == null || manager == null)
+                return;
+            ClearChildren(_hierarchyContent);
+
+            var allMarkers = manager.GetAllMarkers().Where(MatchesSearch).ToList();
+
+            // Grouped sections (collapsible)
+            var grouped = allMarkers
+                .Where(m => !string.IsNullOrWhiteSpace(m.group))
+                .GroupBy(m => m.group)
+                .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var grp in grouped)
+            {
+                var key = grp.Key;
+                bool collapsed = _collapsedGroups.Contains(key);
+
+                var grpHdr = UIBuilder.CreatePanel("GrpHdr", _hierarchyContent, new Color(0.18f, 0.2f, 0.28f, 0.9f));
+                UIBuilder.AddHorizontalLayout(grpHdr, 3, 1, false, false);
+                UIBuilder.AddLayoutElement(grpHdr, null, 18, null, 18, null, 0);
+                UIBuilder.CreateLabel(grpHdr, collapsed ? "\u25ba" : "\u25bc", 10, 12, 14);
+                UIBuilder.CreateLabel(grpHdr, $"{key}  ({grp.Count()})", 10, 0, 14);
+                var capturedKey = key;
+                var hdrBtn = grpHdr.gameObject.AddComponent<Button>();
+                hdrBtn.targetGraphic = grpHdr.GetComponent<Image>();
+                var hdrBtnColors = hdrBtn.colors;
+                hdrBtnColors.normalColor = new Color(0.18f, 0.2f, 0.28f, 0.9f);
+                hdrBtnColors.highlightedColor = new Color(0.25f, 0.28f, 0.38f, 1f);
+                hdrBtn.colors = hdrBtnColors;
+                hdrBtn.onClick.AddListener(() =>
+                {
+                    if (_collapsedGroups.Contains(capturedKey)) _collapsedGroups.Remove(capturedKey);
+                    else _collapsedGroups.Add(capturedKey);
+                    manager.SelectGroup(capturedKey);
+                    RequestHierarchyRefresh();
+                    RequestInspectorRefresh();
+                });
+
+                if (!collapsed)
+                    foreach (var m in grp)
+                        BuildHierarchyRow(m, indent: true);
+            }
+
+            // Ungrouped items
+            foreach (var m in allMarkers.Where(m => string.IsNullOrWhiteSpace(m.group)))
+                BuildHierarchyRow(m, indent: false);
+        }
+
+        private void BuildHierarchyRow(MarkerBase marker, bool indent)
+        {
+            var row = UIBuilder.CreatePanel("MarkerRow", _hierarchyContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row, 2, 1, true, false);
+            UIBuilder.AddLayoutElement(row, null, 18, null, 18, null, 0);
+
+            if (indent)
+            {
+                var pad = UIBuilder.CreatePanel("Indent", row, new Color(0, 0, 0, 0));
+                pad.GetComponent<Image>().raycastTarget = false;
+                UIBuilder.AddLayoutElement(pad, 10, 18, 10, 18, 0, 0);
+            }
+
+            UIBuilder.CreateButton(row, "Go", () => controller.GoToMarker(marker), 24, 16, 10);
+
+            bool selected = manager.IsSelected(marker);
+            var capturedMarker = marker;
+
+            // Transparent clickable area — clicking selects the marker
+            var selBtn = UIBuilder.CreateButton(row,
+                $"{marker.Kind} | {marker.name}",
+                () =>
+                {
+                    if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+                        manager.ToggleSelected(capturedMarker);
+                    else
+                        manager.SelectOnly(capturedMarker);
+                    RequestHierarchyRefresh();
+                    RequestInspectorRefresh();
+                },
+                0, 16, 10);
+            UIBuilder.AddLayoutElement(selBtn.gameObject, null, 16, null, 16, 1, 0);
+            selBtn.GetComponent<Image>().color = new Color(0, 0, 0, 0);
+            var bc = selBtn.colors;
+            bc.normalColor = Color.white;
+            bc.highlightedColor = new Color(0.85f, 0.9f, 1f, 1f);
+            bc.pressedColor = new Color(0.7f, 0.8f, 1f, 1f);
+            selBtn.colors = bc;
+            var lblText = selBtn.GetComponentInChildren<Text>();
+            if (lblText != null)
+            {
+                lblText.fontSize = 10;
+                lblText.alignment = TextAnchor.MiddleLeft;
+                lblText.color = selected ? new Color(0.9f, 0.9f, 0.9f, 1f) : new Color(0.72f, 0.72f, 0.72f, 1f);
+            }
+
+            row.GetComponent<Image>().color = selected
+                ? new Color(0.2f, 0.3f, 0.45f, 0.6f)
+                : new Color(0.13f, 0.13f, 0.13f, 0.3f);
+        }
+
+        private void RefreshInspector()
+        {
+            if (_inspectorContent == null || manager == null)
+                return;
+            ClearChildren(_inspectorContent);
+            _lastSelected = manager.Selected;
+            _lastSelectedCount = manager.SelectedIds.Count;
+
+            var selected = manager.Selected;
+            if (selected == null)
+            {
+                UIBuilder.CreateText(_inspectorContent, "No marker selected.", 12, new Color(0.6f, 0.6f, 0.6f, 1f));
+                return;
+            }
+
+            var selectedCount = manager.SelectedIds.Count;
+            UIBuilder.CreateText(_inspectorContent, selectedCount > 1 ? $"Selected {selectedCount} markers (primary: {selected.name})" : $"Selected: {selected.Kind} - {selected.name}", 12, Color.white, FontStyle.Bold);
+
+            BuildStringField(_inspectorContent, "Name", selected.name, (v) => { selected.name = v; manager.IsDirty = true; RequestHierarchyRefresh(); });
+            BuildStringField(_inspectorContent, "Group", selected.group ?? "", (v) => { selected.group = v; manager.IsDirty = true; RequestHierarchyRefresh(); });
+
+            if (selectedCount > 1)
+            {
+                var row = UIBuilder.CreatePanel("GroupActions", _inspectorContent, new Color(0, 0, 0, 0));
+                UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
+                UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
+                UIBuilder.CreateButton(row, "Assign Group to Selection", () => manager.SetGroupOnSelection(selected.group), 150, 22);
+                UIBuilder.CreateButton(row, "Clear Group from Selection", () => manager.SetGroupOnSelection(""), 150, 22);
+            }
+
+            BuildVector3Field(_inspectorContent, "Position", selected.position.ToVector3(), (v) => { selected.position = TransformData.FromVector3(v); manager.IsDirty = true; });
+            BuildVector3Field(_inspectorContent, "Rotation", selected.rotation.ToVector3(), (v) => { selected.rotation = TransformData.FromVector3(v); manager.IsDirty = true; });
+
+            switch (selected)
+            {
+                case LooseLootSpawn spawn:
+                    BuildLooseLootSpawn(spawn);
+                    break;
+                case LootZone zone:
+                    BuildLootZone(zone);
+                    break;
+                case StaticObject obj:
+                    BuildStaticObject(obj);
+                    break;
+            }
+
+            var previewRow = UIBuilder.CreatePanel("PreviewRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(previewRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(previewRow, null, 22, null, 22, null, 0);
+            UIBuilder.CreateButton(previewRow, "Preview Item", () =>
+            {
+                if (selected is LooseLootSpawn s)
+                    previews.SpawnAtMarker(s);
+                else if (selected is LootZone z)
+                    previews.SpawnAtZoneCenter(z);
+            }, 90, 22);
+            if (selected is LootZone lz)
+                UIBuilder.CreateButton(previewRow, "Preview Random In Zone", () => previews.SpawnAllInZone(lz), 140, 22);
+        }
+
+        private void BuildLooseLootSpawn(LooseLootSpawn spawn)
+        {
+            BuildToggleField(_inspectorContent, "Respawnable", spawn.respawnable, (v) => spawn.respawnable = v);
+            BuildItemsList(spawn.items, false, (i) => previews.SpawnAtMarker(spawn, i));
+        }
+
+        private void BuildLootZone(LootZone zone)
+        {
+            if (zone.scale == null)
+                zone.scale = new TransformData { x = 1f, y = 1f, z = 1f };
+
+            var shapeRow = UIBuilder.CreatePanel("ShapeRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(shapeRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(shapeRow, null, 20, null, 20, null, 0);
+            UIBuilder.CreateLabel(shapeRow, "Shape", 11, 44, 20);
+            var shapes = new[] { "Sphere", "Box", "Cylinder", "Capsule" };
+            for (int i = 0; i < shapes.Length; i++)
+            {
+                int idx = i;
+                var btn = UIBuilder.CreateButton(shapeRow, shapes[idx], () => { zone.shape = (ZoneShape)idx; manager.IsDirty = true; RefreshInspector(); }, 52, 20, 10);
+                if ((int)zone.shape == idx)
+                    btn.GetComponent<Image>().color = new Color(0.25f, 0.45f, 0.75f, 1f);
+            }
+
+            BuildFloatField(_inspectorContent, "Radius", zone.radius, (v) => { zone.radius = v; manager.IsDirty = true; });
+            BuildVector3Field(_inspectorContent, "Scale", zone.scale.ToVector3(), (v) => { zone.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
+            BuildItemsList(zone.items, true, (i) => previews.SpawnAtZoneCenter(zone, i));
+        }
+
+        private void BuildStaticObject(StaticObject obj)
+        {
+            BuildStringField(_inspectorContent, "Prefab Path", obj.prefabPath ?? "", (v) => { obj.prefabPath = v; manager.IsDirty = true; });
+            BuildVector3Field(_inspectorContent, "Scale", obj.scale.ToVector3(), (v) => { obj.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
+
+            var row = UIBuilder.CreatePanel("SourceRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
+            if (_isPickingSource && _pickingSourceTarget == obj)
+            {
+                UIBuilder.CreateLabel(row, "Click object in world...", 11, 132, 22);
+                UIBuilder.CreateButton(row, "Cancel", () => { _isPickingSource = false; _pickingSourceTarget = null; RefreshInspector(); }, 54, 22);
+            }
+            else
+            {
+                UIBuilder.CreateButton(row, "Pick from Scene", () => { _isPickingSource = true; _pickingSourceTarget = obj; RefreshInspector(); }, 100, 22);
+                UIBuilder.CreateToggle(row, "Use Parent", _pickUseParent, (v) => _pickUseParent = v, 18);
+            }
+            if (!string.IsNullOrEmpty(obj.sourceObjectName))
+            {
+                UIBuilder.CreateButton(row, "Clear Source", () => { obj.sourceObjectName = ""; obj.sourceObjectPosition = new TransformData(); manager.IsDirty = true; RefreshInspector(); }, 90, 22);
+                UIBuilder.CreateText(_inspectorContent, $"Source: {obj.sourceObjectName} @ {obj.sourceObjectPosition.x:F2}, {obj.sourceObjectPosition.y:F2}, {obj.sourceObjectPosition.z:F2}", 11, new Color(0.6f, 0.6f, 0.6f, 1f));
+            }
+
+            UIBuilder.CreateButton(_inspectorContent, "Preview Object", () => previews.SpawnStaticPreview(obj), 100, 24);
+        }
+
+        private void BuildItemsList(List<LootItem> items, bool showRotation, System.Action<int> onPreview)
+        {
+            if (items == null)
+                return;
+
+            UIBuilder.CreateText(_inspectorContent, "Items (chance does not need to add to 100):", 11, Color.white, FontStyle.Bold);
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                var item = items[i];
+                if (item.rotation == null)
+                    item.rotation = new TransformData();
+
+                int idx = i;
+                var row = UIBuilder.CreatePanel("ItemRow", _inspectorContent, new Color(0, 0, 0, 0));
+                UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
+                UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
+
+                UIBuilder.CreateLabel(row, "Tpl", 11, 26, 20);
+                var tplField = BuildInputFieldInline(row, item.template ?? "", (v) => { item.template = v; manager.IsDirty = true; }, 100, 20);
+                tplField.onEndEdit.AddListener(_ => RequestInspectorRefresh());
+                UIBuilder.CreateLabel(row, "%", 11, 18, 20);
+                BuildInputFieldInline(row, item.chance.ToString("F1", CultureInfo.InvariantCulture), (v) => { if (float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var r)) item.chance = r; manager.IsDirty = true; }, 40, 20);
+                if (onPreview != null)
+                    UIBuilder.CreateButton(row, "Prev", () => onPreview(idx), 36, 20, 10);
+                UIBuilder.CreateButton(row, "-", () => { items.RemoveAt(idx); manager.IsDirty = true; RefreshInspector(); }, 24, 20, 10);
+
+                var name = GetItemName(item.template);
+                if (!string.IsNullOrEmpty(name))
+                    UIBuilder.CreateText(_inspectorContent, $"  {name}", 11, new Color(0.6f, 0.6f, 0.6f, 1f));
+
+                if (showRotation)
+                {
+                    var rotRow = UIBuilder.CreatePanel("RotRow", _inspectorContent, new Color(0, 0, 0, 0));
+                    UIBuilder.AddHorizontalLayout(rotRow, 2, 2, false, false);
+                    UIBuilder.AddLayoutElement(rotRow, null, 22, null, 22, null, 0);
+                    UIBuilder.CreateToggle(rotRow, "Random Rotation", item.randomRotation, (v) => { item.randomRotation = v; manager.IsDirty = true; }, 18);
+                    if (!item.randomRotation)
+                        BuildVector3FieldInline(rotRow, "Rot", item.rotation.ToVector3(), (v) => { item.rotation = TransformData.FromVector3(v); manager.IsDirty = true; });
+                }
+            }
+
+            UIBuilder.CreateButton(_inspectorContent, "Add Item", () => { items.Add(new LootItem()); manager.IsDirty = true; RefreshInspector(); }, 80, 22);
+        }
+
+        private void RefreshPrefabs()
+        {
+            if (_prefabsContent == null)
+                return;
+            ClearChildren(_prefabsContent);
+            var names = PrefabStorage.ListPrefabNames();
+            if (names.Count == 0)
+            {
+                UIBuilder.CreateText(_prefabsContent, "No prefabs saved yet.", 11, new Color(0.6f, 0.6f, 0.6f, 1f));
+                return;
+            }
+            foreach (var prefabName in names)
+            {
+                var capturedName = prefabName;
+                var row = UIBuilder.CreatePanel("PrefabRow", _prefabsContent, new Color(0.17f, 0.17f, 0.17f, 1f));
+                UIBuilder.AddHorizontalLayout(row, 2, 2, true, false);
+                UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
+
+                var placeBtn = UIBuilder.CreateButton(row, capturedName, () => controller.PlacePrefab(capturedName), 0, 20, 11);
+                UIBuilder.AddLayoutElement(placeBtn.gameObject, null, 20, null, 20, 1, 0);
+
+                UIBuilder.CreateButton(row, "Ren", () =>
+                {
+                    var renRow = UIBuilder.CreatePanel("RenameRow", _prefabsContent, new Color(0.2f, 0.2f, 0.2f, 1f));
+                    UIBuilder.AddHorizontalLayout(renRow, 2, 2, false, false);
+                    UIBuilder.AddLayoutElement(renRow, null, 22, null, 22, null, 0);
+                    renRow.transform.SetSiblingIndex(row.transform.GetSiblingIndex() + 1);
+                    var input = UIBuilder.CreateInputField(renRow, "New name", capturedName, null, 0, 20);
+                    UIBuilder.AddLayoutElement(input.gameObject, null, 20, null, 20, 1, 0);
+                    UIBuilder.CreateButton(renRow, "OK", () =>
+                    {
+                        var newName = input.text.Trim();
+                        if (!string.IsNullOrEmpty(newName) && newName != capturedName)
+                        {
+                            var data = PrefabStorage.Load(capturedName);
+                            if (data != null) { data.name = newName; PrefabStorage.Save(data); }
+                            System.IO.File.Delete(PrefabStorage.PrefabPath(capturedName));
+                        }
+                        RequestRefresh();
+                    }, 36, 20);
+                    UIBuilder.CreateButton(renRow, "✕", () => { Destroy(renRow.gameObject); }, 22, 20);
+                }, 30, 20, 10);
+
+                UIBuilder.CreateButton(row, "Del", () =>
+                {
+                    System.IO.File.Delete(PrefabStorage.PrefabPath(capturedName));
+                    RequestRefresh();
+                }, 30, 20, 10);
+            }
+        }
+
+        private void RefreshGroups()
+        {
+            if (_groupsContent == null)
+                return;
+            ClearChildren(_groupsContent);
+            var groups = manager.GetGroups().ToList();
+            if (groups.Count == 0)
+            {
+                UIBuilder.CreateText(_groupsContent, "No groups.", 11, new Color(0.6f, 0.6f, 0.6f, 1f));
+                return;
+            }
+            foreach (var group in groups)
+            {
+                var capturedGroup = group;
+                var row = UIBuilder.CreatePanel("GroupRow", _groupsContent, new Color(0.15f, 0.15f, 0.15f, 0.4f));
+                UIBuilder.AddHorizontalLayout(row, 2, 2, true, false);
+                UIBuilder.AddLayoutElement(row, null, 20, null, 20, null, 0);
+                var lbl = UIBuilder.CreateLabel(row, capturedGroup, 11, 0, 18);
+                UIBuilder.AddLayoutElement(lbl.gameObject, null, 18, null, 18, 1, 0);
+                UIBuilder.CreateButton(row, "Select", () => { manager.SelectGroup(capturedGroup); RequestInspectorRefresh(); }, 50, 18, 10);
+            }
+        }
+
+        private void BuildStringField(RectTransform parent, string label, string value, UnityAction<string> onChanged)
+        {
+            var row = UIBuilder.CreatePanel("StringField", parent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row, 2, 2, true, true);
+            UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
+            UIBuilder.CreateLabel(row, label, 11, 60, 22);
+            var inp = UIBuilder.CreateInputField(row, label, value, (v) => onChanged?.Invoke(v), 0, 22);
+            UIBuilder.AddLayoutElement(inp.gameObject, null, null, null, null, 1, null);
+        }
+
+        private void BuildFloatField(RectTransform parent, string label, float value, UnityAction<float> onChanged)
+        {
+            var row = UIBuilder.CreatePanel("FloatField", parent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
+            UIBuilder.CreateLabel(row, label, 11, 60, 22);
+            UIBuilder.CreateInputField(row, label, value.ToString("F3", CultureInfo.InvariantCulture), (v) =>
+            {
+                if (float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var r))
+                    onChanged?.Invoke(r);
+            }, 80, 22);
+        }
+
+        private void BuildVector3Field(RectTransform parent, string label, Vector3 value, UnityAction<Vector3> onChanged)
+        {
+            var row = UIBuilder.CreatePanel("Vector3Field", parent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
+            UIBuilder.CreateLabel(row, label, 11, 60, 22);
+            BuildInputFieldInline(row, value.x.ToString("F3", CultureInfo.InvariantCulture), (v) => { if (float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var r)) onChanged?.Invoke(new Vector3(r, value.y, value.z)); }, 60, 22);
+            BuildInputFieldInline(row, value.y.ToString("F3", CultureInfo.InvariantCulture), (v) => { if (float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var r)) onChanged?.Invoke(new Vector3(value.x, r, value.z)); }, 60, 22);
+            BuildInputFieldInline(row, value.z.ToString("F3", CultureInfo.InvariantCulture), (v) => { if (float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var r)) onChanged?.Invoke(new Vector3(value.x, value.y, r)); }, 60, 22);
+        }
+
+        private void BuildVector3FieldInline(RectTransform parent, string label, Vector3 value, UnityAction<Vector3> onChanged)
+        {
+            var row = UIBuilder.CreatePanel("Vector3FieldInline", parent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(row, null, 20, null, 20, null, 0);
+            UIBuilder.CreateLabel(row, label, 11, 30, 20);
+            BuildInputFieldInline(row, value.x.ToString("F3", CultureInfo.InvariantCulture), (v) => { if (float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var r)) onChanged?.Invoke(new Vector3(r, value.y, value.z)); }, 52, 20);
+            BuildInputFieldInline(row, value.y.ToString("F3", CultureInfo.InvariantCulture), (v) => { if (float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var r)) onChanged?.Invoke(new Vector3(value.x, r, value.z)); }, 52, 20);
+            BuildInputFieldInline(row, value.z.ToString("F3", CultureInfo.InvariantCulture), (v) => { if (float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var r)) onChanged?.Invoke(new Vector3(value.x, value.y, r)); }, 52, 20);
+        }
+
+        private InputField BuildInputFieldInline(RectTransform parent, string value, UnityAction<string> onChanged, int width, int height)
+        {
+            return UIBuilder.CreateInputField(parent, "", value, (v) => onChanged?.Invoke(v), width, height);
+        }
+
+        private void BuildToggleField(RectTransform parent, string label, bool value, UnityAction<bool> onChanged)
+        {
+            UIBuilder.CreateToggle(parent, label, value, (v) => onChanged?.Invoke(v), 20);
+        }
+
+        private void ClearChildren(RectTransform parent)
+        {
+            if (parent == null)
+                return;
+            for (int i = parent.childCount - 1; i >= 0; i--)
+                Destroy(parent.GetChild(i).gameObject);
+        }
+
+        private bool MatchesSearch(MarkerBase marker)
+        {
+            if (string.IsNullOrWhiteSpace(_searchText))
+                return true;
+            var term = _searchText.Trim();
+            return (marker.name?.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0)
+                || (marker.group?.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0)
+                || (marker.Kind.ToString().IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        private string GetItemName(string template)
+        {
+            if (string.IsNullOrEmpty(template))
+                return null;
+            if (_itemNameCache.TryGetValue(template, out var cached))
+                return cached;
+
+            var factory = Singleton<ItemFactoryClass>.Instance;
+            if (factory == null || !factory.ItemTemplates.TryGetValue(template, out var itemTemplate))
+            {
+                _itemNameCache[template] = null;
+                return null;
+            }
+
+            var name = GetTemplateName(itemTemplate);
+            _itemNameCache[template] = name;
+            return name;
+        }
+
+        private static string GetTemplateName(object itemTemplate)
+        {
+            if (itemTemplate == null)
+                return null;
+
+            var type = itemTemplate.GetType();
+            var prop = type.GetProperty("Name", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+            if (prop != null)
+                return prop.GetValue(itemTemplate) as string;
+
+            var field = type.GetField("_name", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (field != null)
+                return field.GetValue(itemTemplate) as string;
+
+            return null;
+        }
+
+        public void RequestDelete()
+        {
+            if (manager == null || manager.Selected == null)
+                return;
+            _isDeletePending = true;
+            if (_deleteConfirmPanel != null)
+                _deleteConfirmPanel.gameObject.SetActive(true);
+            if (_deleteConfirmText != null)
+                _deleteConfirmText.text = $"Delete {manager.SelectedIds.Count} marker(s)?";
+        }
+
+        private void ConfirmDelete()
+        {
+            _isDeletePending = false;
+            _isDeleteConfirmed = true;
+            if (_deleteConfirmPanel != null)
+                _deleteConfirmPanel.gameObject.SetActive(false);
+        }
+
+        private void CancelDelete()
+        {
+            _isDeletePending = false;
+            _isDeleteConfirmed = false;
+            if (_deleteConfirmPanel != null)
+                _deleteConfirmPanel.gameObject.SetActive(false);
+        }
+
+        public void ClearDeletePending()
+        {
+            _isDeletePending = false;
+            _isDeleteConfirmed = false;
+            if (_deleteConfirmPanel != null)
+                _deleteConfirmPanel.gameObject.SetActive(false);
+        }
+
+        public StaticObject PickingSourceTarget => _pickingSourceTarget;
+
+        public void ClearPickingSource()
+        {
+            _isPickingSource = false;
+            _pickingSourceTarget = null;
+            RefreshInspector();
+        }
+
+        public GameObject TryPickSourceSceneObject() => PickSceneObjectAtMouse();
+
+        public void SetPickingSource(bool picking, StaticObject target = null)
+        {
+            _isPickingSource = picking;
+            _pickingSourceTarget = target;
+        }
+
+        private bool IsMouseOverPanel(RectTransform panel)
+        {
+            if (panel == null)
+                return false;
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(panel, Input.mousePosition, null, out var localPoint))
+                return panel.rect.Contains(localPoint);
+            return false;
+        }
+
+        public bool IsMouseOverMainWindow()
+        {
+            return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+        }
+
+        private GameObject PickSceneObjectAtMouse()
+        {
+            var cam = Camera.main;
+            if (cam == null)
+            {
+                Plugin.Log.LogWarning("No main camera found for scene picking.");
+                return null;
+            }
+            var ray = cam.ScreenPointToRay(Input.mousePosition);
+            if (Physics.Raycast(ray, out var hit, 100f))
+            {
+                var picked = hit.transform.gameObject;
+                if (_pickUseParent && picked.transform.parent != null)
+                    picked = picked.transform.parent.gameObject;
+                Plugin.Log.LogInfo($"Picked scene object: {picked.name} at {picked.transform.position}");
+                return picked;
+            }
+            Plugin.Log.LogWarning("Scene picker raycast did not hit anything.");
+            return null;
+        }
+
+        public void UpdateGizmoButtons()
+        {
+            foreach (var btn in _gizmoButtons)
+            {
+                if (btn == null)
+                    continue;
+                var isSelected = false;
+                if (btn == _translateButton && controller.GizmoMode == GizmoMode.Translate) isSelected = true;
+                if (btn == _rotateButton && controller.GizmoMode == GizmoMode.Rotate) isSelected = true;
+                if (btn == _scaleButton && controller.GizmoMode == GizmoMode.Scale) isSelected = true;
+                btn.GetComponent<Image>().color = isSelected ? new Color(0.25f, 0.45f, 0.75f, 1f) : new Color(0.24f, 0.24f, 0.24f, 1f);
+            }
+        }
+
+        public void UpdateEditorModeButton()
+        {
+            if (_editorModeButton != null)
+            {
+                var text = _editorModeButton.GetComponentInChildren<Text>();
+                if (text != null)
+                    text.text = controller.IsFreeCam ? "Exit Editor Mode" : "Editor Mode";
+            }
+        }
+    }
+}

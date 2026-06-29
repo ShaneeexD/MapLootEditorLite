@@ -17,7 +17,7 @@ namespace MapLootEditorLite.Client
     {
         private MarkerManager _manager;
         private MarkerRenderer _renderer;
-        private EditorUI _ui;
+        private CustomEditorUI _ui;
         private LootPreviewSpawner _previews;
         private GameObject _visualRoot;
         private GameObject _previewRoot;
@@ -50,6 +50,7 @@ namespace MapLootEditorLite.Client
         private Vector3 _freeCamPlayerStartPosition;
 
         private GizmoMode _gizmoMode = GizmoMode.Translate;
+        public GizmoMode GizmoMode => _gizmoMode;
         private GizmoAxis _activeGizmoAxis;
         private Vector3 _gizmoDragStartWorld;
         private Vector3 _gizmoDragStartMarkerPos;
@@ -73,7 +74,8 @@ namespace MapLootEditorLite.Client
 
             _renderer = new MarkerRenderer(_manager, _visualRoot);
             _previews = new LootPreviewSpawner(_previewRoot);
-            _ui = new EditorUI(this, _manager, _renderer, _previews);
+            _ui = gameObject.AddComponent<CustomEditorUI>();
+            _ui.Init(this, _manager, _renderer, _previews);
             Plugin.Log.LogInfo($"MapEditorController awake: enabled={enabled} active={gameObject.activeInHierarchy} key={_toggleKey}");
             TryApplyFreeCamPatches();
         }
@@ -164,6 +166,11 @@ namespace MapLootEditorLite.Client
                 Plugin.Log.LogInfo($"Toggle key pressed via Input: editor open = {_editorOpen}");
             }
 
+            if (_editorOpen && _ui != null && !_ui.IsVisible)
+                _ui.Show();
+            else if (!_editorOpen && _ui != null && _ui.IsVisible)
+                _ui.Hide();
+
             if (!_editorOpen && _freeCam)
                 ToggleFreeCam();
 
@@ -176,17 +183,23 @@ namespace MapLootEditorLite.Client
                 if (Input.GetKeyDown(KeyCode.Alpha3))
                     SetGizmoMode(GizmoMode.Scale);
 
-                if (Input.GetKeyDown(KeyCode.Delete) && GUIUtility.keyboardControl == 0)
+                if (_ui.IsDeleteConfirmed)
+                {
+                    DeleteSelected();
+                    _ui.ClearDeletePending();
+                }
+
+                if (Input.GetKeyDown(KeyCode.Delete) && !_ui.IsDeletePending && !_ui.IsAnyInputFocused)
                     _ui.RequestDelete();
 
-                if (Input.GetKeyDown(KeyCode.C) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) && GUIUtility.keyboardControl == 0)
+                if (Input.GetKeyDown(KeyCode.C) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) && !_ui.IsAnyInputFocused)
                     CopySelected();
-                if (Input.GetKeyDown(KeyCode.V) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) && GUIUtility.keyboardControl == 0)
+                if (Input.GetKeyDown(KeyCode.V) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) && !_ui.IsAnyInputFocused)
                     Paste();
 
-                if (Input.GetKeyDown(KeyCode.Z) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) && GUIUtility.keyboardControl == 0)
+                if (Input.GetKeyDown(KeyCode.Z) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) && !_ui.IsAnyInputFocused)
                     Undo();
-                if (Input.GetKeyDown(KeyCode.Y) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) && GUIUtility.keyboardControl == 0)
+                if (Input.GetKeyDown(KeyCode.Y) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) && !_ui.IsAnyInputFocused)
                     Redo();
 
                 if (_freeCam)
@@ -235,17 +248,8 @@ namespace MapLootEditorLite.Client
 
         private void OnGUI()
         {
-            var ev = Event.current;
-            if (ev != null && ev.type == EventType.KeyDown && ev.keyCode == _toggleKey && _lastToggleFrame != Time.frameCount)
-            {
-                _editorOpen = !_editorOpen;
-                _lastToggleFrame = Time.frameCount;
-                Plugin.Log.LogInfo($"Toggle key pressed via GUI: editor open = {_editorOpen}");
-            }
-
             if (_editorOpen)
             {
-                _ui.Draw();
                 _renderer.DrawLabels(true);
                 _previews.DrawLabels(true);
             }
@@ -801,9 +805,12 @@ namespace MapLootEditorLite.Client
 
             if (Input.GetMouseButtonUp(0))
             {
+                bool wasDragging = _activeGizmoAxis != GizmoAxis.None || _mouseDragging;
                 _activeGizmoAxis = GizmoAxis.None;
                 _renderer.ActiveAxis = GizmoAxis.None;
                 _mouseDragging = false;
+                if (wasDragging)
+                    _ui?.RequestInspectorRefresh();
             }
         }
 
@@ -1031,11 +1038,7 @@ namespace MapLootEditorLite.Client
 
         private bool IsMouseOverUI()
         {
-            var scale = Plugin.UIScale?.Value ?? 1f;
-            var rect = _ui.WindowRect;
-            var mouse = Input.mousePosition / scale;
-            mouse.y = (Screen.height - Input.mousePosition.y) / scale;
-            return rect.Contains(mouse);
+            return _ui != null && _ui.IsMouseOverMainWindow();
         }
 
         private MarkerBase PickMarkerFromMouse()
