@@ -596,7 +596,7 @@ namespace MapLootEditorLite.Client
 
             var scroll = UIBuilder.CreateScrollView(leftCol, out _objectsContent, out _, 0, 0, 14);
             UIBuilder.AddLayoutElement(scroll.gameObject, null, null, null, null, null, 1);
-            UIBuilder.AddVerticalLayout(_objectsContent, 1, 1, true, false);
+            UIBuilder.AddVerticalLayout(_objectsContent, 1, 2, true, true);
 
             // ── Right: name label + action buttons ────────────────────────────
             var rightCol = UIBuilder.CreatePanel("GORight", _objectsTab, new Color(0.1f, 0.1f, 0.1f, 1f));
@@ -654,8 +654,8 @@ namespace MapLootEditorLite.Client
                 bool isSelected = _selectedSceneGO == go;
 
                 var row = UIBuilder.CreatePanel("GORow", _objectsContent, new Color(0, 0, 0, 0));
-                UIBuilder.AddHorizontalLayout(row, 2, 1, true, false);
-                UIBuilder.AddLayoutElement(row, null, 18, null, 18, null, 0);
+                UIBuilder.AddHorizontalLayout(row, 1, 1, true, false);
+                UIBuilder.AddLayoutElement(row, null, 14, null, 14, null, 0);
                 row.GetComponent<Image>().color = isSelected
                     ? new Color(0.2f, 0.3f, 0.45f, 0.6f)
                     : new Color(0.13f, 0.13f, 0.13f, 0.3f);
@@ -667,8 +667,8 @@ namespace MapLootEditorLite.Client
                         _goPreviewNameText.text = captured.name;
                     RefreshObjectsList();
                     RefreshGOActionRow();
-                }, 0, 16, 10);
-                UIBuilder.AddLayoutElement(btn.gameObject, null, 16, null, 16, 1, 0);
+                }, 0, 12, 10);
+                UIBuilder.AddLayoutElement(btn.gameObject, null, 12, null, 12, 1, 0);
                 btn.GetComponent<Image>().color = new Color(0, 0, 0, 0);
                 var bc = btn.colors;
                 bc.normalColor = Color.white;
