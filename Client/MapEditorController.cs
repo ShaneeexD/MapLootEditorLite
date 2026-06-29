@@ -37,6 +37,7 @@ namespace MapLootEditorLite.Client
         private const float _freeCamLookSpeed = 2f;
 
         private bool _mouseDragging;
+        private bool _visualsCleared;
 
         public static bool FreeCamInvulnerable => _editorModeActive || Time.time < _editorModeInvincibleEndTime;
         private static bool _editorModeActive;
@@ -270,7 +271,7 @@ namespace MapLootEditorLite.Client
                 {
                     _previews.ClearAll();
                     _renderer.Clear();
-                    _currentMapId = null;
+                    _visualsCleared = true;
                 }
                 _currentGameWorld = null;
                 return;
@@ -285,6 +286,7 @@ namespace MapLootEditorLite.Client
             if (!string.IsNullOrEmpty(mapId) && mapId != _currentMapId)
             {
                 _currentMapId = mapId;
+                _visualsCleared = false;
                 _previews.ClearAll();
                 var mapData = LoadMapDataFromPacks(mapId) ?? JsonStorage.Load(mapId);
                 mapData.map = mapId;
@@ -292,6 +294,12 @@ namespace MapLootEditorLite.Client
                 _renderer.Rebuild();
                 _previews.SpawnAllPreviews(_manager.Data);
                 Plugin.Log.LogInfo($"Loaded map: {mapId}");
+            }
+            else if (_visualsCleared && !string.IsNullOrEmpty(_currentMapId))
+            {
+                _visualsCleared = false;
+                _renderer.Rebuild();
+                _previews.SpawnAllPreviews(_manager.Data);
             }
         }
 

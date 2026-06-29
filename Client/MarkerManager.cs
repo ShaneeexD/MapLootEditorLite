@@ -127,12 +127,15 @@ namespace MapLootEditorLite.Client
             if (Data == null)
                 yield break;
 
-            foreach (var m in Data.lootSpawns)
-                yield return m;
-            foreach (var m in Data.lootZones)
-                yield return m;
-            foreach (var m in Data.objects)
-                yield return m;
+            if (Data.lootSpawns != null)
+                foreach (var m in Data.lootSpawns)
+                    yield return m;
+            if (Data.lootZones != null)
+                foreach (var m in Data.lootZones)
+                    yield return m;
+            if (Data.objects != null)
+                foreach (var m in Data.objects)
+                    yield return m;
         }
 
         public MarkerBase FindById(string id)
@@ -337,7 +340,7 @@ namespace MapLootEditorLite.Client
                 rotation = TransformData.FromVector3(Vector3.zero),
                 radius = 1f,
                 scale = new TransformData { x = 1f, y = 1f, z = 1f },
-                shape = ZoneShape.Sphere,
+                shape = ZoneShape.Box,
                 items = new List<LootItem> { new LootItem { template = "544fb45d4bdc2dee738b4568", chance = 100f } }
             };
             Data.lootZones.Add(marker);

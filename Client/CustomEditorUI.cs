@@ -759,7 +759,8 @@ namespace MapLootEditorLite.Client
 
         private void BuildLooseLootSpawn(LooseLootSpawn spawn)
         {
-            BuildToggleField(_inspectorContent, "Respawnable", spawn.respawnable, (v) => spawn.respawnable = v);
+            BuildToggleField(_inspectorContent, "Respawnable", spawn.respawnable, (v) => { spawn.respawnable = v; manager.IsDirty = true; });
+            BuildToggleField(_inspectorContent, "Use Gravity", spawn.useGravity, (v) => { spawn.useGravity = v; manager.IsDirty = true; });
             BuildItemsList(spawn.items, false, (i) => previews.SpawnAtMarker(spawn, i));
         }
 
@@ -783,6 +784,7 @@ namespace MapLootEditorLite.Client
 
             BuildFloatField(_inspectorContent, "Radius", zone.radius, (v) => { zone.radius = v; manager.IsDirty = true; });
             BuildVector3Field(_inspectorContent, "Scale", zone.scale.ToVector3(), (v) => { zone.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
+            BuildToggleField(_inspectorContent, "Use Gravity", zone.useGravity, (v) => { zone.useGravity = v; manager.IsDirty = true; });
             BuildItemsList(zone.items, true, (i) => previews.SpawnAtZoneCenter(zone, i));
         }
 

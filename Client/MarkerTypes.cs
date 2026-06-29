@@ -80,6 +80,7 @@ namespace MapLootEditorLite.Client
         public float spawnChance = 100f;
         public bool respawnable = false;
         public bool forced = false;
+        public bool useGravity = false;
 
         public override MarkerKind Kind => MarkerKind.LooseLoot;
     }
@@ -102,6 +103,7 @@ namespace MapLootEditorLite.Client
         public List<LootItem> items = new List<LootItem>();
         public float spawnChance = 100f;
         public bool forced = false;
+        public bool useGravity = false;
 
         public override MarkerKind Kind => MarkerKind.LootZone;
     }
