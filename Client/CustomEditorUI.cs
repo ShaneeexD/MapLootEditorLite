@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -91,6 +92,18 @@ namespace MapLootEditorLite.Client
         private bool _refreshPending;
         private bool _hierarchyRefreshPending;
         private bool _inspectorRefreshPending;
+
+        // GameObjects browser
+        private RectTransform _objectsTab;
+        private Button _objectsTabButton;
+        private RectTransform _objectsContent;
+        private string _objectsSearchText = "";
+        private bool _scanning;
+        private Text _goPreviewNameText;
+        private RectTransform _goActionBtnRow;
+        private readonly List<GameObject> _sceneObjectCache = new List<GameObject>();
+        private GameObject _selectedSceneGO;
+        private StaticObject _goListTarget;
 
         private readonly Dictionary<string, string> _itemNameCache = new Dictionary<string, string>();
 
@@ -424,9 +437,10 @@ namespace MapLootEditorLite.Client
             var tabBar = UIBuilder.CreatePanel("TabBar", _bottomPanel, new Color(0.08f, 0.08f, 0.08f, 1f));
             UIBuilder.AddHorizontalLayout(tabBar, 4, 4, false, false);
             UIBuilder.AddLayoutElement(tabBar, null, 26, null, 26, null, 0);
-            _prefabsTabButton = UIBuilder.CreateButton(tabBar, "Prefabs", () => SelectBottomTab(0), 80, 22);
-            _scatterTabButton = UIBuilder.CreateButton(tabBar, "Scatter", () => SelectBottomTab(1), 80, 22);
-            _groupsTabButton = UIBuilder.CreateButton(tabBar, "Groups", () => SelectBottomTab(2), 80, 22);
+            _prefabsTabButton  = UIBuilder.CreateButton(tabBar, "Prefabs",      () => SelectBottomTab(0), 70, 22);
+            _scatterTabButton  = UIBuilder.CreateButton(tabBar, "Scatter",      () => SelectBottomTab(1), 70, 22);
+            _groupsTabButton   = UIBuilder.CreateButton(tabBar, "Groups",       () => SelectBottomTab(2), 70, 22);
+            _objectsTabButton  = UIBuilder.CreateButton(tabBar, "GameObjects",  () => SelectBottomTab(3), 90, 22);
 
             var tabContent = UIBuilder.CreatePanel("TabContent", _bottomPanel, new Color(0, 0, 0, 0));
             tabContent.anchorMin = Vector2.zero;
@@ -438,6 +452,7 @@ namespace MapLootEditorLite.Client
             BuildPrefabsTab(tabContent);
             BuildScatterTab(tabContent);
             BuildGroupsTab(tabContent);
+            BuildObjectsTab(tabContent);
 
             SelectBottomTab(0);
         }
@@ -448,10 +463,12 @@ namespace MapLootEditorLite.Client
             _prefabsTab.gameObject.SetActive(index == 0);
             _scatterTab.gameObject.SetActive(index == 1);
             _groupsTab.gameObject.SetActive(index == 2);
+            if (_objectsTab != null) _objectsTab.gameObject.SetActive(index == 3);
 
             UpdateTabButton(_prefabsTabButton, index == 0);
             UpdateTabButton(_scatterTabButton, index == 1);
             UpdateTabButton(_groupsTabButton, index == 2);
+            if (_objectsTabButton != null) UpdateTabButton(_objectsTabButton, index == 3);
         }
 
         private void UpdateTabButton(Button btn, bool active)
@@ -552,6 +569,233 @@ namespace MapLootEditorLite.Client
             var groupsScroll = UIBuilder.CreateScrollView(_groupsTab, out _groupsContent, out _, 0, 0, 14);
             UIBuilder.AddLayoutElement(groupsScroll.gameObject, null, null, null, null, null, 1);
             UIBuilder.AddVerticalLayout(_groupsContent, 4, 2, true, false);
+        }
+
+        private void BuildObjectsTab(RectTransform parent)
+        {
+            _objectsTab = UIBuilder.CreatePanel("ObjectsTab", parent, new Color(0.14f, 0.14f, 0.14f, 1f));
+            _objectsTab.anchorMin = Vector2.zero;
+            _objectsTab.anchorMax = Vector2.one;
+            _objectsTab.offsetMin = Vector2.zero;
+            _objectsTab.offsetMax = Vector2.zero;
+            UIBuilder.AddHorizontalLayout(_objectsTab, 4, 4, true, true);
+
+            // ── Left: filter bar + scrollable name list ──────────────────────
+            var leftCol = UIBuilder.CreatePanel("GOLeft", _objectsTab, new Color(0, 0, 0, 0));
+            leftCol.GetComponent<Image>().raycastTarget = false;
+            UIBuilder.AddLayoutElement(leftCol, null, null, null, null, 1, 1);
+            UIBuilder.AddVerticalLayout(leftCol, 2, 2, true, true);
+
+            var searchRow = UIBuilder.CreatePanel("GOSearch", leftCol, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(searchRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(searchRow, null, 22, null, 22, null, 0);
+            UIBuilder.CreateLabel(searchRow, "Filter", 11, 34, 22);
+            UIBuilder.CreateInputField(searchRow, "type to filter...", _objectsSearchText,
+                (v) => { _objectsSearchText = v; RefreshObjectsList(); }, 110, 22);
+            UIBuilder.CreateButton(searchRow, "Scan Scene", () => { ScanSceneObjects(); RefreshObjectsList(); }, 80, 22);
+
+            var scroll = UIBuilder.CreateScrollView(leftCol, out _objectsContent, out _, 0, 0, 14);
+            UIBuilder.AddLayoutElement(scroll.gameObject, null, null, null, null, null, 1);
+            UIBuilder.AddVerticalLayout(_objectsContent, 1, 1, true, false);
+
+            // ── Right: name label + action buttons ────────────────────────────
+            var rightCol = UIBuilder.CreatePanel("GORight", _objectsTab, new Color(0.1f, 0.1f, 0.1f, 1f));
+            UIBuilder.AddLayoutElement(rightCol, 120, null, 120, null, 0, 1);
+            UIBuilder.AddVerticalLayout(rightCol, 4, 4, true, true);
+
+            _goPreviewNameText = UIBuilder.CreateText(rightCol, "No selection", 11, new Color(0.6f, 0.6f, 0.6f, 1f));
+            if (_goPreviewNameText != null)
+            {
+                _goPreviewNameText.alignment = TextAnchor.UpperCenter;
+                _goPreviewNameText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            }
+
+            _goActionBtnRow = UIBuilder.CreatePanel("GOActions", rightCol, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(_goActionBtnRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(_goActionBtnRow, null, 22, null, 22, null, 0);
+            RefreshGOActionRow();
+        }
+
+        private void RefreshObjectsList()
+        {
+            if (_objectsContent == null) return;
+            ClearChildren(_objectsContent);
+
+            if (_scanning)
+            {
+                UIBuilder.CreateText(_objectsContent, "Scanning scene... please wait", 11, new Color(0.7f, 0.85f, 0.7f, 1f));
+                return;
+            }
+
+            var filter = _objectsSearchText?.Trim() ?? "";
+            var filtered = string.IsNullOrEmpty(filter)
+                ? _sceneObjectCache
+                : _sceneObjectCache.Where(g => g != null && g.name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+
+            const int maxShown = 150;
+            bool truncated = filtered.Count > maxShown;
+            var list = truncated ? filtered.Take(maxShown).ToList() : filtered;
+
+            if (list.Count == 0)
+            {
+                UIBuilder.CreateText(_objectsContent,
+                    _sceneObjectCache.Count == 0 ? "Click 'Scan Scene' to populate the list." : "No objects match the filter.",
+                    11, new Color(0.5f, 0.5f, 0.5f, 1f));
+                return;
+            }
+
+            if (truncated)
+                UIBuilder.CreateText(_objectsContent, $"Showing {maxShown} of {filtered.Count} — refine filter", 10, new Color(0.6f, 0.6f, 0.4f, 1f));
+
+            foreach (var go in list)
+            {
+                if (go == null) continue;
+                var captured = go;
+                bool isSelected = _selectedSceneGO == go;
+
+                var row = UIBuilder.CreatePanel("GORow", _objectsContent, new Color(0, 0, 0, 0));
+                UIBuilder.AddHorizontalLayout(row, 2, 1, true, false);
+                UIBuilder.AddLayoutElement(row, null, 18, null, 18, null, 0);
+                row.GetComponent<Image>().color = isSelected
+                    ? new Color(0.2f, 0.3f, 0.45f, 0.6f)
+                    : new Color(0.13f, 0.13f, 0.13f, 0.3f);
+
+                var btn = UIBuilder.CreateButton(row, go.name, () =>
+                {
+                    _selectedSceneGO = captured;
+                    if (_goPreviewNameText != null)
+                        _goPreviewNameText.text = captured.name;
+                    RefreshObjectsList();
+                    RefreshGOActionRow();
+                }, 0, 16, 10);
+                UIBuilder.AddLayoutElement(btn.gameObject, null, 16, null, 16, 1, 0);
+                btn.GetComponent<Image>().color = new Color(0, 0, 0, 0);
+                var bc = btn.colors;
+                bc.normalColor = Color.white;
+                bc.highlightedColor = new Color(0.85f, 0.9f, 1f, 1f);
+                bc.pressedColor = new Color(0.7f, 0.8f, 1f, 1f);
+                btn.colors = bc;
+                var lbl = btn.GetComponentInChildren<Text>();
+                if (lbl != null)
+                {
+                    lbl.fontSize = 10;
+                    lbl.alignment = TextAnchor.MiddleLeft;
+                    lbl.color = isSelected ? new Color(0.9f, 0.9f, 0.9f, 1f) : new Color(0.72f, 0.72f, 0.72f, 1f);
+                }
+            }
+        }
+
+        private void RefreshGOActionRow()
+        {
+            if (_goActionBtnRow == null) return;
+            ClearChildren(_goActionBtnRow);
+
+            if (_selectedSceneGO == null)
+            {
+                UIBuilder.CreateLabel(_goActionBtnRow, "Select an object", 10, 120, 22);
+                return;
+            }
+
+            if (_goListTarget != null)
+            {
+                UIBuilder.CreateButton(_goActionBtnRow, "Set Source", () =>
+                {
+                    _goListTarget.sourceObjectName = _selectedSceneGO.name;
+                    _goListTarget.sourceObjectPosition = TransformData.FromVector3(_selectedSceneGO.transform.position);
+                    manager.IsDirty = true;
+                    _goListTarget = null;
+                    RefreshInspector();
+                    RefreshGOActionRow();
+                }, 76, 22);
+                UIBuilder.CreateButton(_goActionBtnRow, "Cancel", () =>
+                {
+                    _goListTarget = null;
+                    RefreshGOActionRow();
+                }, 46, 22);
+            }
+            else
+            {
+                UIBuilder.CreateButton(_goActionBtnRow, "Place Here", () =>
+                {
+                    controller?.PlaceStaticFromSceneGO(_selectedSceneGO);
+                }, 80, 22);
+            }
+        }
+
+        private void ScanSceneObjects()
+        {
+            if (_scanning) return;
+            StartCoroutine(ScanSceneObjectsCoroutine());
+        }
+
+        private IEnumerator ScanSceneObjectsCoroutine()
+        {
+            _scanning = true;
+            _sceneObjectCache.Clear();
+            RefreshObjectsList();
+            yield return null;
+
+            var seen = new HashSet<int>();
+            var stack = new Stack<Transform>();
+
+            for (int s = 0; s < UnityEngine.SceneManagement.SceneManager.sceneCount; s++)
+            {
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(s);
+                if (!scene.isLoaded) continue;
+                foreach (var root in scene.GetRootGameObjects())
+                    stack.Push(root.transform);
+            }
+
+            int processed = 0;
+            while (stack.Count > 0)
+            {
+                var t = stack.Pop();
+                var go = t.gameObject;
+
+                // Skip inactive objects — they're not visible and we skip their entire subtree
+                if (!go.activeSelf)
+                {
+                    if (++processed % 300 == 0) yield return null;
+                    continue;
+                }
+
+                if (!go.name.StartsWith("MLE_") && go.GetComponent<PreviewLootMarker>() == null)
+                {
+                    var lod = go.GetComponent<LODGroup>();
+                    if (lod != null)
+                    {
+                        // Only add LOD objects whose LOD group is enabled and have at least one enabled renderer
+                        if (lod.enabled)
+                        {
+                            var mr = go.GetComponentInChildren<MeshRenderer>();
+                            if (mr != null && mr.enabled && seen.Add(go.GetInstanceID()))
+                                _sceneObjectCache.Add(go);
+                        }
+                        // Never push children — sub-meshes belong to this LOD object
+                    }
+                    else
+                    {
+                        for (int i = 0; i < t.childCount; i++)
+                            stack.Push(t.GetChild(i));
+
+                        // Only add if the renderer is enabled and has an actual mesh assigned
+                        var mr = go.GetComponent<MeshRenderer>();
+                        if (mr != null && mr.enabled)
+                        {
+                            var mf = go.GetComponent<MeshFilter>();
+                            if ((mf == null || mf.sharedMesh != null) && seen.Add(go.GetInstanceID()))
+                                _sceneObjectCache.Add(go);
+                        }
+                    }
+                }
+
+                if (++processed % 300 == 0)
+                    yield return null;
+            }
+
+            _sceneObjectCache.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.OrdinalIgnoreCase));
+            _scanning = false;
+            RefreshObjectsList();
         }
 
         private void BuildDeleteConfirm()
@@ -793,23 +1037,38 @@ namespace MapLootEditorLite.Client
             BuildStringField(_inspectorContent, "Prefab Path", obj.prefabPath ?? "", (v) => { obj.prefabPath = v; manager.IsDirty = true; });
             BuildVector3Field(_inspectorContent, "Scale", obj.scale.ToVector3(), (v) => { obj.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
 
-            var row = UIBuilder.CreatePanel("SourceRow", _inspectorContent, new Color(0, 0, 0, 0));
-            UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
-            UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
             if (_isPickingSource && _pickingSourceTarget == obj)
             {
-                UIBuilder.CreateLabel(row, "Click object in world...", 11, 132, 22);
-                UIBuilder.CreateButton(row, "Cancel", () => { _isPickingSource = false; _pickingSourceTarget = null; RefreshInspector(); }, 54, 22);
+                var pickRow = UIBuilder.CreatePanel("SourcePickRow", _inspectorContent, new Color(0, 0, 0, 0));
+                UIBuilder.AddHorizontalLayout(pickRow, 2, 2, false, false);
+                UIBuilder.AddLayoutElement(pickRow, null, 22, null, 22, null, 0);
+                UIBuilder.CreateLabel(pickRow, "Click object in world...", 11, 132, 22);
+                UIBuilder.CreateButton(pickRow, "Cancel", () => { _isPickingSource = false; _pickingSourceTarget = null; RefreshInspector(); }, 54, 22);
             }
             else
             {
-                UIBuilder.CreateButton(row, "Pick from Scene", () => { _isPickingSource = true; _pickingSourceTarget = obj; RefreshInspector(); }, 100, 22);
-                UIBuilder.CreateToggle(row, "Use Parent", _pickUseParent, (v) => _pickUseParent = v, 18);
-            }
-            if (!string.IsNullOrEmpty(obj.sourceObjectName))
-            {
-                UIBuilder.CreateButton(row, "Clear Source", () => { obj.sourceObjectName = ""; obj.sourceObjectPosition = new TransformData(); manager.IsDirty = true; RefreshInspector(); }, 90, 22);
-                UIBuilder.CreateText(_inspectorContent, $"Source: {obj.sourceObjectName} @ {obj.sourceObjectPosition.x:F2}, {obj.sourceObjectPosition.y:F2}, {obj.sourceObjectPosition.z:F2}", 11, new Color(0.6f, 0.6f, 0.6f, 1f));
+                // Row 1: Pick from Scene + Use Parent
+                var row1 = UIBuilder.CreatePanel("SourceRow1", _inspectorContent, new Color(0, 0, 0, 0));
+                UIBuilder.AddHorizontalLayout(row1, 4, 2, false, false);
+                UIBuilder.AddLayoutElement(row1, null, 22, null, 22, null, 0);
+                UIBuilder.CreateButton(row1, "Pick from Scene", () => { _isPickingSource = true; _pickingSourceTarget = obj; RefreshInspector(); }, 100, 22);
+                UIBuilder.CreateToggle(row1, "Use Parent", _pickUseParent, (v) => _pickUseParent = v, 18);
+
+                // Row 2: From List
+                var row2 = UIBuilder.CreatePanel("SourceRow2", _inspectorContent, new Color(0, 0, 0, 0));
+                UIBuilder.AddHorizontalLayout(row2, 4, 2, false, false);
+                UIBuilder.AddLayoutElement(row2, null, 22, null, 22, null, 0);
+                UIBuilder.CreateButton(row2, "From List", () => { _goListTarget = obj; SelectBottomTab(3); RefreshGOActionRow(); }, 68, 22);
+
+                // Row 3: Clear Source (only when a source is set)
+                if (!string.IsNullOrEmpty(obj.sourceObjectName))
+                {
+                    var row3 = UIBuilder.CreatePanel("SourceRow3", _inspectorContent, new Color(0, 0, 0, 0));
+                    UIBuilder.AddHorizontalLayout(row3, 4, 2, false, false);
+                    UIBuilder.AddLayoutElement(row3, null, 22, null, 22, null, 0);
+                    UIBuilder.CreateButton(row3, "Clear Source", () => { obj.sourceObjectName = ""; obj.sourceObjectPosition = new TransformData(); manager.IsDirty = true; RefreshInspector(); }, 90, 22);
+                    UIBuilder.CreateText(_inspectorContent, $"Source: {obj.sourceObjectName} @ {obj.sourceObjectPosition.x:F2}, {obj.sourceObjectPosition.y:F2}, {obj.sourceObjectPosition.z:F2}", 11, new Color(0.6f, 0.6f, 0.6f, 1f));
+                }
             }
 
             UIBuilder.CreateButton(_inspectorContent, "Preview Object", () => previews.SpawnStaticPreview(obj), 100, 24);

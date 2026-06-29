@@ -545,6 +545,20 @@ namespace MapLootEditorLite.Client
             _previews.SpawnPreviewForMarker(marker);
         }
 
+        public void PlaceStaticFromSceneGO(GameObject go)
+        {
+            if (!EnsureMapLoaded() || go == null) return;
+            _manager.Snapshot();
+            var marker = _manager.CreateStaticObject(GetLookPosition(), GetPlayerRotation());
+            marker.name = go.name;
+            marker.sourceObjectName = go.name;
+            marker.sourceObjectPosition = TransformData.FromVector3(go.transform.position);
+            _manager.Selected = marker;
+            _renderer.Rebuild();
+            _previews.SpawnPreviewForMarker(marker);
+            _ui?.RequestRefresh();
+        }
+
         public void CreateStaticObjectAtLook()
         {
             if (!EnsureMapLoaded()) return;
