@@ -21,6 +21,7 @@ namespace MapLootEditorLite.Client
         private readonly CoroutineRunner _runner;
         private readonly List<GameObject> _previews = new List<GameObject>();
         private readonly List<GameObject> _staticPreviews = new List<GameObject>();
+        private readonly Dictionary<string, GameObject> _staticSources = new Dictionary<string, GameObject>();
 
         public LootPreviewSpawner(GameObject root)
         {
@@ -406,6 +407,7 @@ namespace MapLootEditorLite.Client
                     UnityEngine.Object.Destroy(preview);
             }
             _staticPreviews.Clear();
+            _staticSources.Clear();
         }
 
         public void ClearByMarkerId(string markerId)
@@ -440,6 +442,8 @@ namespace MapLootEditorLite.Client
                     UnityEngine.Object.Destroy(preview);
                 }
             }
+
+            _staticSources.Remove(markerId);
         }
 
         public void SpawnPreviewForMarker(MarkerBase marker)
@@ -458,6 +462,12 @@ namespace MapLootEditorLite.Client
                     SpawnStaticPreview((StaticObject)marker);
                     break;
             }
+        }
+
+        public void RegisterStaticSource(string markerId, GameObject source)
+        {
+            if (string.IsNullOrEmpty(markerId) || source == null) return;
+            _staticSources[markerId] = source;
         }
 
         public void SpawnStaticPreview(StaticObject marker)
@@ -480,16 +490,24 @@ namespace MapLootEditorLite.Client
 
         private IEnumerator LoadStaticPreviewCoroutine(StaticObject marker)
         {
+            GameObject source = null;
+            if (_staticSources.TryGetValue(marker.id, out source) && source != null)
+            {
+                Plugin.Log.LogInfo($"Using cached source for static preview: {marker.name} ({source.name})");
+                SpawnStaticInstance(source, marker, true);
+                yield break;
+            }
+
             if (!string.IsNullOrEmpty(marker.sourceObjectName))
             {
-                var source = FindSourceObject(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
+                source = FindSourceObject(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
                 if (source != null)
                 {
+                    Plugin.Log.LogInfo($"Found source by name/position for static preview: {marker.name} ({source.name})");
                     SpawnStaticInstance(source, marker, true);
                     yield break;
                 }
-                Plugin.Log.LogWarning($"Could not find source scene object: {marker.sourceObjectName}");
-                yield break;
+                Plugin.Log.LogWarning($"Could not find source scene object: {marker.sourceObjectName}, trying prefab path.");
             }
 
             if (!string.IsNullOrEmpty(marker.prefabPath))

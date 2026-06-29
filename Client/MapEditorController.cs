@@ -553,6 +553,7 @@ namespace MapLootEditorLite.Client
             marker.name = go.name;
             marker.sourceObjectName = go.name;
             marker.sourceObjectPosition = TransformData.FromVector3(go.transform.position);
+            _previews.RegisterStaticSource(marker.id, go);
             _manager.Selected = marker;
             _renderer.Rebuild();
             _previews.SpawnPreviewForMarker(marker);
@@ -750,6 +751,8 @@ namespace MapLootEditorLite.Client
                         target.sourceObjectName = picked.name;
                         target.sourceObjectPosition = TransformData.FromVector3(picked.transform.position);
                         target.rotation = TransformData.FromVector3(picked.transform.rotation.eulerAngles);
+                        _previews.RegisterStaticSource(target.id, picked);
+                        _previews.SpawnPreviewForMarker(target);
                         _manager.IsDirty = true;
                     }
                     _ui.ClearPickingSource();
