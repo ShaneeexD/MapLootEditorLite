@@ -823,7 +823,10 @@ namespace MapLootEditorLite.Client
                 _renderer.ActiveAxis = GizmoAxis.None;
                 _mouseDragging = false;
                 if (wasDragging)
+                {
+                    UpdatePreviewsForSelection();
                     _ui?.RequestInspectorRefresh();
+                }
             }
         }
 

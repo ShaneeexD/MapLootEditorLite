@@ -849,9 +849,15 @@ namespace MapLootEditorLite.Client
                     var rotRow = UIBuilder.CreatePanel("RotRow", _inspectorContent, new Color(0, 0, 0, 0));
                     UIBuilder.AddHorizontalLayout(rotRow, 2, 2, false, false);
                     UIBuilder.AddLayoutElement(rotRow, null, 22, null, 22, null, 0);
-                    UIBuilder.CreateToggle(rotRow, "Random Rotation", item.randomRotation, (v) => { item.randomRotation = v; manager.IsDirty = true; }, 18);
+                    UIBuilder.CreateToggle(rotRow, "Random Rotation", item.randomRotation, (v) => { item.randomRotation = v; manager.IsDirty = true; RefreshInspector(); }, 18);
                     if (!item.randomRotation)
                         BuildVector3FieldInline(rotRow, "Rot", item.rotation.ToVector3(), (v) => { item.rotation = TransformData.FromVector3(v); manager.IsDirty = true; });
+
+                    var yRow = UIBuilder.CreatePanel("YOffsetRow", _inspectorContent, new Color(0, 0, 0, 0));
+                    UIBuilder.AddHorizontalLayout(yRow, 2, 2, false, false);
+                    UIBuilder.AddLayoutElement(yRow, null, 22, null, 22, null, 0);
+                    UIBuilder.CreateLabel(yRow, "Y Offset", 11, 52, 20);
+                    BuildInputFieldInline(yRow, item.yOffset.ToString("F2", CultureInfo.InvariantCulture), (v) => { if (float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var r)) { item.yOffset = r; manager.IsDirty = true; } }, 52, 20);
                 }
             }
 

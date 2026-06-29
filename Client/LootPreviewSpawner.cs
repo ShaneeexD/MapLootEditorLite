@@ -42,6 +42,7 @@ namespace MapLootEditorLite.Client
             var tpl = GetItemTpl(marker.items, itemIndex);
             var item = GetItem(marker.items, itemIndex);
             var pos = GetRandomPointInZone(marker);
+            pos.y += item?.yOffset ?? 0f;
             var rotation = GetZoneItemRotation(marker.items, itemIndex);
             var markerPos = marker.position.ToVector3();
             var markerRot = marker.rotation.ToQuaternion();
@@ -61,6 +62,7 @@ namespace MapLootEditorLite.Client
                 var tpl = GetItemTpl(marker.items, i);
                 var item = GetItem(marker.items, i);
                 var pos = GetRandomPointInZone(marker);
+                pos.y += item?.yOffset ?? 0f;
                 var rotation = GetZoneItemRotation(marker.items, i);
                 SpawnPreviewInternal(tpl, pos, rotation, markerPos, markerRot, item?.randomRotation != true, marker.name, marker.id, false);
             }
@@ -94,6 +96,7 @@ namespace MapLootEditorLite.Client
             var tpl = GetItemTpl(marker.items, itemIndex);
             var item = GetItem(marker.items, itemIndex);
             var pos = marker.position.ToVector3();
+            pos.y += item?.yOffset ?? 0f;
             var rot = marker.rotation.ToQuaternion();
             var rotation = GetZoneItemRotation(marker.items, itemIndex);
             SpawnPreview(tpl, pos, rotation, pos, rot, item?.randomRotation != true, marker.name, marker.id);
@@ -204,9 +207,13 @@ namespace MapLootEditorLite.Client
                 var real = TrySpawnRealPreview(itemTpl, position, rotation);
                 if (real != null)
                 {
+                    var currentPos = fallback.transform.position;
+                    var currentRot = fallback.transform.rotation;
                     _previews.Remove(fallback);
                     UnityEngine.Object.Destroy(fallback);
                     AttachMeta(real, itemTpl, markerName, markerId, false, offset, rotationOffset, syncRotation);
+                    real.transform.position = currentPos;
+                    real.transform.rotation = currentRot;
                     _previews.Add(real);
                     Plugin.Log.LogInfo($"Real preview loaded for {markerName} using tpl {itemTpl}");
                     yield break;
@@ -348,15 +355,7 @@ namespace MapLootEditorLite.Client
                 if (meta == null || meta.sourceMarkerId != marker.id)
                     continue;
 
-                if (marker is LooseLootSpawn)
-                {
-                    var ground = MarkerManager.GetGroundPosition(markerPos);
-                    preview.transform.position = ground ?? markerPos;
-                }
-                else
-                {
-                    preview.transform.position = markerPos + markerRot * meta.offset;
-                }
+                preview.transform.position = markerPos + markerRot * meta.offset;
 
                 if (meta.syncRotation)
                     preview.transform.rotation = markerRot * meta.rotationOffset;

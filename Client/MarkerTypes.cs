@@ -70,6 +70,7 @@ namespace MapLootEditorLite.Client
         public float chance = 100f;
         public TransformData rotation = new TransformData();
         public bool randomRotation = true;
+        public float yOffset = 0f;
     }
 
     public class LooseLootSpawn : MarkerBase
@@ -96,7 +97,7 @@ namespace MapLootEditorLite.Client
     {
         public float radius = 1f;
         public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
-        public ZoneShape shape = ZoneShape.Sphere;
+        public ZoneShape shape = ZoneShape.Box;
         public List<string> itemTpls = new List<string>();
         public List<LootItem> items = new List<LootItem>();
         public float spawnChance = 100f;
