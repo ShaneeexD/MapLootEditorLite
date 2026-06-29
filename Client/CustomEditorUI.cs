@@ -320,13 +320,13 @@ namespace MapLootEditorLite.Client
             // Header — first child in VLG = always at visual top; scroll mask clips content below it
             var header = UIBuilder.CreatePanel("HierarchyHeader", _hierarchyPanel, new Color(0.1f, 0.1f, 0.1f, 1f));
             UIBuilder.AddLayoutElement(header, null, 24, null, 24, null, 0);
-            UIBuilder.AddHorizontalLayout(header, 4, 0, false, false);
+            UIBuilder.AddHorizontalLayout(header, 4, 0, false, true);
             UIBuilder.CreateText(header, "Hierarchy", 12, Color.white, FontStyle.Bold);
 
             // Scroll — second child, fills remaining height
             var scroll = UIBuilder.CreateScrollView(_hierarchyPanel, out _hierarchyContent, out _, 0, 0, 14);
             UIBuilder.AddLayoutElement(scroll.gameObject, null, null, null, null, null, 1);
-            UIBuilder.AddVerticalLayout(_hierarchyContent, 1, 0, true, true);
+            UIBuilder.AddVerticalLayout(_hierarchyContent, 1, 2, true, true);
         }
 
         private void BuildInspectorPanel()
@@ -342,13 +342,13 @@ namespace MapLootEditorLite.Client
             // Header — first child in VLG = always at visual top; scroll mask clips content below it
             var header = UIBuilder.CreatePanel("InspectorHeader", _inspectorPanel, new Color(0.1f, 0.1f, 0.1f, 1f));
             UIBuilder.AddLayoutElement(header, null, 24, null, 24, null, 0);
-            UIBuilder.AddHorizontalLayout(header, 4, 0, false, false);
+            UIBuilder.AddHorizontalLayout(header, 4, 0, false, true);
             UIBuilder.CreateText(header, "Inspector", 12, Color.white, FontStyle.Bold);
 
             // Scroll — second child, fills remaining height
             var scroll = UIBuilder.CreateScrollView(_inspectorPanel, out _inspectorContent, out _, 0, 0, 14);
             UIBuilder.AddLayoutElement(scroll.gameObject, null, null, null, null, null, 1);
-            UIBuilder.AddVerticalLayout(_inspectorContent, 1, 0, true, true);
+            UIBuilder.AddVerticalLayout(_inspectorContent, 1, 2, true, true);
         }
 
         private void BuildResizeHandles()
