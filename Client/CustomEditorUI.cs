@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using Comfort.Common;
 using EFT.InventoryLogic;
+using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.EventSystems;
@@ -29,6 +30,8 @@ namespace MapLootEditorLite.Client
         private RectTransform _bottomPanel;
         private RectTransform _deleteConfirmPanel;
         private RectTransform _exportDialogPanel;
+        private RectTransform _contextMenuPanel;
+        private string _fieldClipboard = "";
 
         private RectTransform _hierarchyContent;
         private RectTransform _inspectorContent;
@@ -169,6 +172,27 @@ namespace MapLootEditorLite.Client
             UpdateGizmoButtons();
             UpdateEditorModeButton();
 
+            if (_contextMenuPanel != null && _contextMenuPanel.gameObject.activeSelf)
+            {
+                if (Input.GetKeyDown(KeyCode.Escape))
+                {
+                    HideContextMenu();
+                }
+                else if (Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1))
+                {
+                    var canvasRect = _canvas.GetComponent<RectTransform>();
+                    Vector2 localPos;
+                    RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, Input.mousePosition, null, out localPos);
+                    var anchorOffset = new Vector2(canvasRect.rect.width / 2f, -canvasRect.rect.height / 2f);
+                    var menuPos = _contextMenuPanel.anchoredPosition - anchorOffset;
+                    var menuRect = _contextMenuPanel.rect;
+                    var menuMin = menuPos + menuRect.min;
+                    var menuMax = menuPos + menuRect.max;
+                    if (localPos.x < menuMin.x || localPos.x > menuMax.x || localPos.y < menuMin.y || localPos.y > menuMax.y)
+                        HideContextMenu();
+                }
+            }
+
             if (manager == null || controller == null)
                 return;
 
@@ -210,6 +234,7 @@ namespace MapLootEditorLite.Client
         {
             _isVisible = false;
             CloseAllMenus();
+            HideContextMenu();
             if (_canvas != null)
                 _canvas.SetActive(false);
             if (_deleteConfirmPanel != null)
@@ -268,6 +293,7 @@ namespace MapLootEditorLite.Client
             BuildBottomPanel();
             BuildDeleteConfirm();
             BuildExportDialog();
+            BuildContextMenu();
             BuildResizeHandles();
 
             if (manager != null && controller != null)
@@ -312,7 +338,7 @@ namespace MapLootEditorLite.Client
                 }),
                 new MenuItem("WTT", subItems: new List<MenuItem>
                 {
-                    new MenuItem("WTT Quest Area", () => { Plugin.Log.LogInfo("WTT Quest Area selected (placeholder)"); }),
+                    new MenuItem("WTT Quest Area", () => controller.CreateWTTQuestZone()),
                     new MenuItem("WTT Static Object", () => { Plugin.Log.LogInfo("WTT Static Object selected (placeholder)"); })
                 })
             }, 84, 22);
@@ -888,6 +914,53 @@ namespace MapLootEditorLite.Client
                 _exportDialogPanel.gameObject.SetActive(false);
         }
 
+        private void BuildContextMenu()
+        {
+            _contextMenuPanel = UIBuilder.CreatePanel("ContextMenu", _canvas.transform, new Color(0.12f, 0.12f, 0.12f, 0.98f));
+            _contextMenuPanel.anchorMin = new Vector2(0, 1);
+            _contextMenuPanel.anchorMax = new Vector2(0, 1);
+            _contextMenuPanel.pivot = new Vector2(0, 1);
+            _contextMenuPanel.sizeDelta = new Vector2(100, 0);
+            _contextMenuPanel.transform.SetAsLastSibling();
+            UIBuilder.AddVerticalLayout(_contextMenuPanel, 2, 1, true, true);
+            UIBuilder.AddContentSizeFitter(_contextMenuPanel, ContentSizeFitter.FitMode.Unconstrained, ContentSizeFitter.FitMode.PreferredSize);
+            _contextMenuPanel.gameObject.SetActive(false);
+        }
+
+        private void ShowContextMenu(Vector2 screenPos, List<(string label, Action action)> items)
+        {
+            if (_contextMenuPanel == null) return;
+            HideContextMenu();
+
+            var canvasRect = _canvas.GetComponent<RectTransform>();
+            Vector2 localPos;
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, screenPos, null, out localPos);
+            var anchorOffset = new Vector2(canvasRect.rect.width / 2f, -canvasRect.rect.height / 2f);
+            _contextMenuPanel.anchoredPosition = localPos + anchorOffset;
+            _contextMenuPanel.gameObject.SetActive(true);
+            _contextMenuPanel.transform.SetAsLastSibling();
+
+            foreach (var item in items)
+            {
+                var btn = UIBuilder.CreateButton(_contextMenuPanel, item.label, () =>
+                {
+                    item.action?.Invoke();
+                    HideContextMenu();
+                }, 96, 18, 10);
+                var rt = btn.GetComponent<RectTransform>();
+                var lbl = rt.GetComponentInChildren<Text>();
+                if (lbl != null)
+                    lbl.alignment = TextAnchor.MiddleLeft;
+            }
+        }
+
+        private void HideContextMenu()
+        {
+            if (_contextMenuPanel == null) return;
+            _contextMenuPanel.gameObject.SetActive(false);
+            ClearChildren(_contextMenuPanel);
+        }
+
         private void RefreshAll()
         {
             if (manager == null || controller == null)
@@ -1054,6 +1127,9 @@ namespace MapLootEditorLite.Client
                 case StaticObject obj:
                     BuildStaticObject(obj);
                     break;
+                case WTTQuestZone zone:
+                    BuildWTTQuestZone(zone);
+                    break;
             }
 
             var previewRow = UIBuilder.CreatePanel("PreviewRow", _inspectorContent, new Color(0, 0, 0, 0));
@@ -1141,6 +1217,67 @@ namespace MapLootEditorLite.Client
             }
 
             UIBuilder.CreateButton(_inspectorContent, "Preview Object", () => previews.SpawnStaticPreview(obj), 100, 24);
+        }
+
+        private void BuildWTTQuestZone(WTTQuestZone zone)
+        {
+            if (zone.scale == null)
+                zone.scale = new TransformData { x = 1f, y = 1f, z = 1f };
+
+            BuildStringField(_inspectorContent, "Zone Id", zone.zoneId ?? "", (v) => { zone.zoneId = v; manager.IsDirty = true; });
+            BuildStringField(_inspectorContent, "Zone Name", zone.zoneName ?? "", (v) => { zone.zoneName = v; manager.IsDirty = true; });
+            BuildStringField(_inspectorContent, "Zone Location", zone.zoneLocation ?? "", (v) => { zone.zoneLocation = v; manager.IsDirty = true; });
+            BuildDropdownField(_inspectorContent, "Zone Type", zone.zoneType ?? "", new[] { "placeitem", "visit", "flarezone", "botkillzone", "salvage" }, (v) => { zone.zoneType = v; manager.IsDirty = true; });
+            BuildDropdownField(_inspectorContent, "Flare Type", zone.flareType ?? "", new[] { "", "Light", "Airdrop", "ExitActivate", "Quest", "AIFollowEvent" }, (v) => { zone.flareType = v; manager.IsDirty = true; });
+            BuildVector3Field(_inspectorContent, "Scale", zone.scale.ToVector3(), (v) => { zone.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
+
+            UIBuilder.CreateButton(_inspectorContent, "Copy Zone Data", () =>
+            {
+                var json = JsonConvert.SerializeObject(new
+                {
+                    ZoneId = zone.zoneId,
+                    ZoneName = zone.zoneName,
+                    ZoneLocation = zone.zoneLocation,
+                    ZoneType = zone.zoneType,
+                    FlareType = zone.flareType,
+                    Position = new { X = zone.position.x.ToString("F4", CultureInfo.InvariantCulture), Y = zone.position.y.ToString("F4", CultureInfo.InvariantCulture), Z = zone.position.z.ToString("F4", CultureInfo.InvariantCulture) },
+                    Rotation = new { X = zone.rotation.x.ToString("F4", CultureInfo.InvariantCulture), Y = zone.rotation.y.ToString("F4", CultureInfo.InvariantCulture), Z = zone.rotation.z.ToString("F4", CultureInfo.InvariantCulture) },
+                    Scale = new { X = zone.scale.x.ToString("F4", CultureInfo.InvariantCulture), Y = zone.scale.y.ToString("F4", CultureInfo.InvariantCulture), Z = zone.scale.z.ToString("F4", CultureInfo.InvariantCulture) }
+                }, Formatting.Indented);
+                GUIUtility.systemCopyBuffer = json;
+                _fieldClipboard = json;
+            }, 120, 24);
+        }
+
+        private void BuildDropdownField(RectTransform parent, string label, string value, string[] options, UnityAction<string> onChanged)
+        {
+            var row = UIBuilder.CreatePanel("DropdownField", parent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(row, null, 24, null, 24, null, 0);
+            UIBuilder.CreateLabel(row, label, 11, 60, 24);
+            var display = value ?? "";
+            if (string.IsNullOrEmpty(display))
+                display = "(none)";
+            var currentBtn = UIBuilder.CreateButton(row, display, () => { }, 90, 22, 10);
+            currentBtn.GetComponent<Image>().color = new Color(0.18f, 0.18f, 0.18f, 1f);
+
+            var trigger = currentBtn.gameObject.GetComponent<EventTrigger>() ?? currentBtn.gameObject.AddComponent<EventTrigger>();
+            var entry = new EventTrigger.Entry { eventID = EventTriggerType.PointerClick };
+            entry.callback.AddListener((data) =>
+            {
+                var ped = data as PointerEventData;
+                if (ped == null) return;
+                ShowContextMenu(ped.position, options.Select(o =>
+                {
+                    var opt = o;
+                    return (string.IsNullOrEmpty(opt) ? "(none)" : opt, (Action)(() =>
+                    {
+                        onChanged?.Invoke(opt);
+                        RefreshInspector();
+                    }));
+                }).ToList());
+            });
+            trigger.triggers.Add(entry);
         }
 
         private void BuildItemsList(List<LootItem> items, bool showRotation, System.Action<int> onPreview)
@@ -1275,6 +1412,7 @@ namespace MapLootEditorLite.Client
             UIBuilder.CreateLabel(row, label, 11, 60, 22);
             var inp = UIBuilder.CreateInputField(row, label, value, (v) => onChanged?.Invoke(v), 0, 22);
             UIBuilder.AddLayoutElement(inp.gameObject, null, null, null, null, 1, null);
+            AddInputFieldContextMenu(inp);
         }
 
         private void BuildFloatField(RectTransform parent, string label, float value, UnityAction<float> onChanged)
@@ -1283,11 +1421,12 @@ namespace MapLootEditorLite.Client
             UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
             UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
             UIBuilder.CreateLabel(row, label, 11, 60, 22);
-            UIBuilder.CreateInputField(row, label, value.ToString("F3", CultureInfo.InvariantCulture), (v) =>
+            var inp = UIBuilder.CreateInputField(row, label, value.ToString("F3", CultureInfo.InvariantCulture), (v) =>
             {
                 if (float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var r))
                     onChanged?.Invoke(r);
             }, 80, 22);
+            AddInputFieldContextMenu(inp);
         }
 
         private void BuildVector3Field(RectTransform parent, string label, Vector3 value, UnityAction<Vector3> onChanged)
@@ -1314,7 +1453,34 @@ namespace MapLootEditorLite.Client
 
         private InputField BuildInputFieldInline(RectTransform parent, string value, UnityAction<string> onChanged, int width, int height)
         {
-            return UIBuilder.CreateInputField(parent, "", value, (v) => onChanged?.Invoke(v), width, height);
+            var input = UIBuilder.CreateInputField(parent, "", value, (v) => onChanged?.Invoke(v), width, height);
+            AddInputFieldContextMenu(input);
+            return input;
+        }
+
+        private void AddInputFieldContextMenu(InputField input)
+        {
+            if (input == null) return;
+            var trigger = input.gameObject.GetComponent<EventTrigger>() ?? input.gameObject.AddComponent<EventTrigger>();
+            var entry = new EventTrigger.Entry { eventID = EventTriggerType.PointerClick };
+            entry.callback.AddListener((data) =>
+            {
+                var ped = data as PointerEventData;
+                if (ped != null && ped.button == PointerEventData.InputButton.Right)
+                {
+                    ShowContextMenu(ped.position, new List<(string, Action)>
+                    {
+                        ("Copy", () => { _fieldClipboard = input.text; GUIUtility.systemCopyBuffer = input.text; }),
+                        ("Paste", () =>
+                        {
+                            var text = !string.IsNullOrEmpty(GUIUtility.systemCopyBuffer) ? GUIUtility.systemCopyBuffer : _fieldClipboard;
+                            input.text = text;
+                            input.onValueChanged.Invoke(text);
+                        })
+                    });
+                }
+            });
+            trigger.triggers.Add(entry);
         }
 
         private void BuildToggleField(RectTransform parent, string label, bool value, UnityAction<bool> onChanged)

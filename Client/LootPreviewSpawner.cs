@@ -442,8 +442,6 @@ namespace MapLootEditorLite.Client
                     UnityEngine.Object.Destroy(preview);
                 }
             }
-
-            _staticSources.Remove(markerId);
         }
 
         public void SpawnPreviewForMarker(MarkerBase marker)
@@ -464,10 +462,16 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        private static string GetStaticSourceKey(string name, Vector3 position)
+        {
+            return $"{name}@{position.x:F4},{position.y:F4},{position.z:F4}";
+        }
+
         public void RegisterStaticSource(string markerId, GameObject source)
         {
-            if (string.IsNullOrEmpty(markerId) || source == null) return;
-            _staticSources[markerId] = source;
+            if (source == null) return;
+            var key = GetStaticSourceKey(source.name, source.transform.position);
+            _staticSources[key] = source;
         }
 
         public void SpawnStaticPreview(StaticObject marker)
@@ -491,7 +495,8 @@ namespace MapLootEditorLite.Client
         private IEnumerator LoadStaticPreviewCoroutine(StaticObject marker)
         {
             GameObject source = null;
-            if (_staticSources.TryGetValue(marker.id, out source) && source != null)
+            var sourceKey = GetStaticSourceKey(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
+            if (!string.IsNullOrEmpty(marker.sourceObjectName) && _staticSources.TryGetValue(sourceKey, out source) && source != null)
             {
                 Plugin.Log.LogInfo($"Using cached source for static preview: {marker.name} ({source.name})");
                 SpawnStaticInstance(source, marker, true);
@@ -504,6 +509,7 @@ namespace MapLootEditorLite.Client
                 if (source != null)
                 {
                     Plugin.Log.LogInfo($"Found source by name/position for static preview: {marker.name} ({source.name})");
+                    _staticSources[sourceKey] = source;
                     SpawnStaticInstance(source, marker, true);
                     yield break;
                 }

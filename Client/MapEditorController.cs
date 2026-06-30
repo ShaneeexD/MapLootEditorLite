@@ -570,6 +570,15 @@ namespace MapLootEditorLite.Client
             _previews.SpawnPreviewForMarker(marker);
         }
 
+        public void CreateWTTQuestZone()
+        {
+            if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
+            var marker = _manager.CreateWTTQuestZone(GetLookPosition(), GetPlayerRotation());
+            _manager.Selected = marker;
+            _renderer.Rebuild();
+        }
+
         public bool IsFreeCam => _freeCam;
 
         public void GoToMarker(MarkerBase marker)
@@ -944,6 +953,8 @@ namespace MapLootEditorLite.Client
                                 so.scale = TransformData.FromVector3(startScale + centerScaleDelta);
                             else if (m is LootZone zone)
                                 zone.scale = TransformData.FromVector3(startScale + centerScaleDelta);
+                            else if (m is WTTQuestZone qz)
+                                qz.scale = TransformData.FromVector3(startScale + centerScaleDelta);
                         }
                         _renderer.Rebuild();
                     }
@@ -964,6 +975,11 @@ namespace MapLootEditorLite.Client
                         else if (_manager.Selected is LootZone zone)
                         {
                             zone.scale = TransformData.FromVector3(newScale);
+                            _renderer.Rebuild();
+                        }
+                        else if (_manager.Selected is WTTQuestZone qz)
+                        {
+                            qz.scale = TransformData.FromVector3(newScale);
                             _renderer.Rebuild();
                         }
                     }
@@ -1004,6 +1020,8 @@ namespace MapLootEditorLite.Client
                 _gizmoDragStartMarkerScale = so.scale.ToVector3();
             else if (_manager.Selected is LootZone zone)
                 _gizmoDragStartMarkerScale = zone.scale.ToVector3();
+            else if (_manager.Selected is WTTQuestZone qz)
+                _gizmoDragStartMarkerScale = qz.scale.ToVector3();
 
             _gizmoDragStartCenter = _manager.SelectedIds.Count > 1 ? _manager.SelectionCenter : _gizmoDragStartMarkerPos;
             _gizmoDragStartCenterRot = _manager.SelectedIds.Count > 1 ? Quaternion.identity : _manager.Selected.rotation.ToQuaternion();
@@ -1022,6 +1040,8 @@ namespace MapLootEditorLite.Client
                     _gizmoDragStartScales[id] = mso.scale.ToVector3();
                 else if (m is LootZone mlz)
                     _gizmoDragStartScales[id] = mlz.scale.ToVector3();
+                else if (m is WTTQuestZone mqz)
+                    _gizmoDragStartScales[id] = mqz.scale.ToVector3();
                 else
                     _gizmoDragStartScales[id] = Vector3.one;
             }
@@ -1197,6 +1217,9 @@ namespace MapLootEditorLite.Client
                         break;
                     case "StaticObject":
                         copy = entry.data.ToObject<StaticObject>();
+                        break;
+                    case "WTTQuestZone":
+                        copy = entry.data.ToObject<WTTQuestZone>();
                         break;
                     default:
                         continue;

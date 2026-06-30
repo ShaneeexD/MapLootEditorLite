@@ -136,6 +136,9 @@ namespace MapLootEditorLite.Client
             if (Data.objects != null)
                 foreach (var m in Data.objects)
                     yield return m;
+            if (Data.wttQuestZones != null)
+                foreach (var m in Data.wttQuestZones)
+                    yield return m;
         }
 
         public MarkerBase FindById(string id)
@@ -216,6 +219,10 @@ namespace MapLootEditorLite.Client
                     Data.objects ??= new List<StaticObject>();
                     Data.objects.Add(o);
                     break;
+                case WTTQuestZone q:
+                    Data.wttQuestZones ??= new List<WTTQuestZone>();
+                    Data.wttQuestZones.Add(q);
+                    break;
             }
             IsDirty = true;
         }
@@ -270,6 +277,7 @@ namespace MapLootEditorLite.Client
                     case LooseLootSpawn s: Data.lootSpawns.Remove(s); break;
                     case LootZone z: Data.lootZones.Remove(z); break;
                     case StaticObject o: Data.objects.Remove(o); break;
+                    case WTTQuestZone q: Data.wttQuestZones.Remove(q); break;
                 }
             }
             ClearSelection();
@@ -300,6 +308,10 @@ namespace MapLootEditorLite.Client
                     case StaticObject o:
                         copy = JsonConvert.DeserializeObject<StaticObject>(json);
                         Data.objects.Add((StaticObject)copy);
+                        break;
+                    case WTTQuestZone q:
+                        copy = JsonConvert.DeserializeObject<WTTQuestZone>(json);
+                        Data.wttQuestZones.Add((WTTQuestZone)copy);
                         break;
                     default:
                         continue;
@@ -364,6 +376,24 @@ namespace MapLootEditorLite.Client
             return marker;
         }
 
+        public WTTQuestZone CreateWTTQuestZone(Vector3 position, Vector3 rotation)
+        {
+            Data.wttQuestZones ??= new List<WTTQuestZone>();
+            var marker = new WTTQuestZone
+            {
+                name = "wtt_quest_zone",
+                position = TransformData.FromVector3(position),
+                rotation = TransformData.FromVector3(rotation),
+                scale = TransformData.FromVector3(Vector3.one),
+                zoneId = "quest_zone_" + Guid.NewGuid().ToString("N").Substring(0, 8),
+                zoneName = "Quest Zone",
+                zoneType = "placeitem"
+            };
+            Data.wttQuestZones.Add(marker);
+            IsDirty = true;
+            return marker;
+        }
+
         public void DeleteSelected()
         {
             if (Selected == null || Data == null)
@@ -374,6 +404,7 @@ namespace MapLootEditorLite.Client
                 case LooseLootSpawn s: Data.lootSpawns.Remove(s); break;
                 case LootZone z: Data.lootZones.Remove(z); break;
                 case StaticObject o: Data.objects.Remove(o); break;
+                case WTTQuestZone q: Data.wttQuestZones.Remove(q); break;
             }
 
             Selected = null;
@@ -401,6 +432,10 @@ namespace MapLootEditorLite.Client
                 case StaticObject o:
                     copy = JsonConvert.DeserializeObject<StaticObject>(json);
                     Data.objects.Add((StaticObject)copy);
+                    break;
+                case WTTQuestZone q:
+                    copy = JsonConvert.DeserializeObject<WTTQuestZone>(json);
+                    Data.wttQuestZones.Add((WTTQuestZone)copy);
                     break;
                 default:
                     return null;

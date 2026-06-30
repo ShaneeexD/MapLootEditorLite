@@ -10,7 +10,8 @@ namespace MapLootEditorLite.Client
     {
         LooseLoot,
         LootZone,
-        StaticObject
+        StaticObject,
+        WTTQuestZone
     }
 
     public class MapData
@@ -19,6 +20,7 @@ namespace MapLootEditorLite.Client
         public List<LooseLootSpawn> lootSpawns = new List<LooseLootSpawn>();
         public List<LootZone> lootZones = new List<LootZone>();
         public List<StaticObject> objects = new List<StaticObject>();
+        public List<WTTQuestZone> wttQuestZones = new List<WTTQuestZone>();
     }
 
     public class PackData
@@ -118,5 +120,17 @@ namespace MapLootEditorLite.Client
         public TransformData sourceObjectPosition = new TransformData();
 
         public override MarkerKind Kind => MarkerKind.StaticObject;
+    }
+
+    public class WTTQuestZone : MarkerBase
+    {
+        public string zoneId = "";
+        public string zoneName = "";
+        public string zoneLocation = "";
+        public string zoneType = "placeitem";
+        public string flareType = "";
+        public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
+
+        public override MarkerKind Kind => MarkerKind.WTTQuestZone;
     }
 }
