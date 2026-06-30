@@ -23,23 +23,30 @@ import { BundleSelector } from './BundleSelector'
 import { Tooltip } from './Tooltip'
 import { type BundleInfo, loadDefaultBundles } from './bundleApi'
 import {
+  type InteractiveObject,
+  type InteractiveObjectItem,
+  InteractiveObjectType,
+  ContainerLootMode,
   type LootItem,
   type LootZone,
   type LooseLootSpawn,
+  LOOT_CONTAINER_TEMPLATES,
   type MapData,
   type PackData,
   type StaticObject,
   type TransformData,
   ZoneShape,
+  defaultInteractiveObject,
   defaultLootItem,
   defaultMapData,
   defaultPackData,
   defaultTransform,
+  generateContainerId,
   generateId,
   MAP_OPTIONS,
 } from './types'
 
-type MarkerTab = 'spawns' | 'zones' | 'objects' | 'bundles'
+type MarkerTab = 'spawns' | 'zones' | 'objects' | 'interactive' | 'bundles'
 
 function migratePackData(pack: PackData): PackData {
   const maps: Record<string, MapData> = {}
@@ -56,6 +63,7 @@ function migratePackData(pack: PackData): PackData {
         shape: (zone as any).shape ?? ZoneShape.Sphere,
         items: migrateItems(zone.items, (zone as any).itemTpls),
       })),
+      interactiveObjects: map.interactiveObjects ?? [],
     }
   }
   return { ...pack, maps }
@@ -312,6 +320,13 @@ export default function App() {
                   disabled={!currentMap}
                 />
                 <TabButton
+                  active={tab === 'interactive'}
+                  onClick={() => setTab('interactive')}
+                  icon={<Target size={16} />}
+                  label={`Interactive${currentMap ? ` (${currentMap.interactiveObjects.length})` : ''}`}
+                  disabled={!currentMap}
+                />
+                <TabButton
                   active={tab === 'bundles'}
                   onClick={() => setTab('bundles')}
                   icon={<Archive size={16} />}
@@ -345,6 +360,15 @@ export default function App() {
                     data={currentMap.objects}
                     onChange={(objects) => updateMap(selectedMapId, (m) => ({ ...m, objects }))}
                     bundles={bundles}
+                  />
+                ) : (
+                  <NoMapMessage />
+                ))}
+              {tab === 'interactive' &&
+                (currentMap ? (
+                  <InteractiveObjectList
+                    data={currentMap.interactiveObjects}
+                    onChange={(interactiveObjects) => updateMap(selectedMapId, (m) => ({ ...m, interactiveObjects }))}
                   />
                 ) : (
                   <NoMapMessage />
@@ -542,6 +566,16 @@ function SpawnList({
 
   const add = () => {
     onChange([...data, { ...form, id: generateId() }])
+    setForm({
+      id: generateId(),
+      name: 'loot_spawn',
+      position: defaultTransform(),
+      rotation: defaultTransform(),
+      items: [{ ...defaultLootItem(), template: '544fb45d4bdc2dee738b4568' }],
+      spawnChance: 100,
+      respawnable: false,
+      forced: false,
+    })
   }
 
   const update = (index: number, updates: Partial<LooseLootSpawn>) => {
@@ -693,6 +727,18 @@ function ZoneList({
 
   const add = () => {
     onChange([...data, { ...form, id: generateId() }])
+    setForm({
+      id: generateId(),
+      name: 'loot_zone',
+      position: defaultTransform(),
+      rotation: defaultTransform(),
+      radius: 1,
+      scale: { x: 1, y: 1, z: 1 },
+      shape: ZoneShape.Sphere,
+      items: [{ ...defaultLootItem(), template: '544fb45d4bdc2dee738b4568' }],
+      spawnChance: 100,
+      forced: false,
+    })
   }
 
   const update = (index: number, updates: Partial<LootZone>) => {
@@ -829,6 +875,16 @@ function ObjectList({
 
   const add = () => {
     onChange([...data, { ...form, id: generateId() }])
+    setForm({
+      id: generateId(),
+      name: 'static_object',
+      position: defaultTransform(),
+      rotation: defaultTransform(),
+      scale: { x: 1, y: 1, z: 1 },
+      prefabPath: '',
+      sourceObjectName: '',
+      sourceObjectPosition: defaultTransform(),
+    })
   }
 
   const update = (index: number, updates: Partial<StaticObject>) => {
@@ -916,6 +972,260 @@ function ObjectList({
   )
 }
 
+function InteractiveObjectList({
+  data,
+  onChange,
+}: {
+  data: InteractiveObject[]
+  onChange: (objects: InteractiveObject[]) => void
+}) {
+  const [form, setForm] = useState<InteractiveObject>(defaultInteractiveObject())
+
+  const add = () => {
+    onChange([...data, { ...form, id: generateId() }])
+    setForm(defaultInteractiveObject())
+  }
+
+  const update = (index: number, updates: Partial<InteractiveObject>) => {
+    onChange(replaceAt(data, index, { ...data[index], ...updates }))
+  }
+
+  const isContainer = form.interactiveType === InteractiveObjectType.Container
+
+  return (
+    <div className="space-y-4">
+      <div className="card space-y-4">
+        <h3 className="text-sm font-semibold text-tarkov-accent uppercase tracking-wider">Add Interactive Object</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <TextField label="Name" value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} tooltip="Unique name for this interactive object." />
+          <SelectField
+            label="Type"
+            value={form.interactiveType}
+            options={[
+              { value: InteractiveObjectType.Door, label: 'Door' },
+              { value: InteractiveObjectType.Container, label: 'Container' },
+            ]}
+            onChange={(v) => setForm((f) => ({ ...f, interactiveType: v }))}
+            tooltip="Kind of interactive object to spawn."
+          />
+          <NumberField
+            label="Spawn Chance"
+            value={form.spawnChance}
+            onChange={(v) => setForm((f) => ({ ...f, spawnChance: v }))}
+            min={0}
+            max={100}
+            tooltip="Percent chance this object is spawned (0-100)."
+          />
+          <TextField
+            label="Source Object Name"
+            value={form.sourceObjectName || ''}
+            onChange={(v) => setForm((f) => ({ ...f, sourceObjectName: v }))}
+            tooltip="Name of an existing vanilla scene object to clone."
+          />
+          <TransformField
+            label="Source Object Position"
+            value={form.sourceObjectPosition ?? defaultTransform()}
+            onChange={(v) => setForm((f) => ({ ...f, sourceObjectPosition: v }))}
+            tooltip="Original position of the source object used to find it."
+          />
+          <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} tooltip="World-space position of the object." />
+          <TransformField label="Rotation" value={form.rotation} onChange={(v) => setForm((f) => ({ ...f, rotation: v }))} tooltip="World-space rotation of the object." />
+          <TransformField label="Scale" value={form.scale} onChange={(v) => setForm((f) => ({ ...f, scale: v }))} tooltip="World-space scale of the object." />
+          {form.interactiveType === InteractiveObjectType.Door && (
+            <TextField
+              label="Key Template"
+              value={form.keyId || ''}
+              onChange={(v) => setForm((f) => ({ ...f, keyId: v }))}
+              tooltip="ID of the key required to unlock this door."
+            />
+          )}
+          {isContainer && (
+            <>
+              <TextFieldWithButton
+                label="Container ID"
+                value={form.containerId || ''}
+                onChange={(v) => setForm((f) => ({ ...f, containerId: v }))}
+                buttonLabel="Generate"
+                onButtonClick={() => setForm((f) => ({ ...f, containerId: generateContainerId() }))}
+                tooltip="Unique ID for this container. Must match a StaticLoot entry."
+                buttonTooltip="Generate a new random container ID"
+              />
+              <SelectField
+                label="Container Template"
+                value={form.containerTemplate || ''}
+                options={LOOT_CONTAINER_TEMPLATES.map((t) => ({ value: t.id, label: t.name }))}
+                onChange={(v) => setForm((f) => ({ ...f, containerTemplate: v }))}
+                tooltip="Root container template to use."
+              />
+              <SelectField
+                label="Loot Mode"
+                value={form.lootMode ?? ContainerLootMode.Default}
+                options={[
+                  { value: ContainerLootMode.Default, label: 'Default (external loot)' },
+                  { value: ContainerLootMode.Hybrid, label: 'Hybrid (external + custom)' },
+                  { value: ContainerLootMode.Custom, label: 'Custom only' },
+                ]}
+                onChange={(v) => setForm((f) => ({ ...f, lootMode: v }))}
+                tooltip="How this container receives loot."
+              />
+            </>
+          )}
+          {isContainer && (
+            <div className="md:col-span-2 lg:col-span-4">
+              <InteractiveItemListEditor
+                value={form.items}
+                onChange={(v) => setForm((f) => ({ ...f, items: v }))}
+                tooltip="Items injected into the container in Hybrid or Custom mode."
+              />
+            </div>
+          )}
+          <div className="flex items-end md:col-span-1 lg:col-span-3">
+            <button onClick={add} className="btn-primary w-full flex items-center justify-center gap-2">
+              <Plus size={16} /> Add Interactive Object
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {data.map((obj, i) => (
+          <div key={obj.id} className="card">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <TextField label="Name" value={obj.name} onChange={(v) => update(i, { name: v })} tooltip="Unique name for this interactive object." />
+              <SelectField
+                label="Type"
+                value={obj.interactiveType}
+                options={[
+                  { value: InteractiveObjectType.Door, label: 'Door' },
+                  { value: InteractiveObjectType.Container, label: 'Container' },
+                ]}
+                onChange={(v) => update(i, { interactiveType: v })}
+                tooltip="Kind of interactive object to spawn."
+              />
+              <NumberField
+                label="Spawn Chance"
+                value={obj.spawnChance ?? 100}
+                onChange={(v) => update(i, { spawnChance: v })}
+                min={0}
+                max={100}
+                tooltip="Percent chance this object is spawned (0-100)."
+              />
+              <TextField
+                label="Source Object Name"
+                value={obj.sourceObjectName || ''}
+                onChange={(v) => update(i, { sourceObjectName: v })}
+                tooltip="Name of an existing vanilla scene object to clone."
+              />
+              <TransformField
+                label="Source Object Position"
+                value={obj.sourceObjectPosition ?? defaultTransform()}
+                onChange={(v) => update(i, { sourceObjectPosition: v })}
+                tooltip="Original position of the source object used to find it."
+              />
+              <TransformField label="Position" value={obj.position} onChange={(v) => update(i, { position: v })} tooltip="World-space position of the object." />
+              <TransformField label="Rotation" value={obj.rotation} onChange={(v) => update(i, { rotation: v })} tooltip="World-space rotation of the object." />
+              <TransformField label="Scale" value={obj.scale} onChange={(v) => update(i, { scale: v })} tooltip="World-space scale of the object." />
+              {obj.interactiveType === InteractiveObjectType.Door && (
+                <TextField
+                  label="Key Template"
+                  value={obj.keyId || ''}
+                  onChange={(v) => update(i, { keyId: v })}
+                  tooltip="ID of the key required to unlock this door."
+                />
+              )}
+              {obj.interactiveType === InteractiveObjectType.Container && (
+                <>
+                  <TextFieldWithButton
+                    label="Container ID"
+                    value={obj.containerId || ''}
+                    onChange={(v) => update(i, { containerId: v })}
+                    buttonLabel="Generate"
+                    onButtonClick={() => update(i, { containerId: generateContainerId() })}
+                    tooltip="Unique ID for this container. Must match a StaticLoot entry."
+                    buttonTooltip="Generate a new random container ID"
+                  />
+                  <SelectField
+                    label="Container Template"
+                    value={obj.containerTemplate || ''}
+                    options={LOOT_CONTAINER_TEMPLATES.map((t) => ({ value: t.id, label: t.name }))}
+                    onChange={(v) => update(i, { containerTemplate: v })}
+                    tooltip="Root container template to use."
+                  />
+                  <SelectField
+                    label="Loot Mode"
+                    value={obj.lootMode ?? ContainerLootMode.Default}
+                    options={[
+                      { value: ContainerLootMode.Default, label: 'Default (external loot)' },
+                      { value: ContainerLootMode.Hybrid, label: 'Hybrid (external + custom)' },
+                      { value: ContainerLootMode.Custom, label: 'Custom only' },
+                    ]}
+                    onChange={(v) => update(i, { lootMode: v })}
+                    tooltip="How this container receives loot."
+                  />
+                </>
+              )}
+              {obj.interactiveType === InteractiveObjectType.Container && (
+                <div className="md:col-span-2 lg:col-span-4">
+                  <InteractiveItemListEditor
+                    value={obj.items}
+                    onChange={(v) => update(i, { items: v })}
+                    tooltip="Items injected into the container in Hybrid or Custom mode."
+                  />
+                </div>
+              )}
+              <div className="flex items-end justify-end md:col-span-1 lg:col-span-3">
+                <button onClick={() => onChange(removeAt(data, i))} className="btn-danger p-2">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+        {data.length === 0 && <p className="text-tarkov-text-dim text-sm">No interactive objects in this map.</p>}
+      </div>
+    </div>
+  )
+}
+
+function InteractiveItemListEditor({
+  value,
+  onChange,
+  tooltip,
+}: {
+  value: InteractiveObjectItem[]
+  onChange: (items: InteractiveObjectItem[]) => void
+  tooltip?: string
+}) {
+  const update = (index: number, updates: Partial<InteractiveObjectItem>) => {
+    onChange(replaceAt(value, index, { ...value[index], ...updates }))
+  }
+
+  return (
+    <div className="space-y-2">
+      <label className="label flex items-center">
+        Items
+        {tooltip && <Tooltip text={tooltip} />}
+      </label>
+      {value.map((item, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <div className="flex-1">
+            <ItemSelector label="" value={item.template} onChange={(v) => update(i, { template: v })} tooltip="Item template ID to inject." />
+          </div>
+          <div className="w-28">
+            <NumberField label="%" value={item.chance} onChange={(v) => update(i, { chance: v })} min={0} max={100} tooltip="Percent chance this item is injected (0-100)." />
+          </div>
+          <button onClick={() => onChange(removeAt(value, i))} className="btn-danger p-2">
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ))}
+      <button onClick={() => onChange([...value, { template: '', chance: 100 }])} className="btn-secondary text-sm flex items-center gap-1">
+        <Plus size={14} /> Add Item
+      </button>
+    </div>
+  )
+}
+
 function TextField({
   label,
   value,
@@ -934,6 +1244,39 @@ function TextField({
         {tooltip && <Tooltip text={tooltip} />}
       </label>
       <input className="input-field" value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  )
+}
+
+function TextFieldWithButton({
+  label,
+  value,
+  onChange,
+  buttonLabel,
+  onButtonClick,
+  tooltip,
+  buttonTooltip,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  buttonLabel: string
+  onButtonClick: () => void
+  tooltip?: string
+  buttonTooltip?: string
+}) {
+  return (
+    <div>
+      <label className="label flex items-center">
+        {label}
+        {tooltip && <Tooltip text={tooltip} />}
+      </label>
+      <div className="flex gap-2">
+        <input className="input-field flex-1" value={value} onChange={(e) => onChange(e.target.value)} />
+        <button onClick={onButtonClick} className="btn-secondary whitespace-nowrap" title={buttonTooltip}>
+          {buttonLabel}
+        </button>
+      </div>
     </div>
   )
 }

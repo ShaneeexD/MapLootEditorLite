@@ -358,6 +358,16 @@ namespace MapLootEditorLite.Client
                 if (string.IsNullOrWhiteSpace(loot.template))
                     continue;
 
+                if (loot.chance < 100f)
+                {
+                    var roll = UnityEngine.Random.Range(0f, 100f);
+                    if (roll >= loot.chance)
+                    {
+                        Plugin.Log.LogInfo($"[MLEL Runtime] Item {loot.template} chance roll {roll:F1} >= {loot.chance}; skipping for container '{obj.name}'.");
+                        continue;
+                    }
+                }
+
                 var childItem = itemFactory.CreateItem(GenerateItemId(), loot.template, null);
                 if (childItem == null)
                 {

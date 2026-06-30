@@ -1334,6 +1334,12 @@ namespace MapLootEditorLite.Client
                     RequestInspectorRefresh();
                 });
                 BuildContainerTemplateDropdown(obj);
+                BuildDropdownField(_inspectorContent, "Loot Mode", obj.lootMode.ToString(), new[] { "Default", "Hybrid", "Custom" }, (v) =>
+                {
+                    obj.lootMode = (ContainerLootMode)System.Enum.Parse(typeof(ContainerLootMode), v);
+                    manager.IsDirty = true;
+                    RefreshInspector();
+                });
                 BuildFloatField(_inspectorContent, "Spawn Chance", obj.spawnChance, (v) => { obj.spawnChance = v; manager.IsDirty = true; });
                 BuildItemsList(obj.items, false, (i) => { });
             }
