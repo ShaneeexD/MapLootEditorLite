@@ -264,6 +264,14 @@ public enum InteractiveObjectType
     Container
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ContainerLootMode
+{
+    Default,
+    Hybrid,
+    Custom
+}
+
 public record InteractiveObject
 {
     [JsonPropertyName("id")]
@@ -301,6 +309,9 @@ public record InteractiveObject
 
     [JsonPropertyName("containerTemplate")]
     public string ContainerTemplate { get; set; } = "578f87a3245977356274f2cb";
+
+    [JsonPropertyName("lootMode")]
+    public ContainerLootMode LootMode { get; set; } = ContainerLootMode.Default;
 
     [JsonPropertyName("items")]
     public List<LootItem> Items { get; set; } = [];

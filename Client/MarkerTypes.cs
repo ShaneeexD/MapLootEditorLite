@@ -22,6 +22,14 @@ namespace MapLootEditorLite.Client
         Container
     }
 
+    [JsonConverter(typeof(StringEnumConverter))]
+    public enum ContainerLootMode
+    {
+        Default,
+        Hybrid,
+        Custom
+    }
+
     public class MapData
     {
         public string map;
@@ -192,6 +200,7 @@ namespace MapLootEditorLite.Client
 
         public string containerId = ""; // Container item id
         public string containerTemplate = "578f87a3245977356274f2cb"; // Container root template id
+        public ContainerLootMode lootMode = ContainerLootMode.Default;
         public List<LootItem> items = new List<LootItem>();
         public float spawnChance = 100f;
 

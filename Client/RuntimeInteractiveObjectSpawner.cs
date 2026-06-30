@@ -235,73 +235,7 @@ namespace MapLootEditorLite.Client
                     if (lootable != null && gameWorld != null)
                     {
                         lootable.Template = string.IsNullOrWhiteSpace(obj.containerTemplate) ? "578f87a3245977356274f2cb" : obj.containerTemplate;
-                        try
-                        {
-                            var itemFactory = Singleton<ItemFactoryClass>.Instance;
-                            if (itemFactory != null)
-                            {
-                                var item = itemFactory.CreateItem(obj.containerId, lootable.Template, null);
-                                if (item != null)
-                                {
-                                    int addedItems = 0;
-                                    if (item is CompoundItem compoundItem && obj.items != null)
-                                    {
-                                        foreach (var loot in obj.items)
-                                        {
-                                            if (string.IsNullOrWhiteSpace(loot.template))
-                                                continue;
-
-                                            var childItem = itemFactory.CreateItem(GenerateItemId(), loot.template, null);
-                                            if (childItem == null)
-                                            {
-                                                Plugin.Log.LogWarning($"[MLEL Runtime] Failed to create item {loot.template} for container '{obj.name}'");
-                                                continue;
-                                            }
-
-                                            bool placed = false;
-                                            if (compoundItem.Grids != null)
-                                            {
-                                                foreach (var grid in compoundItem.Grids)
-                                                {
-                                                    var result = grid.AddAnywhere(childItem, EErrorHandlingType.Ignore);
-                                                    if (result.Succeeded)
-                                                    {
-                                                        placed = true;
-                                                        break;
-                                                    }
-                                                }
-                                            }
-
-                                            if (placed)
-                                            {
-                                                addedItems++;
-                                            }
-                                            else
-                                            {
-                                                Plugin.Log.LogWarning($"[MLEL Runtime] Could not place item {loot.template} in container '{obj.name}'");
-                                            }
-                                        }
-                                    }
-
-                                    var controller = new TraderControllerClass(item, item.Id, item.ShortName.Localized(null), true, EOwnerType.Profile);
-                                    lootable.Init(controller);
-                                    gameWorld.RegisterLoot<LootableContainer>(lootable);
-                                    Plugin.Log.LogInfo($"[MLEL Runtime] Initialized lootable container '{obj.name}' id={obj.containerId}, template={lootable.Template}, itemId={item.Id}, isCompound={item is CompoundItem}, injectedItems={addedItems}");
-                                }
-                                else
-                                {
-                                    Plugin.Log.LogWarning($"[MLEL Runtime] Failed to create item for container '{obj.name}'");
-                                }
-                            }
-                            else
-                            {
-                                Plugin.Log.LogWarning($"[MLEL Runtime] ItemFactoryClass not available for container '{obj.name}'");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Plugin.Log.LogWarning($"[MLEL Runtime] Failed to initialize container '{obj.name}': {ex}");
-                        }
+                        StartCoroutine(InitializeContainerLootCoroutine(obj, lootable, gameWorld));
                     }
                     else if (gameWorld == null)
                     {
@@ -334,6 +268,124 @@ namespace MapLootEditorLite.Client
         private static string GenerateItemId()
         {
             return Guid.NewGuid().ToString("N").Substring(0, 24);
+        }
+
+        private IEnumerator InitializeContainerLootCoroutine(InteractiveObject obj, LootableContainer lootable, GameWorld gameWorld)
+        {
+            var itemFactory = Singleton<ItemFactoryClass>.Instance;
+            if (itemFactory == null)
+            {
+                Plugin.Log.LogWarning($"[MLEL Runtime] ItemFactoryClass not available for container '{obj.name}'.");
+                yield break;
+            }
+
+            Item item = null;
+            var source = "unknown";
+
+            if (obj.lootMode == ContainerLootMode.Custom)
+            {
+                item = itemFactory.CreateItem(obj.containerId, lootable.Template, null);
+                source = "custom";
+            }
+            else
+            {
+                var timeout = 15f;
+                var elapsed = 0f;
+                LootItemPositionClass lootData = null;
+                while (elapsed < timeout)
+                {
+                    lootData = gameWorld.AllLoot?.FirstOrDefault(x => x.Id == obj.containerId);
+                    if (lootData != null)
+                        break;
+                    yield return new WaitForSeconds(0.5f);
+                    elapsed += 0.5f;
+                }
+
+                if (lootData != null)
+                {
+                    if (lootData.Item != null)
+                    {
+                        item = lootData.Item;
+                        source = "generated";
+                    }
+                    else
+                    {
+                        Plugin.Log.LogWarning($"[MLEL Runtime] Container '{obj.name}' found in AllLoot but Item is null; falling back to empty item.");
+                    }
+                }
+                else
+                {
+                    Plugin.Log.LogWarning($"[MLEL Runtime] Container '{obj.name}' not found in AllLoot after {timeout}s; falling back to empty item.");
+                }
+
+                if (item == null)
+                {
+                    item = itemFactory.CreateItem(obj.containerId, lootable.Template, null);
+                    source = "fallback";
+                }
+            }
+
+            if (item == null)
+            {
+                Plugin.Log.LogWarning($"[MLEL Runtime] Failed to create item for container '{obj.name}'.");
+                yield break;
+            }
+
+            int addedItems = 0;
+            if (obj.lootMode == ContainerLootMode.Hybrid || obj.lootMode == ContainerLootMode.Custom)
+            {
+                addedItems = InjectMarkerItems(obj, item as CompoundItem);
+            }
+
+            var controller = new TraderControllerClass(item, item.Id, item.ShortName.Localized(null), true, EOwnerType.Profile);
+            lootable.Init(controller);
+            gameWorld.RegisterLoot<LootableContainer>(lootable);
+            Plugin.Log.LogInfo($"[MLEL Runtime] Initialized lootable container '{obj.name}' id={obj.containerId}, template={lootable.Template}, itemId={item.Id}, source={source}, injectedItems={addedItems}");
+        }
+
+        private int InjectMarkerItems(InteractiveObject obj, CompoundItem compoundItem)
+        {
+            if (compoundItem == null || obj.items == null)
+                return 0;
+
+            var itemFactory = Singleton<ItemFactoryClass>.Instance;
+            if (itemFactory == null)
+                return 0;
+
+            int added = 0;
+            foreach (var loot in obj.items)
+            {
+                if (string.IsNullOrWhiteSpace(loot.template))
+                    continue;
+
+                var childItem = itemFactory.CreateItem(GenerateItemId(), loot.template, null);
+                if (childItem == null)
+                {
+                    Plugin.Log.LogWarning($"[MLEL Runtime] Failed to create item {loot.template} for container '{obj.name}'");
+                    continue;
+                }
+
+                bool placed = false;
+                if (compoundItem.Grids != null)
+                {
+                    foreach (var grid in compoundItem.Grids)
+                    {
+                        var result = grid.AddAnywhere(childItem, EErrorHandlingType.Ignore);
+                        if (result.Succeeded)
+                        {
+                            placed = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (placed)
+                    added++;
+                else
+                    Plugin.Log.LogWarning($"[MLEL Runtime] Could not place item {loot.template} in container '{obj.name}'");
+            }
+
+            return added;
         }
 
         private void ClearSpawned()

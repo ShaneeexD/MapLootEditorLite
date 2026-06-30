@@ -70,7 +70,7 @@ public static class InteractiveObjectTransformer
             }
 
             var transformedContainers = containers
-                .Where(c => !string.IsNullOrWhiteSpace(c.ContainerId) && RegisteredContainerIds.Add(c.ContainerId))
+                .Where(c => !string.IsNullOrWhiteSpace(c.ContainerId) && c.LootMode != ContainerLootMode.Custom && RegisteredContainerIds.Add(c.ContainerId))
                 .ToList();
 
             if (transformedContainers.Count == 0)
@@ -150,7 +150,8 @@ public static class InteractiveObjectTransformer
             return null;
         }
 
-        var items = container.Items ?? new List<LootItem>();
+        // Default/Hybrid rely on external loot injectors (e.g., AmmoGen). Marker items are injected on the client.
+        var items = new List<LootItem>();
         var sptTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => a.GetTypes());
 
         var itemDistributionType = sptTypes.FirstOrDefault(t => t.Name == "ItemDistribution" && t.Namespace?.Contains("Eft.Common") == true);
