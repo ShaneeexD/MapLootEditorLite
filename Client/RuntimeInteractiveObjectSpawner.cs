@@ -180,9 +180,26 @@ namespace MapLootEditorLite.Client
             instance.transform.position = obj.position.ToVector3();
             instance.transform.rotation = obj.rotation.ToQuaternion();
             instance.transform.localScale = obj.scale.ToVector3();
-            _spawned.Add(instance);
 
             var wio = instance.GetComponentInChildren<WorldInteractiveObject>(true);
+            if (wio != null && wio.transform.parent == null)
+            {
+                // EFT's CurrentAngle setter only rotates the transform when it has a parent.
+                // Spawned clones are root objects, so create a frame parent to satisfy that requirement.
+                var frame = new GameObject($"InteractiveObject_{obj.name}_Frame");
+                frame.transform.position = obj.position.ToVector3();
+                frame.transform.rotation = obj.rotation.ToQuaternion();
+                instance.transform.SetParent(frame.transform, false);
+                instance.transform.localPosition = Vector3.zero;
+                instance.transform.localRotation = Quaternion.identity;
+                _spawned.Add(frame);
+                Plugin.Log.LogInfo($"[MLEL Runtime] Created interaction frame for '{obj.name}' because WIO was on a root GameObject.");
+            }
+            else
+            {
+                _spawned.Add(instance);
+            }
+
             if (wio != null)
             {
                 var gameWorld = Singleton<GameWorld>.Instance;
@@ -226,10 +243,50 @@ namespace MapLootEditorLite.Client
                                 var item = itemFactory.CreateItem(obj.containerId, lootable.Template, null);
                                 if (item != null)
                                 {
+                                    int addedItems = 0;
+                                    if (item is CompoundItem compoundItem && obj.items != null)
+                                    {
+                                        foreach (var loot in obj.items)
+                                        {
+                                            if (string.IsNullOrWhiteSpace(loot.template))
+                                                continue;
+
+                                            var childItem = itemFactory.CreateItem(GenerateItemId(), loot.template, null);
+                                            if (childItem == null)
+                                            {
+                                                Plugin.Log.LogWarning($"[MLEL Runtime] Failed to create item {loot.template} for container '{obj.name}'");
+                                                continue;
+                                            }
+
+                                            bool placed = false;
+                                            if (compoundItem.Grids != null)
+                                            {
+                                                foreach (var grid in compoundItem.Grids)
+                                                {
+                                                    var result = grid.AddAnywhere(childItem, EErrorHandlingType.Ignore);
+                                                    if (result.Succeeded)
+                                                    {
+                                                        placed = true;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+
+                                            if (placed)
+                                            {
+                                                addedItems++;
+                                            }
+                                            else
+                                            {
+                                                Plugin.Log.LogWarning($"[MLEL Runtime] Could not place item {loot.template} in container '{obj.name}'");
+                                            }
+                                        }
+                                    }
+
                                     var controller = new TraderControllerClass(item, item.Id, item.ShortName.Localized(null), true, EOwnerType.Profile);
                                     lootable.Init(controller);
                                     gameWorld.RegisterLoot<LootableContainer>(lootable);
-                                    Plugin.Log.LogInfo($"[MLEL Runtime] Initialized lootable container '{obj.name}' id={obj.containerId}, template={lootable.Template}, itemId={item.Id}, isCompound={item is CompoundItem}");
+                                    Plugin.Log.LogInfo($"[MLEL Runtime] Initialized lootable container '{obj.name}' id={obj.containerId}, template={lootable.Template}, itemId={item.Id}, isCompound={item is CompoundItem}, injectedItems={addedItems}");
                                 }
                                 else
                                 {
@@ -272,6 +329,11 @@ namespace MapLootEditorLite.Client
             }
 
             Plugin.Log.LogInfo($"[MLEL Runtime] Spawned interactive object {obj.name} (type={obj.interactiveType})");
+        }
+
+        private static string GenerateItemId()
+        {
+            return Guid.NewGuid().ToString("N").Substring(0, 24);
         }
 
         private void ClearSpawned()
