@@ -115,7 +115,8 @@ public static class InteractiveObjectTransformer
 
         foreach (var container in containers)
         {
-            if (dict.Contains(container.ContainerId))
+            var key = new MongoId(container.ContainerId);
+            if (dict.Contains(key))
             {
                 ServerPlugin.Logger?.Debug($"[MLEL] Container {container.ContainerId} already exists in static loot; skipping.");
                 continue;
@@ -124,7 +125,7 @@ public static class InteractiveObjectTransformer
             var details = CreateStaticLootDetails(container);
             if (details != null)
             {
-                dict.Add(container.ContainerId, details);
+                dict.Add(key, details);
             }
         }
 
@@ -150,30 +151,50 @@ public static class InteractiveObjectTransformer
         }
 
         var items = container.Items ?? new List<LootItem>();
-        var itemDistribution = new List<ItemDistribution>();
-        var itemCountDistribution = new List<object>();
+        var sptTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => a.GetTypes());
+
+        var itemDistributionType = sptTypes.FirstOrDefault(t => t.Name == "ItemDistribution" && t.Namespace?.Contains("Eft.Common") == true);
+        var itemCountDistributionType = sptTypes.FirstOrDefault(t => t.Name == "ItemCountDistribution" && t.Namespace?.Contains("Eft.Common") == true);
+
+        if (itemDistributionType == null || itemCountDistributionType == null)
+        {
+            ServerPlugin.Logger?.Warning("[MLEL] ItemDistribution or ItemCountDistribution type not found; cannot create container loot entry.");
+            return null;
+        }
+
+        var itemDistributionList = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(itemDistributionType))!;
+        var itemDistTplProp = itemDistributionType.GetProperty("Tpl", BindingFlags.Public | BindingFlags.Instance);
+        var itemDistRelProp = itemDistributionType.GetProperty("RelativeProbability", BindingFlags.Public | BindingFlags.Instance);
 
         foreach (var item in items)
         {
-            itemDistribution.Add(new ItemDistribution
-            {
-                Tpl = item.Template,
-                RelativeProbability = (int)item.Chance
-            });
+            var dist = Activator.CreateInstance(itemDistributionType)!;
+            SetDistributionProperty(itemDistTplProp, dist, item.Template);
+            SetNumericProperty(itemDistRelProp, dist, item.Chance);
+            itemDistributionList.Add(dist);
         }
 
-        if (itemDistribution.Count == 0)
+        if (itemDistributionList.Count == 0)
         {
-            itemDistribution.Add(new ItemDistribution { Tpl = "544fb45d4bdc2dee738b4568", RelativeProbability = 1 });
+            var dist = Activator.CreateInstance(itemDistributionType)!;
+            SetDistributionProperty(itemDistTplProp, dist, "544fb45d4bdc2dee738b4568");
+            SetNumericProperty(itemDistRelProp, dist, 1);
+            itemDistributionList.Add(dist);
         }
 
-        itemCountDistribution.Add(new { count = 1, relativeProbability = 1 });
+        var itemCountDistributionList = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(itemCountDistributionType))!;
+        var countProp = itemCountDistributionType.GetProperty("Count", BindingFlags.Public | BindingFlags.Instance);
+        var countRelProp = itemCountDistributionType.GetProperty("RelativeProbability", BindingFlags.Public | BindingFlags.Instance);
+        var countDist = Activator.CreateInstance(itemCountDistributionType)!;
+        SetNumericProperty(countProp, countDist, 1);
+        SetNumericProperty(countRelProp, countDist, 1);
+        itemCountDistributionList.Add(countDist);
 
         var itemDistProp = type.GetProperty("ItemDistribution", BindingFlags.Public | BindingFlags.Instance);
-        itemDistProp?.SetValue(instance, itemDistribution.ToArray());
+        itemDistProp?.SetValue(instance, itemDistributionList);
 
         var itemCountProp = type.GetProperty("ItemCountDistribution", BindingFlags.Public | BindingFlags.Instance);
-        itemCountProp?.SetValue(instance, itemCountDistribution.ToArray());
+        itemCountProp?.SetValue(instance, itemCountDistributionList);
 
         return instance;
     }
@@ -240,50 +261,56 @@ public static class InteractiveObjectTransformer
 
     private static T TransformStaticContainers<T>(T data, List<InteractiveObject> containers) where T : class
     {
-        var list = data as IList;
-        if (list == null)
-        {
-            ServerPlugin.Logger?.Warning("[MLEL] StaticContainers is not a list; cannot add custom containers.");
-            return data;
-        }
-
-        var elementType = list.GetType().IsGenericType ? list.GetType().GetGenericArguments().First() : typeof(object);
-        var spawnpointType = AppDomain.CurrentDomain.GetAssemblies()
+        var dataType = data.GetType();
+        var containerDetailsType = AppDomain.CurrentDomain.GetAssemblies()
             .SelectMany(a => a.GetTypes())
-            .FirstOrDefault(t => t.Name == "Spawnpoint");
+            .FirstOrDefault(t => t.Name == "StaticContainerDetails");
 
-        if (spawnpointType == null)
+        if (containerDetailsType != null && containerDetailsType.IsAssignableFrom(dataType))
         {
-            ServerPlugin.Logger?.Warning("[MLEL] Spawnpoint type not found; cannot create custom container entries.");
+            var staticContainersProp = dataType.GetProperty("StaticContainers", BindingFlags.Public | BindingFlags.Instance);
+            if (staticContainersProp == null)
+            {
+                ServerPlugin.Logger?.Warning("[MLEL] StaticContainerDetails has no StaticContainers property.");
+                return data;
+            }
+
+            var existingEnumerable = staticContainersProp.GetValue(data) as IEnumerable<object>;
+            var existingList = existingEnumerable?.ToList() ?? new List<object>();
+            var itemType = GetEnumerableElementType(staticContainersProp.PropertyType) ?? typeof(object);
+
+            foreach (var container in containers)
+            {
+                if (existingList.Any(x => GetStaticContainerId(x) == container.ContainerId))
+                {
+                    ServerPlugin.Logger?.Debug($"[MLEL] Container {container.ContainerId} already exists in static containers; skipping.");
+                    continue;
+                }
+
+                var containerData = CreateStaticContainerData(container, itemType);
+                if (containerData != null)
+                    existingList.Add(containerData);
+            }
+
+            var listType = typeof(List<>).MakeGenericType(itemType);
+            var newList = (System.Collections.IList)Activator.CreateInstance(listType)!;
+            foreach (var item in existingList)
+                newList.Add(item);
+            staticContainersProp.SetValue(data, newList);
             return data;
         }
 
-        foreach (var container in containers)
-        {
-            var existing = list.OfType<object>().FirstOrDefault(x => GetSpawnpointId(x) == container.ContainerId);
-            if (existing != null)
-            {
-                ServerPlugin.Logger?.Debug($"[MLEL] Container {container.ContainerId} already exists in static containers; skipping.");
-                continue;
-            }
-
-            var spawnpoint = CreateContainerSpawnpoint(container, spawnpointType);
-            if (spawnpoint != null)
-            {
-                list.Add(spawnpoint);
-            }
-        }
-
+        ServerPlugin.Logger?.Warning($"[MLEL] StaticContainers data type is {dataType.FullName}; expected StaticContainerDetails.");
         return data;
     }
 
-    private static string? GetSpawnpointId(object spawnpoint)
+    private static string? GetStaticContainerId(object containerData)
     {
-        var template = spawnpoint.GetType().GetProperty("Template", BindingFlags.Public | BindingFlags.Instance)?.GetValue(spawnpoint);
+        var template = containerData.GetType().GetProperty("Template", BindingFlags.Public | BindingFlags.Instance)?.GetValue(containerData);
         return template?.GetType().GetProperty("Id", BindingFlags.Public | BindingFlags.Instance)?.GetValue(template) as string;
     }
 
-    private static object? CreateContainerSpawnpoint(InteractiveObject container, Type spawnpointType)
+    private static object? CreateStaticContainerData(InteractiveObject container, Type staticContainerDataType)
     {
         var templateType = AppDomain.CurrentDomain.GetAssemblies()
             .SelectMany(a => a.GetTypes())
@@ -297,9 +324,10 @@ public static class InteractiveObjectTransformer
 
         var template = Activator.CreateInstance(templateType);
         if (template == null)
-        {
             return null;
-        }
+
+        var rootId = new MongoId();
+        var containerTemplate = string.IsNullOrWhiteSpace(container.ContainerTemplate) ? "578f87a3245977356274f2cb" : container.ContainerTemplate;
 
         templateType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, container.ContainerId);
         templateType.GetProperty("IsContainer", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, true);
@@ -309,9 +337,11 @@ public static class InteractiveObjectTransformer
         templateType.GetProperty("Rotation", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, new XYZ { X = container.Rotation.X, Y = container.Rotation.Y, Z = container.Rotation.Z });
         templateType.GetProperty("IsAlwaysSpawn", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, true);
         templateType.GetProperty("IsGroupPosition", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, false);
-        templateType.GetProperty("GroupPositions", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, Array.CreateInstance(typeof(XYZ), 0));
+        var groupPositionType = AppDomain.CurrentDomain.GetAssemblies()
+            .SelectMany(a => a.GetTypes())
+            .FirstOrDefault(t => t.Name == "GroupPosition");
+        templateType.GetProperty("GroupPositions", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, groupPositionType != null ? Array.CreateInstance(groupPositionType, 0) : Array.Empty<object>());
 
-        var rootId = container.ContainerId;
         var itemType = AppDomain.CurrentDomain.GetAssemblies()
             .SelectMany(a => a.GetTypes())
             .FirstOrDefault(t => t.Name == "SptLootItem");
@@ -324,20 +354,59 @@ public static class InteractiveObjectTransformer
 
         var item = Activator.CreateInstance(itemType);
         itemType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance)?.SetValue(item, rootId);
-        var containerTemplate = string.IsNullOrWhiteSpace(container.ContainerTemplate) ? "578f87a3245977356274f2cb" : container.ContainerTemplate;
-        itemType.GetProperty("Template", BindingFlags.Public | BindingFlags.Instance)?.SetValue(item, containerTemplate);
+        itemType.GetProperty("Template", BindingFlags.Public | BindingFlags.Instance)?.SetValue(item, new MongoId(containerTemplate));
         itemType.GetProperty("ComposedKey", BindingFlags.Public | BindingFlags.Instance)?.SetValue(item, $"{container.ContainerId}_root");
         itemType.GetProperty("Upd", BindingFlags.Public | BindingFlags.Instance)?.SetValue(item, new Upd { SpawnedInSession = true });
 
-        templateType.GetProperty("Root", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, rootId);
+        templateType.GetProperty("Root", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, rootId.ToString());
         templateType.GetProperty("Items", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, Array.CreateInstance(itemType, 1));
-        ((IList)templateType.GetProperty("Items", BindingFlags.Public | BindingFlags.Instance)?.GetValue(template)!)[0] = item;
+        ((System.Collections.IList)templateType.GetProperty("Items", BindingFlags.Public | BindingFlags.Instance)?.GetValue(template)!)[0] = item;
 
-        var spawnpoint = Activator.CreateInstance(spawnpointType);
-        spawnpointType.GetProperty("LocationId", BindingFlags.Public | BindingFlags.Instance)?.SetValue(spawnpoint, container.ContainerId);
-        spawnpointType.GetProperty("Probability", BindingFlags.Public | BindingFlags.Instance)?.SetValue(spawnpoint, 1.0);
-        spawnpointType.GetProperty("Template", BindingFlags.Public | BindingFlags.Instance)?.SetValue(spawnpoint, template);
+        var containerData = Activator.CreateInstance(staticContainerDataType);
+        if (containerData == null)
+            return null;
 
-        return spawnpoint;
+        staticContainerDataType.GetProperty("Probability", BindingFlags.Public | BindingFlags.Instance)?.SetValue(containerData, 1.0f);
+        staticContainerDataType.GetProperty("Template", BindingFlags.Public | BindingFlags.Instance)?.SetValue(containerData, template);
+
+        return containerData;
+    }
+
+    private static void SetDistributionProperty(PropertyInfo? prop, object target, string templateId)
+    {
+        if (prop == null) return;
+        object value = prop.PropertyType == typeof(MongoId) ? new MongoId(templateId) : templateId;
+        prop.SetValue(target, value);
+    }
+
+    private static void SetNumericProperty(PropertyInfo? prop, object target, object value)
+    {
+        if (prop == null) return;
+        var propType = prop.PropertyType;
+        if (propType == typeof(float) || propType == typeof(float?))
+            value = Convert.ToSingle(value);
+        else if (propType == typeof(double) || propType == typeof(double?))
+            value = Convert.ToDouble(value);
+        else if (propType == typeof(int) || propType == typeof(int?))
+            value = Convert.ToInt32(value);
+        prop.SetValue(target, value);
+    }
+
+    private static Type? GetEnumerableElementType(Type type)
+    {
+        if (type.IsGenericType)
+        {
+            var genericDef = type.GetGenericTypeDefinition();
+            if (genericDef == typeof(IEnumerable<>) || genericDef == typeof(List<>) || genericDef == typeof(IList<>) || genericDef == typeof(ICollection<>))
+                return type.GetGenericArguments().First();
+        }
+
+        foreach (var iface in type.GetInterfaces())
+        {
+            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                return iface.GetGenericArguments().First();
+        }
+
+        return null;
     }
 }

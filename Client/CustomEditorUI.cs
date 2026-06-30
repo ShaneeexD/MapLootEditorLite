@@ -1327,7 +1327,12 @@ namespace MapLootEditorLite.Client
             }
             else
             {
-                BuildStringField(_inspectorContent, "Container Id", obj.containerId ?? "", (v) => { obj.containerId = v; manager.IsDirty = true; });
+                BuildStringFieldWithButton(_inspectorContent, "Container Id", obj.containerId ?? "", (v) => { obj.containerId = v; manager.IsDirty = true; }, "Gen", () =>
+                {
+                    obj.containerId = GenerateHexId();
+                    manager.IsDirty = true;
+                    RequestInspectorRefresh();
+                });
                 BuildContainerTemplateDropdown(obj);
                 BuildFloatField(_inspectorContent, "Spawn Chance", obj.spawnChance, (v) => { obj.spawnChance = v; manager.IsDirty = true; });
                 BuildItemsList(obj.items, false, (i) => { });
@@ -1539,6 +1544,15 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        private string GenerateHexId()
+        {
+            const string chars = "0123456789abcdef";
+            var sb = new System.Text.StringBuilder(24);
+            for (int i = 0; i < 24; i++)
+                sb.Append(chars[UnityEngine.Random.Range(0, chars.Length)]);
+            return sb.ToString();
+        }
+
         private void BuildStringField(RectTransform parent, string label, string value, UnityAction<string> onChanged)
         {
             var row = UIBuilder.CreatePanel("StringField", parent, new Color(0, 0, 0, 0));
@@ -1548,6 +1562,18 @@ namespace MapLootEditorLite.Client
             var inp = UIBuilder.CreateInputField(row, label, value, (v) => onChanged?.Invoke(v), 0, 22);
             UIBuilder.AddLayoutElement(inp.gameObject, null, null, null, null, 1, null);
             AddInputFieldContextMenu(inp);
+        }
+
+        private void BuildStringFieldWithButton(RectTransform parent, string label, string value, UnityAction<string> onChanged, string buttonLabel, UnityAction onButtonClick)
+        {
+            var row = UIBuilder.CreatePanel("StringFieldWithButton", parent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row, 2, 2, true, true);
+            UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
+            UIBuilder.CreateLabel(row, label, 11, 60, 22);
+            var inp = UIBuilder.CreateInputField(row, label, value, (v) => onChanged?.Invoke(v), 0, 22);
+            UIBuilder.AddLayoutElement(inp.gameObject, null, null, null, null, 1, null);
+            AddInputFieldContextMenu(inp);
+            UIBuilder.CreateButton(row, buttonLabel, onButtonClick, 40, 22);
         }
 
         private void BuildFloatField(RectTransform parent, string label, float value, UnityAction<float> onChanged)

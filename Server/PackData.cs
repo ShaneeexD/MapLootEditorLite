@@ -257,6 +257,7 @@ public record WTTStaticObject
     public string RequiredBossSpawned { get; set; } = string.Empty;
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum InteractiveObjectType
 {
     Door,
