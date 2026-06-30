@@ -142,6 +142,9 @@ namespace MapLootEditorLite.Client
             if (Data.wttStaticObjects != null)
                 foreach (var m in Data.wttStaticObjects)
                     yield return m;
+            if (Data.interactiveObjects != null)
+                foreach (var m in Data.interactiveObjects)
+                    yield return m;
         }
 
         public MarkerBase FindById(string id)
@@ -230,6 +233,10 @@ namespace MapLootEditorLite.Client
                     Data.wttStaticObjects ??= new List<WTTStaticObject>();
                     Data.wttStaticObjects.Add(w);
                     break;
+                case InteractiveObject io:
+                    Data.interactiveObjects ??= new List<InteractiveObject>();
+                    Data.interactiveObjects.Add(io);
+                    break;
             }
             IsDirty = true;
         }
@@ -286,6 +293,7 @@ namespace MapLootEditorLite.Client
                     case StaticObject o: Data.objects.Remove(o); break;
                     case WTTQuestZone q: Data.wttQuestZones.Remove(q); break;
                     case WTTStaticObject w: Data.wttStaticObjects.Remove(w); break;
+                    case InteractiveObject io: Data.interactiveObjects.Remove(io); break;
                 }
             }
             ClearSelection();
@@ -324,6 +332,10 @@ namespace MapLootEditorLite.Client
                     case WTTStaticObject w:
                         copy = JsonConvert.DeserializeObject<WTTStaticObject>(json);
                         Data.wttStaticObjects.Add((WTTStaticObject)copy);
+                        break;
+                    case InteractiveObject io:
+                        copy = JsonConvert.DeserializeObject<InteractiveObject>(json);
+                        Data.interactiveObjects.Add((InteractiveObject)copy);
                         break;
                     default:
                         continue;
@@ -424,6 +436,23 @@ namespace MapLootEditorLite.Client
             return marker;
         }
 
+        public InteractiveObject CreateInteractiveObject(Vector3 position, Vector3 rotation)
+        {
+            Data.interactiveObjects ??= new List<InteractiveObject>();
+            var marker = new InteractiveObject
+            {
+                name = "interactive_object",
+                position = TransformData.FromVector3(position),
+                rotation = TransformData.FromVector3(rotation),
+                scale = TransformData.FromVector3(Vector3.one),
+                keyId = "",
+                containerId = ""
+            };
+            Data.interactiveObjects.Add(marker);
+            IsDirty = true;
+            return marker;
+        }
+
         public void DeleteSelected()
         {
             if (Selected == null || Data == null)
@@ -436,6 +465,7 @@ namespace MapLootEditorLite.Client
                 case StaticObject o: Data.objects.Remove(o); break;
                 case WTTQuestZone q: Data.wttQuestZones.Remove(q); break;
                 case WTTStaticObject w: Data.wttStaticObjects.Remove(w); break;
+                case InteractiveObject io: Data.interactiveObjects.Remove(io); break;
             }
 
             Selected = null;
@@ -471,6 +501,10 @@ namespace MapLootEditorLite.Client
                 case WTTStaticObject w:
                     copy = JsonConvert.DeserializeObject<WTTStaticObject>(json);
                     Data.wttStaticObjects.Add((WTTStaticObject)copy);
+                    break;
+                case InteractiveObject io:
+                    copy = JsonConvert.DeserializeObject<InteractiveObject>(json);
+                    Data.interactiveObjects.Add((InteractiveObject)copy);
                     break;
                 default:
                     return null;

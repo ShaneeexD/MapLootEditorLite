@@ -34,6 +34,9 @@ public record MapData
 
     [JsonPropertyName("wttStaticObjects")]
     public List<WTTStaticObject> WttStaticObjects { get; set; } = [];
+
+    [JsonPropertyName("interactiveObjects")]
+    public List<InteractiveObject> InteractiveObjects { get; set; } = [];
 }
 
 public record LootItem
@@ -83,6 +86,9 @@ public record LooseLootSpawn
 
     [JsonPropertyName("forced")]
     public bool Forced { get; set; } = false;
+
+    [JsonPropertyName("useGravity")]
+    public bool UseGravity { get; set; } = false;
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -132,6 +138,9 @@ public record LootZone
 
     [JsonPropertyName("forced")]
     public bool Forced { get; set; } = false;
+
+    [JsonPropertyName("useGravity")]
+    public bool UseGravity { get; set; } = false;
 }
 
 public record StaticObject
@@ -246,4 +255,55 @@ public record WTTStaticObject
 
     [JsonPropertyName("requiredBossSpawned")]
     public string RequiredBossSpawned { get; set; } = string.Empty;
+}
+
+public enum InteractiveObjectType
+{
+    Door,
+    Container
+}
+
+public record InteractiveObject
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("group")]
+    public string Group { get; set; } = string.Empty;
+
+    [JsonPropertyName("position")]
+    public TransformData Position { get; set; } = new();
+
+    [JsonPropertyName("rotation")]
+    public TransformData Rotation { get; set; } = new();
+
+    [JsonPropertyName("scale")]
+    public TransformData Scale { get; set; } = new() { X = 1, Y = 1, Z = 1 };
+
+    [JsonPropertyName("interactiveType")]
+    public InteractiveObjectType InteractiveType { get; set; } = InteractiveObjectType.Door;
+
+    [JsonPropertyName("sourceObjectName")]
+    public string SourceObjectName { get; set; } = string.Empty;
+
+    [JsonPropertyName("sourceObjectPosition")]
+    public TransformData SourceObjectPosition { get; set; } = new();
+
+    [JsonPropertyName("keyId")]
+    public string KeyId { get; set; } = string.Empty;
+
+    [JsonPropertyName("containerId")]
+    public string ContainerId { get; set; } = string.Empty;
+
+    [JsonPropertyName("containerTemplate")]
+    public string ContainerTemplate { get; set; } = "578f87a3245977356274f2cb";
+
+    [JsonPropertyName("items")]
+    public List<LootItem> Items { get; set; } = [];
+
+    [JsonPropertyName("spawnChance")]
+    public double SpawnChance { get; set; } = 100;
 }

@@ -9,6 +9,7 @@ using Comfort.Common;
 using EFT;
 using EFT.AssetsManager;
 using EFT.CameraControl;
+using EFT.Interactive;
 using EFT.InventoryLogic;
 using UnityEngine;
 
@@ -390,6 +391,8 @@ namespace MapLootEditorLite.Client
                 SpawnPreviewForMarker(marker);
             foreach (var marker in data.wttStaticObjects ?? Enumerable.Empty<WTTStaticObject>())
                 SpawnPreviewForMarker(marker);
+            foreach (var marker in data.interactiveObjects ?? Enumerable.Empty<InteractiveObject>())
+                SpawnPreviewForMarker(marker);
         }
 
         public void ClearAll()
@@ -463,6 +466,9 @@ namespace MapLootEditorLite.Client
                     break;
                 case MarkerKind.WTTStaticObject:
                     SpawnWTTStaticPreview((WTTStaticObject)marker);
+                    break;
+                case MarkerKind.InteractiveObject:
+                    SpawnInteractivePreview((InteractiveObject)marker);
                     break;
             }
         }
@@ -592,6 +598,44 @@ namespace MapLootEditorLite.Client
             {
                 Plugin.Log.LogWarning($"Failed to load WTT static object bundle: {path}");
             }
+        }
+
+        public void SpawnInteractivePreview(InteractiveObject marker)
+        {
+            if (marker == null)
+            {
+                Plugin.Log.LogWarning("Cannot preview interactive object: marker is null.");
+                return;
+            }
+
+            if (string.IsNullOrEmpty(marker.sourceObjectName))
+            {
+                Plugin.Log.LogWarning("Cannot preview interactive object: no source object set.");
+                return;
+            }
+
+            ClearByMarkerId(marker.id);
+            _runner.StartCoroutine(LoadInteractivePreviewCoroutine(marker));
+        }
+
+        private IEnumerator LoadInteractivePreviewCoroutine(InteractiveObject marker)
+        {
+            var sourceKey = GetStaticSourceKey(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
+            if (_staticSources.TryGetValue(sourceKey, out var cached) && cached != null)
+            {
+                SpawnInteractiveInstance(cached, marker, true);
+                yield break;
+            }
+
+            var source = FindSourceObject(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
+            if (source != null)
+            {
+                _staticSources[sourceKey] = source;
+                SpawnInteractiveInstance(source, marker, true);
+                yield break;
+            }
+
+            Plugin.Log.LogWarning($"Could not find source scene object for interactive preview: {marker.sourceObjectName}");
         }
 
         private IEnumerator LoadStaticPreviewCoroutine(StaticObject marker)
@@ -738,6 +782,32 @@ namespace MapLootEditorLite.Client
 
             _staticPreviews.Add(instance);
             Plugin.Log.LogInfo($"Spawned WTT static object preview for {marker.name} (fallback={isFallback})");
+        }
+
+        private void SpawnInteractiveInstance(GameObject source, InteractiveObject marker, bool isFallback)
+        {
+            var instance = UnityEngine.Object.Instantiate(source);
+            instance.name = $"InteractivePreview_{marker.name}";
+            instance.transform.SetParent(_root.transform, false);
+            instance.transform.position = marker.position.ToVector3();
+            instance.transform.rotation = marker.rotation.ToQuaternion();
+            instance.transform.localScale = marker.scale.ToVector3();
+
+            var wio = instance.GetComponent<WorldInteractiveObject>();
+            if (wio != null && marker.interactiveType == InteractiveObjectType.Door && !string.IsNullOrEmpty(marker.keyId))
+                wio.KeyId = marker.keyId;
+
+            var lootable = instance.GetComponent<LootableContainer>();
+            if (lootable != null && marker.interactiveType == InteractiveObjectType.Container && !string.IsNullOrEmpty(marker.containerId))
+                lootable.Id = marker.containerId;
+
+            var meta = instance.AddComponent<PreviewStaticObjectMarker>();
+            meta.sourceMarkerId = marker.id;
+            meta.prefabPath = marker.sourceObjectName;
+            meta.isFallback = isFallback;
+
+            _staticPreviews.Add(instance);
+            Plugin.Log.LogInfo($"Spawned interactive object preview for {marker.name} (fallback={isFallback})");
         }
 
         private void DestroyPreview(GameObject preview)

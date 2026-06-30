@@ -89,7 +89,7 @@ public static class LootTransformer
             {
                 Id = spawn.Id,
                 IsContainer = false,
-                UseGravity = false,
+                UseGravity = spawn.UseGravity,
                 RandomRotation = false,
                 Position = new XYZ { X = spawn.Position.X, Y = spawn.Position.Y, Z = spawn.Position.Z },
                 Rotation = new XYZ { X = spawn.Rotation.X, Y = spawn.Rotation.Y, Z = spawn.Rotation.Z },
@@ -120,7 +120,7 @@ public static class LootTransformer
             {
                 Id = locationId,
                 IsContainer = false,
-                UseGravity = false,
+                UseGravity = zone.UseGravity,
                 RandomRotation = false,
                 Position = new XYZ { X = position.X, Y = position.Y, Z = position.Z },
                 Rotation = new XYZ { X = rotation.X, Y = rotation.Y, Z = rotation.Z },

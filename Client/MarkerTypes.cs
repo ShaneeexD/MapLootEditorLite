@@ -12,7 +12,14 @@ namespace MapLootEditorLite.Client
         LootZone,
         StaticObject,
         WTTQuestZone,
-        WTTStaticObject
+        WTTStaticObject,
+        InteractiveObject
+    }
+
+    public enum InteractiveObjectType
+    {
+        Door,
+        Container
     }
 
     public class MapData
@@ -23,6 +30,7 @@ namespace MapLootEditorLite.Client
         public List<StaticObject> objects = new List<StaticObject>();
         public List<WTTQuestZone> wttQuestZones = new List<WTTQuestZone>();
         public List<WTTStaticObject> wttStaticObjects = new List<WTTStaticObject>();
+        public List<InteractiveObject> interactiveObjects = new List<InteractiveObject>();
     }
 
     public class PackData
@@ -170,5 +178,23 @@ namespace MapLootEditorLite.Client
         public string requiredBossSpawned = "";
 
         public override MarkerKind Kind => MarkerKind.WTTStaticObject;
+    }
+
+    public class InteractiveObject : MarkerBase, IHasSourceObject
+    {
+        public InteractiveObjectType interactiveType = InteractiveObjectType.Door;
+
+        public string sourceObjectName { get; set; } = "";
+        public TransformData sourceObjectPosition { get; set; } = new TransformData();
+        public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
+
+        public string keyId = ""; // Door key template id
+
+        public string containerId = ""; // Container item id
+        public string containerTemplate = "578f87a3245977356274f2cb"; // Container root template id
+        public List<LootItem> items = new List<LootItem>();
+        public float spawnChance = 100f;
+
+        public override MarkerKind Kind => MarkerKind.InteractiveObject;
     }
 }

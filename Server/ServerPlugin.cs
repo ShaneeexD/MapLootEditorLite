@@ -77,6 +77,7 @@ public class ServerPlugin : IOnLoad
             _logger.Info($"[MLEL] Registered custom static spawns with WTT-CommonLib from {staticSpawnDirectory}");
 
             LootTransformer.Register(_databaseService);
+            InteractiveObjectTransformer.Register(_databaseService);
 
             _logger.Info($"[MLEL] MapLootEditorLite server mod loaded. {PackRegistry.TotalSpawnCount()} custom spawns registered across {packs.Count} packs.");
         }

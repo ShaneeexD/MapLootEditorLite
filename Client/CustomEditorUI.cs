@@ -340,6 +340,11 @@ namespace MapLootEditorLite.Client
                 {
                     new MenuItem("WTT Quest Area", () => controller.CreateWTTQuestZone()),
                     new MenuItem("WTT Static Object", () => controller.CreateWTTStaticObject())
+                }),
+                new MenuItem("Interactive", subItems: new List<MenuItem>
+                {
+                    new MenuItem("Custom Door", () => controller.CreateInteractiveObject(InteractiveObjectType.Door)),
+                    new MenuItem("Custom Container", () => controller.CreateInteractiveObject(InteractiveObjectType.Container))
                 })
             }, 84, 22);
             UIBuilder.CreateButton(row1, "Snap",         () => controller.SnapSelected(),     46, 22);
@@ -1133,6 +1138,9 @@ namespace MapLootEditorLite.Client
                 case WTTStaticObject obj:
                     BuildWTTStaticObject(obj);
                     break;
+                case InteractiveObject obj:
+                    BuildInteractiveObject(obj);
+                    break;
             }
 
             var previewRow = UIBuilder.CreatePanel("PreviewRow", _inspectorContent, new Color(0, 0, 0, 0));
@@ -1296,6 +1304,84 @@ namespace MapLootEditorLite.Client
                 GUIUtility.systemCopyBuffer = json;
                 _fieldClipboard = json;
             }, 120, 24);
+        }
+
+        private void BuildInteractiveObject(InteractiveObject obj)
+        {
+            if (obj.scale == null)
+                obj.scale = new TransformData { x = 1f, y = 1f, z = 1f };
+
+            BuildDropdownField(_inspectorContent, "Type", obj.interactiveType.ToString(), new[] { "Door", "Container" }, (v) =>
+            {
+                obj.interactiveType = (InteractiveObjectType)System.Enum.Parse(typeof(InteractiveObjectType), v);
+                manager.IsDirty = true;
+                RefreshInspector();
+            });
+
+            BuildSourceObjectControls(obj);
+            BuildVector3Field(_inspectorContent, "Scale", obj.scale.ToVector3(), (v) => { obj.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
+
+            if (obj.interactiveType == InteractiveObjectType.Door)
+            {
+                BuildStringField(_inspectorContent, "Key Template Id", obj.keyId ?? "", (v) => { obj.keyId = v; manager.IsDirty = true; });
+            }
+            else
+            {
+                BuildStringField(_inspectorContent, "Container Id", obj.containerId ?? "", (v) => { obj.containerId = v; manager.IsDirty = true; });
+                BuildContainerTemplateDropdown(obj);
+                BuildFloatField(_inspectorContent, "Spawn Chance", obj.spawnChance, (v) => { obj.spawnChance = v; manager.IsDirty = true; });
+                BuildItemsList(obj.items, false, (i) => { });
+            }
+
+            UIBuilder.CreateButton(_inspectorContent, "Preview Object", () => previews.SpawnInteractivePreview(obj), 100, 24);
+        }
+
+        private static readonly (string id, string name)[] LootContainerTemplates = new (string, string)[]
+        {
+            ("566966cd4bdc2d0c4c8b4578", "Box full of junk"),
+            ("5d6d2bb386f774785b07a77a", "Buried barrel cache"),
+            ("578f879c24597735401e6bc6", "Cash register"),
+            ("5ad74cf586f774391278f6f0", "Cash register TAR2-2"),
+            ("5d07b91b86f7745a077a9432", "Common fund stash"),
+            ("5909e4b686f7747f5b744fa4", "Dead Scav"),
+            ("578f87b7245977356274f2cd", "Drawer"),
+            ("578f87a3245977356274f2cb", "Duffle bag"),
+            ("5909d36d86f774660f0bb900", "Grenade box"),
+            ("5d6d2b5486f774785c2ba8ea", "Ground cache"),
+            ("578f8778245977358849a9b5", "Jacket"),
+            ("5914944186f774189e5e76c2", "Jacket 2"),
+            ("5937ef2b86f77408a47244b3", "Jacket 3"),
+            ("59387ac686f77401442ddd61", "Jacket 4"),
+            ("5909d24f86f77466f56e6855", "Medbag SMU06"),
+            ("5909d4c186f7746ad34e805a", "Medcase"),
+            ("5d6fe50986f77449d97f7463", "Medical supply crate"),
+            ("59139c2186f77411564f8e42", "PC block"),
+            ("5c052cea86f7746b2101e8d8", "Plastic suitcase"),
+            ("5d6fd13186f77424ad2a8c69", "Ration supply crate"),
+            ("578f8782245977354405a1e3", "Safe"),
+            ("5d6fd45b86f774317075ed43", "Technical supply crate"),
+            ("5909d50c86f774659e6aaebe", "Toolbox"),
+            ("5909d5ef86f77467974efbd8", "Weapon box"),
+            ("5909d76c86f77471e53d2adf", "Weapon box 2"),
+            ("5909d7cf86f77470ee57d75a", "Weapon box 3"),
+            ("5909d89086f77472591234a0", "Weapon box 4"),
+            ("5909d45286f77465a8136dc6", "Wooden ammo box"),
+            ("578f87ad245977356274f2cc", "Wooden crate")
+        };
+
+        private void BuildContainerTemplateDropdown(InteractiveObject obj)
+        {
+            var options = LootContainerTemplates.Select(t => t.name).ToArray();
+            var current = LootContainerTemplates.FirstOrDefault(t => t.id == obj.containerTemplate).name;
+            if (string.IsNullOrEmpty(current))
+                current = obj.containerTemplate;
+
+            BuildDropdownField(_inspectorContent, "Container Template", current, options, (v) =>
+            {
+                var selected = LootContainerTemplates.FirstOrDefault(t => t.name == v);
+                obj.containerTemplate = selected.id;
+                manager.IsDirty = true;
+            });
         }
 
         private void BuildDropdownField(RectTransform parent, string label, string value, string[] options, UnityAction<string> onChanged)

@@ -21,6 +21,8 @@ namespace MapLootEditorLite.Client
         private readonly Color _wttZoneWireColor = new Color(0.2f, 0.8f, 0.2f, 1.0f);
         private readonly Color _wttStaticColor = new Color(0.8f, 0.4f, 0.2f, 0.25f);
         private readonly Color _wttStaticWireColor = new Color(0.8f, 0.4f, 0.2f, 1.0f);
+        private readonly Color _interactiveColor = new Color(1f, 0.5f, 0f, 0.25f);
+        private readonly Color _interactiveWireColor = new Color(1f, 0.5f, 0f, 1.0f);
         private readonly Color _selectedColor = new Color(0.2f, 0.6f, 1f, 0.25f);
         private readonly Color _selectedWireColor = new Color(0.2f, 0.6f, 1f, 1.0f);
         private readonly Color _gizmoXColor = new Color(1f, 0.2f, 0.2f, 0.9f);
@@ -107,6 +109,10 @@ namespace MapLootEditorLite.Client
                     {
                         visual.transform.localScale = wso.scale.ToVector3();
                     }
+                    else if (marker is InteractiveObject io)
+                    {
+                        visual.transform.localScale = io.scale.ToVector3();
+                    }
 
                     bool isSelected = _manager.IsSelected(marker);
                     ApplyColor(visual, marker, isSelected);
@@ -185,6 +191,9 @@ namespace MapLootEditorLite.Client
                     break;
                 case WTTStaticObject _:
                     visual = CreateWTTStaticObjectVisual();
+                    break;
+                case InteractiveObject _:
+                    visual = CreateInteractiveObjectVisual();
                     break;
                 default:
                     return null;
@@ -281,6 +290,27 @@ namespace MapLootEditorLite.Client
             lr.material = GetWireMaterial();
             lr.startColor = _objectWireColor;
             lr.endColor = _objectWireColor;
+
+            DrawWireBox(lr, 0.5f);
+            return go;
+        }
+
+        private GameObject CreateInteractiveObjectVisual()
+        {
+            var go = CreatePrimitiveNoCollider(PrimitiveType.Cube, 0.5f);
+            var wire = new GameObject("wire_box");
+            wire.transform.SetParent(go.transform, false);
+            wire.transform.localScale = Vector3.one;
+            wire.transform.localPosition = Vector3.zero;
+
+            var lr = wire.AddComponent<LineRenderer>();
+            lr.useWorldSpace = false;
+            lr.startWidth = 0.04f;
+            lr.endWidth = 0.04f;
+            lr.positionCount = 0;
+            lr.material = GetWireMaterial();
+            lr.startColor = _interactiveWireColor;
+            lr.endColor = _interactiveWireColor;
 
             DrawWireBox(lr, 0.5f);
             return go;
@@ -470,6 +500,10 @@ namespace MapLootEditorLite.Client
             {
                 color = _wttStaticColor;
             }
+            else if (marker is InteractiveObject)
+            {
+                color = _interactiveColor;
+            }
             else
             {
                 color = _objectColor;
@@ -492,6 +526,8 @@ namespace MapLootEditorLite.Client
                         wireColor = _wttZoneWireColor;
                     else if (marker is WTTStaticObject)
                         wireColor = _wttStaticWireColor;
+                    else if (marker is InteractiveObject)
+                        wireColor = _interactiveWireColor;
                     else
                         wireColor = _zoneWireColor;
 
