@@ -9,6 +9,7 @@ using UnityEngine;
 namespace MapLootEditorLite.Client
 {
     [BepInPlugin("com.maplooteditorlite.client", "Map Loot Editor Lite", "1.0.0")]
+    [BepInDependency("com.wtt.commonlib", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
         public static Plugin Instance { get; private set; }

@@ -60,7 +60,7 @@ namespace MapLootEditorLite.Client
         private bool _isDeletePending;
         private bool _isDeleteConfirmed;
         private bool _isPickingSource;
-        private StaticObject _pickingSourceTarget;
+        private IHasSourceObject _pickingSourceTarget;
         private bool _pickUseParent;
         private bool _isPickingScatter;
         private string _prefabName = "MyPrefab";
@@ -107,7 +107,7 @@ namespace MapLootEditorLite.Client
         private RectTransform _goActionBtnRow;
         private readonly List<GameObject> _sceneObjectCache = new List<GameObject>();
         private GameObject _selectedSceneGO;
-        private StaticObject _goListTarget;
+        private IHasSourceObject _goListTarget;
 
         private readonly Dictionary<string, string> _itemNameCache = new Dictionary<string, string>();
 
@@ -339,7 +339,7 @@ namespace MapLootEditorLite.Client
                 new MenuItem("WTT", subItems: new List<MenuItem>
                 {
                     new MenuItem("WTT Quest Area", () => controller.CreateWTTQuestZone()),
-                    new MenuItem("WTT Static Object", () => { Plugin.Log.LogInfo("WTT Static Object selected (placeholder)"); })
+                    new MenuItem("WTT Static Object", () => controller.CreateWTTStaticObject())
                 })
             }, 84, 22);
             UIBuilder.CreateButton(row1, "Snap",         () => controller.SnapSelected(),     46, 22);
@@ -1130,6 +1130,9 @@ namespace MapLootEditorLite.Client
                 case WTTQuestZone zone:
                     BuildWTTQuestZone(zone);
                     break;
+                case WTTStaticObject obj:
+                    BuildWTTStaticObject(obj);
+                    break;
             }
 
             var previewRow = UIBuilder.CreatePanel("PreviewRow", _inspectorContent, new Color(0, 0, 0, 0));
@@ -1181,7 +1184,12 @@ namespace MapLootEditorLite.Client
         {
             BuildStringField(_inspectorContent, "Prefab Path", obj.prefabPath ?? "", (v) => { obj.prefabPath = v; manager.IsDirty = true; });
             BuildVector3Field(_inspectorContent, "Scale", obj.scale.ToVector3(), (v) => { obj.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
+            BuildSourceObjectControls(obj);
+            UIBuilder.CreateButton(_inspectorContent, "Preview Object", () => previews.SpawnStaticPreview(obj), 100, 24);
+        }
 
+        private void BuildSourceObjectControls(IHasSourceObject obj)
+        {
             if (_isPickingSource && _pickingSourceTarget == obj)
             {
                 var pickRow = UIBuilder.CreatePanel("SourcePickRow", _inspectorContent, new Color(0, 0, 0, 0));
@@ -1215,8 +1223,6 @@ namespace MapLootEditorLite.Client
                     UIBuilder.CreateText(_inspectorContent, $"Source: {obj.sourceObjectName} @ {obj.sourceObjectPosition.x:F2}, {obj.sourceObjectPosition.y:F2}, {obj.sourceObjectPosition.z:F2}", 11, new Color(0.6f, 0.6f, 0.6f, 1f));
                 }
             }
-
-            UIBuilder.CreateButton(_inspectorContent, "Preview Object", () => previews.SpawnStaticPreview(obj), 100, 24);
         }
 
         private void BuildWTTQuestZone(WTTQuestZone zone)
@@ -1244,6 +1250,49 @@ namespace MapLootEditorLite.Client
                     Rotation = new { X = zone.rotation.x.ToString("F4", CultureInfo.InvariantCulture), Y = zone.rotation.y.ToString("F4", CultureInfo.InvariantCulture), Z = zone.rotation.z.ToString("F4", CultureInfo.InvariantCulture) },
                     Scale = new { X = zone.scale.x.ToString("F4", CultureInfo.InvariantCulture), Y = zone.scale.y.ToString("F4", CultureInfo.InvariantCulture), Z = zone.scale.z.ToString("F4", CultureInfo.InvariantCulture) }
                 }, Formatting.Indented);
+                GUIUtility.systemCopyBuffer = json;
+                _fieldClipboard = json;
+            }, 120, 24);
+        }
+
+        private void BuildWTTStaticObject(WTTStaticObject obj)
+        {
+            if (obj.scale == null)
+                obj.scale = new TransformData { x = 1f, y = 1f, z = 1f };
+
+            BuildDropdownField(_inspectorContent, "Spawn Type", obj.spawnType ?? "bundle", new[] { "bundle", "clone" }, (v) => { obj.spawnType = v; manager.IsDirty = true; RefreshInspector(); });
+
+            if (obj.spawnType == "clone")
+            {
+                BuildSourceObjectControls(obj);
+            }
+            else
+            {
+                BuildStringField(_inspectorContent, "Bundle Name", obj.bundleName ?? "", (v) => { obj.bundleName = v; manager.IsDirty = true; });
+                BuildStringField(_inspectorContent, "Prefab Name", obj.prefabName ?? "", (v) => { obj.prefabName = v; manager.IsDirty = true; });
+            }
+
+            BuildVector3Field(_inspectorContent, "Scale", obj.scale.ToVector3(), (v) => { obj.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
+
+            BuildStringField(_inspectorContent, "Quest Id", obj.questId ?? "", (v) => { obj.questId = v; manager.IsDirty = true; });
+            BuildStringField(_inspectorContent, "Required Statuses", string.Join(",", obj.requiredQuestStatuses ?? new System.Collections.Generic.List<string>()), (v) => { obj.requiredQuestStatuses = new System.Collections.Generic.List<string>(v.Split(',')); manager.IsDirty = true; });
+            BuildStringField(_inspectorContent, "Excluded Statuses", string.Join(",", obj.excludedQuestStatuses ?? new System.Collections.Generic.List<string>()), (v) => { obj.excludedQuestStatuses = new System.Collections.Generic.List<string>(v.Split(',')); manager.IsDirty = true; });
+            BuildToggleField(_inspectorContent, "Quest Must Exist", obj.questMustExist, (v) => { obj.questMustExist = v; manager.IsDirty = true; });
+            BuildStringField(_inspectorContent, "Linked Quest Id", obj.linkedQuestId ?? "", (v) => { obj.linkedQuestId = v; manager.IsDirty = true; });
+            BuildStringField(_inspectorContent, "Required Item", obj.requiredItemInInventory ?? "", (v) => { obj.requiredItemInInventory = v; manager.IsDirty = true; });
+            BuildIntField(_inspectorContent, "Required Level", obj.requiredLevel, (v) => { obj.requiredLevel = v; manager.IsDirty = true; });
+            BuildStringField(_inspectorContent, "Required Faction", obj.requiredFaction ?? "", (v) => { obj.requiredFaction = v; manager.IsDirty = true; });
+            BuildStringField(_inspectorContent, "Required Boss", obj.requiredBossSpawned ?? "", (v) => { obj.requiredBossSpawned = v; manager.IsDirty = true; });
+
+            if (obj.spawnType == "clone" || (!string.IsNullOrEmpty(obj.bundleName) && !string.IsNullOrEmpty(obj.prefabName)))
+            {
+                UIBuilder.CreateButton(_inspectorContent, "Preview Object", () => previews.SpawnWTTStaticPreview(obj), 100, 24);
+            }
+
+            UIBuilder.CreateButton(_inspectorContent, "Copy WTT Static Data", () =>
+            {
+                var data = WttStaticDataConverter.ToWttConfig(obj, manager.Data.map);
+                var json = JsonConvert.SerializeObject(data, Formatting.Indented);
                 GUIUtility.systemCopyBuffer = json;
                 _fieldClipboard = json;
             }, 120, 24);
@@ -1429,6 +1478,20 @@ namespace MapLootEditorLite.Client
             AddInputFieldContextMenu(inp);
         }
 
+        private void BuildIntField(RectTransform parent, string label, int value, UnityAction<int> onChanged)
+        {
+            var row = UIBuilder.CreatePanel("IntField", parent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
+            UIBuilder.CreateLabel(row, label, 11, 60, 22);
+            var inp = UIBuilder.CreateInputField(row, label, value.ToString(CultureInfo.InvariantCulture), (v) =>
+            {
+                if (int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out var r))
+                    onChanged?.Invoke(r);
+            }, 80, 22);
+            AddInputFieldContextMenu(inp);
+        }
+
         private void BuildVector3Field(RectTransform parent, string label, Vector3 value, UnityAction<Vector3> onChanged)
         {
             var row = UIBuilder.CreatePanel("Vector3Field", parent, new Color(0, 0, 0, 0));
@@ -1577,7 +1640,7 @@ namespace MapLootEditorLite.Client
                 _deleteConfirmPanel.gameObject.SetActive(false);
         }
 
-        public StaticObject PickingSourceTarget => _pickingSourceTarget;
+        public IHasSourceObject PickingSourceTarget => _pickingSourceTarget;
 
         public void ClearPickingSource()
         {
@@ -1619,7 +1682,7 @@ namespace MapLootEditorLite.Client
 
         public GameObject TryPickSourceSceneObject() => PickSceneObjectAtMouse();
 
-        public void SetPickingSource(bool picking, StaticObject target = null)
+        public void SetPickingSource(bool picking, IHasSourceObject target = null)
         {
             _isPickingSource = picking;
             _pickingSourceTarget = target;

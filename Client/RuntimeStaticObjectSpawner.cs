@@ -90,60 +90,77 @@ namespace MapLootEditorLite.Client
         private void SpawnForMap(string mapId)
         {
             var objects = new List<StaticObject>();
+            var wttClones = new List<WTTStaticObject>();
             foreach (var pack in _packs)
             {
                 if (pack.maps.TryGetValue(mapId, out var map))
                 {
-                    objects.AddRange(map.objects);
+                    objects.AddRange(map.objects ?? new List<StaticObject>());
+                    wttClones.AddRange((map.wttStaticObjects ?? new List<WTTStaticObject>()).Where(o => o.spawnType == "clone"));
                 }
             }
 
-            if (objects.Count == 0)
+            var total = objects.Count + wttClones.Count;
+            if (total == 0)
             {
                 Plugin.Log.LogInfo($"[MLEL Runtime] No static objects for map {mapId}");
                 return;
             }
 
-            Plugin.Log.LogInfo($"[MLEL Runtime] Spawning {objects.Count} static objects for map {mapId}");
+            Plugin.Log.LogInfo($"[MLEL Runtime] Spawning {total} static objects for map {mapId} ({objects.Count} regular, {wttClones.Count} WTT clone)");
             foreach (var obj in objects)
             {
                 StartCoroutine(SpawnObjectCoroutine(obj));
+            }
+            foreach (var obj in wttClones)
+            {
+                StartCoroutine(SpawnWTTCloneObjectCoroutine(obj));
             }
         }
 
         private IEnumerator SpawnObjectCoroutine(StaticObject obj)
         {
+            yield return SpawnCloneObjectCoroutine(obj, obj, obj.scale, obj.prefabPath);
+        }
+
+        private IEnumerator SpawnWTTCloneObjectCoroutine(WTTStaticObject obj)
+        {
+            yield return SpawnCloneObjectCoroutine(obj, obj, obj.scale, null);
+        }
+
+        private IEnumerator SpawnCloneObjectCoroutine(IHasSourceObject sourceObj, MarkerBase marker, TransformData scale, string fallbackPrefabPath)
+        {
             bool spawned = false;
 
-            if (!string.IsNullOrEmpty(obj.sourceObjectName))
+            if (!string.IsNullOrEmpty(sourceObj.sourceObjectName))
             {
                 GameObject source = null;
                 for (int attempt = 0; attempt < 5; attempt++)
                 {
-                    source = FindSourceObject(obj.sourceObjectName, obj.sourceObjectPosition.ToVector3());
+                    source = FindSourceObject(sourceObj.sourceObjectName, sourceObj.sourceObjectPosition.ToVector3());
                     if (source != null)
                         break;
 
                     if (attempt == 0)
-                        Plugin.Log.LogInfo($"[MLEL Runtime] Source object '{obj.sourceObjectName}' for {obj.name} not ready, waiting...");
+                        Plugin.Log.LogInfo($"[MLEL Runtime] Source object '{sourceObj.sourceObjectName}' for {marker.name} not ready, waiting...");
 
                     yield return new WaitForSeconds(1f);
                 }
 
                 if (source != null)
                 {
-                    SpawnObjectInstance(source, obj, isFallback: true);
+                    SpawnObjectInstance(source, marker, scale, sourceObj.sourceObjectName, isFallback: true);
                     spawned = true;
                 }
                 else
                 {
-                    Plugin.Log.LogWarning($"[MLEL Runtime] Could not find source scene object '{obj.sourceObjectName}' for {obj.name}");
+                    Plugin.Log.LogWarning($"[MLEL Runtime] Could not find source scene object '{sourceObj.sourceObjectName}' for {marker.name}");
                 }
             }
 
-            if (!spawned && !string.IsNullOrEmpty(obj.prefabPath))
+            if (!spawned && !string.IsNullOrEmpty(fallbackPrefabPath))
             {
-                string path = Path.Combine(Application.streamingAssetsPath, "Windows", obj.prefabPath.TrimStart('/'));
+                string path = Path.Combine(Application.streamingAssetsPath, "Windows", fallbackPrefabPath.TrimStart('/'));
                 Plugin.Log.LogInfo($"[MLEL Runtime] Loading static object bundle: {path}");
 
                 AssetBundle bundle = null;
@@ -151,7 +168,7 @@ namespace MapLootEditorLite.Client
                 string fileName = Path.GetFileName(path);
                 foreach (var b in AssetBundle.GetAllLoadedAssetBundles())
                 {
-                    if (b.name == fileName || b.name == obj.prefabPath)
+                    if (b.name == fileName || b.name == fallbackPrefabPath)
                     {
                         bundle = b;
                         break;
@@ -175,7 +192,7 @@ namespace MapLootEditorLite.Client
                     var prefab = assetRequest.allAssets?.OfType<GameObject>().FirstOrDefault();
                     if (prefab != null)
                     {
-                        SpawnObjectInstance(prefab, obj, isFallback: false);
+                        SpawnObjectInstance(prefab, marker, scale, fallbackPrefabPath, isFallback: false);
                         spawned = true;
                     }
                     else
@@ -194,7 +211,7 @@ namespace MapLootEditorLite.Client
 
             if (!spawned)
             {
-                Plugin.Log.LogWarning($"[MLEL Runtime] Static object '{obj.name}' could not be spawned from bundle or source object.");
+                Plugin.Log.LogWarning($"[MLEL Runtime] Static object '{marker.name}' could not be spawned from bundle or source object.");
             }
         }
 
@@ -230,14 +247,19 @@ namespace MapLootEditorLite.Client
 
         private void SpawnObjectInstance(GameObject source, StaticObject obj, bool isFallback)
         {
-            var instance = Instantiate(source);
-            instance.name = $"StaticObject_{obj.name}";
-            instance.transform.position = obj.position.ToVector3();
-            instance.transform.rotation = obj.rotation.ToQuaternion();
-            instance.transform.localScale = obj.scale.ToVector3();
-            _spawned.Add(instance);
             var sourceName = isFallback ? obj.sourceObjectName : obj.prefabPath;
-            Plugin.Log.LogInfo($"[MLEL Runtime] Spawned static object {obj.name} (fallback={isFallback}, source={sourceName})");
+            SpawnObjectInstance(source, obj, obj.scale, sourceName, isFallback);
+        }
+
+        private void SpawnObjectInstance(GameObject source, MarkerBase marker, TransformData scale, string sourceName, bool isFallback)
+        {
+            var instance = Instantiate(source);
+            instance.name = $"StaticObject_{marker.name}";
+            instance.transform.position = marker.position.ToVector3();
+            instance.transform.rotation = marker.rotation.ToQuaternion();
+            instance.transform.localScale = scale.ToVector3();
+            _spawned.Add(instance);
+            Plugin.Log.LogInfo($"[MLEL Runtime] Spawned static object {marker.name} (fallback={isFallback}, source={sourceName})");
         }
 
         private void ClearSpawned()

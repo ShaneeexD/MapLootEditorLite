@@ -388,6 +388,8 @@ namespace MapLootEditorLite.Client
                 SpawnPreviewForMarker(marker);
             foreach (var marker in data.objects ?? Enumerable.Empty<StaticObject>())
                 SpawnPreviewForMarker(marker);
+            foreach (var marker in data.wttStaticObjects ?? Enumerable.Empty<WTTStaticObject>())
+                SpawnPreviewForMarker(marker);
         }
 
         public void ClearAll()
@@ -459,6 +461,9 @@ namespace MapLootEditorLite.Client
                 case MarkerKind.StaticObject:
                     SpawnStaticPreview((StaticObject)marker);
                     break;
+                case MarkerKind.WTTStaticObject:
+                    SpawnWTTStaticPreview((WTTStaticObject)marker);
+                    break;
             }
         }
 
@@ -490,6 +495,103 @@ namespace MapLootEditorLite.Client
 
             ClearByMarkerId(marker.id);
             _runner.StartCoroutine(LoadStaticPreviewCoroutine(marker));
+        }
+
+        public void SpawnWTTStaticPreview(WTTStaticObject marker)
+        {
+            if (marker == null)
+            {
+                Plugin.Log.LogWarning("Cannot preview WTT static object: marker is null.");
+                return;
+            }
+
+            if (marker.spawnType == "clone" && string.IsNullOrEmpty(marker.sourceObjectName))
+            {
+                Plugin.Log.LogWarning("Cannot preview WTT static object: clone mode but no source object set.");
+                return;
+            }
+
+            if (marker.spawnType == "bundle" && (string.IsNullOrEmpty(marker.bundleName) || string.IsNullOrEmpty(marker.prefabName)))
+            {
+                Plugin.Log.LogWarning("Cannot preview WTT static object: bundle mode but bundle/prefab name not set.");
+                return;
+            }
+
+            ClearByMarkerId(marker.id);
+            _runner.StartCoroutine(LoadWTTStaticPreviewCoroutine(marker));
+        }
+
+        private IEnumerator LoadWTTStaticPreviewCoroutine(WTTStaticObject marker)
+        {
+            if (marker.spawnType == "clone")
+            {
+                var sourceKey = GetStaticSourceKey(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
+                if (_staticSources.TryGetValue(sourceKey, out var cached) && cached != null)
+                {
+                    SpawnWTTStaticInstance(cached, marker, true);
+                    yield break;
+                }
+
+                var source = FindSourceObject(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
+                if (source != null)
+                {
+                    _staticSources[sourceKey] = source;
+                    SpawnWTTStaticInstance(source, marker, true);
+                    yield break;
+                }
+
+                Plugin.Log.LogWarning($"Could not find source scene object for WTT static preview: {marker.sourceObjectName}");
+                yield break;
+            }
+
+            // Bundle mode: try to load the WTT bundle from the mod's bundles folder.
+            string path = Path.Combine(Application.streamingAssetsPath, "Windows", "bundles", "staticspawns", $"{marker.bundleName}.bundle");
+            Plugin.Log.LogInfo($"Loading WTT static object bundle: {path}");
+
+            AssetBundle bundle = null;
+            bool bundleOwned = false;
+            foreach (var b in AssetBundle.GetAllLoadedAssetBundles())
+            {
+                if (b.name == marker.bundleName || b.name == $"{marker.bundleName}.bundle")
+                {
+                    bundle = b;
+                    Plugin.Log.LogInfo($"Using already loaded WTT bundle: {b.name}");
+                    break;
+                }
+            }
+
+            if (bundle == null)
+            {
+                var request = AssetBundle.LoadFromFileAsync(path);
+                yield return request;
+                bundle = request.assetBundle;
+                bundleOwned = true;
+            }
+
+            if (bundle != null)
+            {
+                var assetRequest = bundle.LoadAllAssetsAsync<GameObject>();
+                yield return assetRequest;
+
+                var prefab = assetRequest.allAssets?.OfType<GameObject>().FirstOrDefault(a => a.name == marker.prefabName);
+                prefab ??= assetRequest.allAssets?.OfType<GameObject>().FirstOrDefault();
+
+                if (prefab != null)
+                {
+                    SpawnWTTStaticInstance(prefab, marker, false);
+                }
+                else
+                {
+                    Plugin.Log.LogWarning($"No GameObject asset found in WTT bundle: {path}");
+                }
+
+                if (bundleOwned)
+                    bundle.Unload(false);
+            }
+            else
+            {
+                Plugin.Log.LogWarning($"Failed to load WTT static object bundle: {path}");
+            }
         }
 
         private IEnumerator LoadStaticPreviewCoroutine(StaticObject marker)
@@ -618,6 +720,24 @@ namespace MapLootEditorLite.Client
 
             _staticPreviews.Add(instance);
             Plugin.Log.LogInfo($"Spawned static object preview for {marker.name} (fallback={isFallback})");
+        }
+
+        private void SpawnWTTStaticInstance(GameObject source, WTTStaticObject marker, bool isFallback)
+        {
+            var instance = UnityEngine.Object.Instantiate(source);
+            instance.name = $"WTTStaticPreview_{marker.name}";
+            instance.transform.SetParent(_root.transform, false);
+            instance.transform.position = marker.position.ToVector3();
+            instance.transform.rotation = marker.rotation.ToQuaternion();
+            instance.transform.localScale = marker.scale.ToVector3();
+
+            var meta = instance.AddComponent<PreviewStaticObjectMarker>();
+            meta.sourceMarkerId = marker.id;
+            meta.prefabPath = $"{marker.bundleName}/{marker.prefabName}";
+            meta.isFallback = isFallback;
+
+            _staticPreviews.Add(instance);
+            Plugin.Log.LogInfo($"Spawned WTT static object preview for {marker.name} (fallback={isFallback})");
         }
 
         private void DestroyPreview(GameObject preview)

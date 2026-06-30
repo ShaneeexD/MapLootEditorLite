@@ -71,6 +71,11 @@ public class ServerPlugin : IOnLoad
             await _wttCommon.CustomLootspawnService.CreateCustomLootSpawns(assembly, Path.Combine("db", "CustomLootspawns"));
             _logger.Info($"[MLEL] Registered forced quest spawns with WTT-CommonLib from {forcedSpawnDirectory}");
 
+            var staticSpawnDirectory = Path.Combine(modDirectory, "db", "CustomStaticSpawns");
+            WttStaticSpawnConverter.WriteStaticSpawns(packs, staticSpawnDirectory);
+            await _wttCommon.CustomStaticSpawnService.CreateCustomStaticSpawns(assembly, Path.Combine("db", "CustomStaticSpawns"));
+            _logger.Info($"[MLEL] Registered custom static spawns with WTT-CommonLib from {staticSpawnDirectory}");
+
             LootTransformer.Register(_databaseService);
 
             _logger.Info($"[MLEL] MapLootEditorLite server mod loaded. {PackRegistry.TotalSpawnCount()} custom spawns registered across {packs.Count} packs.");

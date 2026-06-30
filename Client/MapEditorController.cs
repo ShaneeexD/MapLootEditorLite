@@ -579,6 +579,16 @@ namespace MapLootEditorLite.Client
             _renderer.Rebuild();
         }
 
+        public void CreateWTTStaticObject()
+        {
+            if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
+            var marker = _manager.CreateWTTStaticObject(GetLookPosition(), GetPlayerRotation());
+            _manager.Selected = marker;
+            _renderer.Rebuild();
+            _previews.SpawnPreviewForMarker(marker);
+        }
+
         public bool IsFreeCam => _freeCam;
 
         public void GoToMarker(MarkerBase marker)
@@ -759,9 +769,12 @@ namespace MapLootEditorLite.Client
                     {
                         target.sourceObjectName = picked.name;
                         target.sourceObjectPosition = TransformData.FromVector3(picked.transform.position);
-                        target.rotation = TransformData.FromVector3(picked.transform.rotation.eulerAngles);
-                        _previews.RegisterStaticSource(target.id, picked);
-                        _previews.SpawnPreviewForMarker(target);
+                        if (target is MarkerBase markerBase)
+                        {
+                            markerBase.rotation = TransformData.FromVector3(picked.transform.rotation.eulerAngles);
+                            _previews.RegisterStaticSource(markerBase.id, picked);
+                            _previews.SpawnPreviewForMarker(markerBase);
+                        }
                         _manager.IsDirty = true;
                     }
                     _ui.ClearPickingSource();
@@ -955,6 +968,8 @@ namespace MapLootEditorLite.Client
                                 zone.scale = TransformData.FromVector3(startScale + centerScaleDelta);
                             else if (m is WTTQuestZone qz)
                                 qz.scale = TransformData.FromVector3(startScale + centerScaleDelta);
+                            else if (m is WTTStaticObject wso)
+                                wso.scale = TransformData.FromVector3(startScale + centerScaleDelta);
                         }
                         _renderer.Rebuild();
                     }
@@ -980,6 +995,11 @@ namespace MapLootEditorLite.Client
                         else if (_manager.Selected is WTTQuestZone qz)
                         {
                             qz.scale = TransformData.FromVector3(newScale);
+                            _renderer.Rebuild();
+                        }
+                        else if (_manager.Selected is WTTStaticObject wso)
+                        {
+                            wso.scale = TransformData.FromVector3(newScale);
                             _renderer.Rebuild();
                         }
                     }
@@ -1022,6 +1042,8 @@ namespace MapLootEditorLite.Client
                 _gizmoDragStartMarkerScale = zone.scale.ToVector3();
             else if (_manager.Selected is WTTQuestZone qz)
                 _gizmoDragStartMarkerScale = qz.scale.ToVector3();
+            else if (_manager.Selected is WTTStaticObject wso)
+                _gizmoDragStartMarkerScale = wso.scale.ToVector3();
 
             _gizmoDragStartCenter = _manager.SelectedIds.Count > 1 ? _manager.SelectionCenter : _gizmoDragStartMarkerPos;
             _gizmoDragStartCenterRot = _manager.SelectedIds.Count > 1 ? Quaternion.identity : _manager.Selected.rotation.ToQuaternion();
@@ -1042,6 +1064,8 @@ namespace MapLootEditorLite.Client
                     _gizmoDragStartScales[id] = mlz.scale.ToVector3();
                 else if (m is WTTQuestZone mqz)
                     _gizmoDragStartScales[id] = mqz.scale.ToVector3();
+                else if (m is WTTStaticObject mwso)
+                    _gizmoDragStartScales[id] = mwso.scale.ToVector3();
                 else
                     _gizmoDragStartScales[id] = Vector3.one;
             }
@@ -1221,6 +1245,9 @@ namespace MapLootEditorLite.Client
                     case "WTTQuestZone":
                         copy = entry.data.ToObject<WTTQuestZone>();
                         break;
+                    case "WTTStaticObject":
+                        copy = entry.data.ToObject<WTTStaticObject>();
+                        break;
                     default:
                         continue;
                 }
@@ -1327,6 +1354,16 @@ namespace MapLootEditorLite.Client
                         copy = clip.data.ToObject<StaticObject>();
                         _manager.Data.objects ??= new System.Collections.Generic.List<StaticObject>();
                         _manager.Data.objects.Add((StaticObject)copy);
+                        break;
+                    case "WTTQuestZone":
+                        copy = clip.data.ToObject<WTTQuestZone>();
+                        _manager.Data.wttQuestZones ??= new System.Collections.Generic.List<WTTQuestZone>();
+                        _manager.Data.wttQuestZones.Add((WTTQuestZone)copy);
+                        break;
+                    case "WTTStaticObject":
+                        copy = clip.data.ToObject<WTTStaticObject>();
+                        _manager.Data.wttStaticObjects ??= new System.Collections.Generic.List<WTTStaticObject>();
+                        _manager.Data.wttStaticObjects.Add((WTTStaticObject)copy);
                         break;
                     default:
                         return;

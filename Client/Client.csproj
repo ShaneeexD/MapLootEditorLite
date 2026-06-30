@@ -80,6 +80,12 @@
       <HintPath>$(SPTPath)\BepInEx\plugins\spt\spt-reflection.dll</HintPath>
       <Private>false</Private>
     </Reference>
+
+    <!-- WTT CommonLib -->
+    <Reference Include="WTT-ClientCommonLib">
+      <HintPath>$(SPTPath)\BepInEx\plugins\WTT-ClientCommonLib\WTT-ClientCommonLib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     
     <!-- Optional: SAIN and BigBrain (soft dependencies) -->
     <!--

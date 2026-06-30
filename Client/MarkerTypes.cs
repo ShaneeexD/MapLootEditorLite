@@ -11,7 +11,8 @@ namespace MapLootEditorLite.Client
         LooseLoot,
         LootZone,
         StaticObject,
-        WTTQuestZone
+        WTTQuestZone,
+        WTTStaticObject
     }
 
     public class MapData
@@ -21,6 +22,7 @@ namespace MapLootEditorLite.Client
         public List<LootZone> lootZones = new List<LootZone>();
         public List<StaticObject> objects = new List<StaticObject>();
         public List<WTTQuestZone> wttQuestZones = new List<WTTQuestZone>();
+        public List<WTTStaticObject> wttStaticObjects = new List<WTTStaticObject>();
     }
 
     public class PackData
@@ -110,14 +112,20 @@ namespace MapLootEditorLite.Client
         public override MarkerKind Kind => MarkerKind.LootZone;
     }
 
-    public class StaticObject : MarkerBase
+    public interface IHasSourceObject
+    {
+        string sourceObjectName { get; set; }
+        TransformData sourceObjectPosition { get; set; }
+    }
+
+    public class StaticObject : MarkerBase, IHasSourceObject
     {
         public string prefabPath = "";
         public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
 
         // Fallback: copy an existing vanilla scene object instead of loading a bundle.
-        public string sourceObjectName = "";
-        public TransformData sourceObjectPosition = new TransformData();
+        public string sourceObjectName { get; set; } = "";
+        public TransformData sourceObjectPosition { get; set; } = new TransformData();
 
         public override MarkerKind Kind => MarkerKind.StaticObject;
     }
@@ -132,5 +140,35 @@ namespace MapLootEditorLite.Client
         public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
 
         public override MarkerKind Kind => MarkerKind.WTTQuestZone;
+    }
+
+    public class WTTStaticObject : MarkerBase, IHasSourceObject
+    {
+        public string spawnType = "bundle"; // "bundle" or "clone"
+
+        // Bundle mode (WTT CustomStaticSpawnService)
+        public string bundleName = "";
+        public string prefabName = "";
+
+        // Clone mode (copy an existing scene object)
+        public string sourceObjectName { get; set; } = "";
+        public TransformData sourceObjectPosition { get; set; } = new TransformData();
+        public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
+
+        // WTT CustomStaticSpawn conditions
+        public string questId = "";
+        public List<string> requiredQuestStatuses = new List<string>();
+        public List<string> excludedQuestStatuses = new List<string>();
+        public bool questMustExist = true;
+        public string linkedQuestId = "";
+        public List<string> linkedRequiredStatuses = new List<string>();
+        public List<string> linkedExcludedStatuses = new List<string>();
+        public bool? linkedQuestMustExist = null;
+        public string requiredItemInInventory = "";
+        public int requiredLevel = 0;
+        public string requiredFaction = "";
+        public string requiredBossSpawned = "";
+
+        public override MarkerKind Kind => MarkerKind.WTTStaticObject;
     }
 }
