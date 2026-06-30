@@ -6,6 +6,7 @@ using System.Linq;
 using Comfort.Common;
 using EFT;
 using EFT.Interactive;
+using EFT.InventoryLogic;
 using Newtonsoft.Json;
 using UnityEngine;
 
@@ -181,19 +182,93 @@ namespace MapLootEditorLite.Client
             instance.transform.localScale = obj.scale.ToVector3();
             _spawned.Add(instance);
 
-            var wio = instance.GetComponent<WorldInteractiveObject>();
+            var wio = instance.GetComponentInChildren<WorldInteractiveObject>(true);
             if (wio != null)
             {
-                if (obj.interactiveType == InteractiveObjectType.Door && !string.IsNullOrEmpty(obj.keyId))
+                var gameWorld = Singleton<GameWorld>.Instance;
+
+                wio.Id = obj.id;
+
+                if (obj.interactiveType == InteractiveObjectType.Door)
                 {
-                    wio.KeyId = obj.keyId;
-                    Plugin.Log.LogInfo($"[MLEL Runtime] Set door '{obj.name}' key to {obj.keyId}");
+                    if (!string.IsNullOrEmpty(obj.keyId))
+                    {
+                        wio.KeyId = obj.keyId;
+                        wio.DoorState = EDoorState.Locked;
+                        wio.InitialDoorState = EDoorState.Locked;
+                        wio.FallbackState = EDoorState.Locked;
+                        wio.CurrentAngle = wio.GetAngle(EDoorState.Locked);
+                        Plugin.Log.LogInfo($"[MLEL Runtime] Set door '{obj.name}' key to {obj.keyId}");
+                    }
+                    else
+                    {
+                        wio.DoorState = EDoorState.Shut;
+                        wio.InitialDoorState = EDoorState.Shut;
+                        wio.FallbackState = EDoorState.Shut;
+                        wio.CurrentAngle = wio.GetAngle(EDoorState.Shut);
+                    }
+                    Plugin.Log.LogInfo($"[MLEL Runtime] Door '{obj.name}' initial state={wio.DoorState}, angle={wio.CurrentAngle}, openAngle={wio.OpenAngle}, closeAngle={wio.CloseAngle}");
                 }
                 else if (obj.interactiveType == InteractiveObjectType.Container && !string.IsNullOrEmpty(obj.containerId))
                 {
+                    var lootable = wio as LootableContainer ?? instance.GetComponentInChildren<LootableContainer>(true);
+                    if (lootable != null)
+                        wio = lootable;
                     wio.Id = obj.containerId;
-                    Plugin.Log.LogInfo($"[MLEL Runtime] Set container '{obj.name}' id to {obj.containerId}");
+                    if (lootable != null && gameWorld != null)
+                    {
+                        lootable.Template = string.IsNullOrWhiteSpace(obj.containerTemplate) ? "578f87a3245977356274f2cb" : obj.containerTemplate;
+                        try
+                        {
+                            var itemFactory = Singleton<ItemFactoryClass>.Instance;
+                            if (itemFactory != null)
+                            {
+                                var item = itemFactory.CreateItem(obj.containerId, lootable.Template, null);
+                                if (item != null)
+                                {
+                                    var controller = new TraderControllerClass(item, item.Id, item.ShortName.Localized(null), true, EOwnerType.Profile);
+                                    lootable.Init(controller);
+                                    gameWorld.RegisterLoot<LootableContainer>(lootable);
+                                    Plugin.Log.LogInfo($"[MLEL Runtime] Initialized lootable container '{obj.name}' id={obj.containerId}, template={lootable.Template}, itemId={item.Id}, isCompound={item is CompoundItem}");
+                                }
+                                else
+                                {
+                                    Plugin.Log.LogWarning($"[MLEL Runtime] Failed to create item for container '{obj.name}'");
+                                }
+                            }
+                            else
+                            {
+                                Plugin.Log.LogWarning($"[MLEL Runtime] ItemFactoryClass not available for container '{obj.name}'");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Plugin.Log.LogWarning($"[MLEL Runtime] Failed to initialize container '{obj.name}': {ex}");
+                        }
+                    }
+                    else if (gameWorld == null)
+                    {
+                        Plugin.Log.LogWarning($"[MLEL Runtime] GameWorld not available for container '{obj.name}'; cannot initialize loot.");
+                    }
+                    else
+                    {
+                        Plugin.Log.LogWarning($"[MLEL Runtime] Container '{obj.name}' has no LootableContainer component; loot interface will not work.");
+                    }
                 }
+
+                if (gameWorld != null && gameWorld.World_0 != null)
+                {
+                    gameWorld.RegisterWorldInteractionObject(wio);
+                    Plugin.Log.LogInfo($"[MLEL Runtime] Registered interactive object '{obj.name}' (id={wio.Id}) with world.");
+                }
+                else
+                {
+                    Plugin.Log.LogWarning($"[MLEL Runtime] GameWorld/World not available for '{obj.name}'; interactive object not registered.");
+                }
+            }
+            else
+            {
+                Plugin.Log.LogWarning($"[MLEL Runtime] Spawned interactive object '{obj.name}' has no WorldInteractiveObject component in its prefab; interaction will not work.");
             }
 
             Plugin.Log.LogInfo($"[MLEL Runtime] Spawned interactive object {obj.name} (type={obj.interactiveType})");

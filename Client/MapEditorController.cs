@@ -1336,15 +1336,26 @@ namespace MapLootEditorLite.Client
 
         public void CopySelected()
         {
-            if (_manager.Selected == null)
+            if (_manager.SelectedIds.Count == 0)
                 return;
 
-            var wrapper = new ClipboardMarker
+            var entries = new List<ClipboardEntry>();
+            foreach (var id in _manager.SelectedIds)
             {
-                kind = _manager.Selected.Kind.ToString(),
-                data = JObject.FromObject(_manager.Selected)
-            };
-            GUIUtility.systemCopyBuffer = JsonConvert.SerializeObject(wrapper);
+                var m = _manager.FindById(id);
+                if (m == null)
+                    continue;
+                entries.Add(new ClipboardEntry
+                {
+                    kind = m.Kind.ToString(),
+                    data = JObject.FromObject(m)
+                });
+            }
+
+            if (entries.Count == 0)
+                return;
+
+            GUIUtility.systemCopyBuffer = JsonConvert.SerializeObject(new ClipboardData { entries = entries });
         }
 
         public void Paste()
@@ -1358,49 +1369,38 @@ namespace MapLootEditorLite.Client
 
             try
             {
-                var clip = JsonConvert.DeserializeObject<ClipboardMarker>(json);
-                if (clip?.data == null)
+                var data = JsonConvert.DeserializeObject<ClipboardData>(json);
+                if (data?.entries == null || data.entries.Count == 0)
                     return;
 
-                MarkerBase copy;
-                switch (clip.kind)
+                _manager.Snapshot();
+
+                var copies = new List<MarkerBase>();
+                var center = _manager.SelectionCenter;
+                var pastePos = GetLookPosition() + Vector3.up * 0.5f;
+                var offset = pastePos - center;
+
+                foreach (var entry in data.entries)
                 {
-                    case "LooseLoot":
-                        copy = clip.data.ToObject<LooseLootSpawn>();
-                        _manager.Data.lootSpawns ??= new System.Collections.Generic.List<LooseLootSpawn>();
-                        _manager.Data.lootSpawns.Add((LooseLootSpawn)copy);
-                        break;
-                    case "LootZone":
-                        copy = clip.data.ToObject<LootZone>();
-                        _manager.Data.lootZones ??= new System.Collections.Generic.List<LootZone>();
-                        _manager.Data.lootZones.Add((LootZone)copy);
-                        break;
-                    case "StaticObject":
-                        copy = clip.data.ToObject<StaticObject>();
-                        _manager.Data.objects ??= new System.Collections.Generic.List<StaticObject>();
-                        _manager.Data.objects.Add((StaticObject)copy);
-                        break;
-                    case "WTTQuestZone":
-                        copy = clip.data.ToObject<WTTQuestZone>();
-                        _manager.Data.wttQuestZones ??= new System.Collections.Generic.List<WTTQuestZone>();
-                        _manager.Data.wttQuestZones.Add((WTTQuestZone)copy);
-                        break;
-                    case "WTTStaticObject":
-                        copy = clip.data.ToObject<WTTStaticObject>();
-                        _manager.Data.wttStaticObjects ??= new System.Collections.Generic.List<WTTStaticObject>();
-                        _manager.Data.wttStaticObjects.Add((WTTStaticObject)copy);
-                        break;
-                    default:
-                        return;
+                    var copy = CreateMarkerFromClipboard(entry);
+                    if (copy == null)
+                        continue;
+
+                    copy.id = Guid.NewGuid().ToString();
+                    copy.name = copy.name + "_paste";
+                    copy.position = TransformData.FromVector3(copy.position.ToVector3() + offset);
+                    _manager.AddMarker(copy);
+                    copies.Add(copy);
                 }
 
-                copy.id = Guid.NewGuid().ToString();
-                copy.name = copy.name + "_paste";
-                copy.position = TransformData.FromVector3(GetLookPosition() + Vector3.up * 0.5f);
-                _manager.Selected = copy;
-                _manager.IsDirty = true;
-                _renderer.Rebuild();
-                _previews.SpawnPreviewForMarker(copy);
+                if (copies.Count > 0)
+                {
+                    _manager.SetSelection(copies);
+                    _manager.IsDirty = true;
+                    _renderer.Rebuild();
+                    foreach (var c in copies)
+                        _previews.SpawnPreviewForMarker(c);
+                }
             }
             catch (Exception ex)
             {
@@ -1408,7 +1408,26 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        private class ClipboardMarker
+        private MarkerBase CreateMarkerFromClipboard(ClipboardEntry entry)
+        {
+            switch (entry.kind)
+            {
+                case "LooseLoot": return entry.data.ToObject<LooseLootSpawn>();
+                case "LootZone": return entry.data.ToObject<LootZone>();
+                case "StaticObject": return entry.data.ToObject<StaticObject>();
+                case "WTTQuestZone": return entry.data.ToObject<WTTQuestZone>();
+                case "WTTStaticObject": return entry.data.ToObject<WTTStaticObject>();
+                case "InteractiveObject": return entry.data.ToObject<InteractiveObject>();
+                default: return null;
+            }
+        }
+
+        private class ClipboardData
+        {
+            public List<ClipboardEntry> entries = new List<ClipboardEntry>();
+        }
+
+        private class ClipboardEntry
         {
             public string kind;
             public JObject data;

@@ -326,7 +326,7 @@ public static class InteractiveObjectTransformer
         if (template == null)
             return null;
 
-        var rootId = new MongoId();
+        var rootId = new MongoId(container.ContainerId);
         var containerTemplate = string.IsNullOrWhiteSpace(container.ContainerTemplate) ? "578f87a3245977356274f2cb" : container.ContainerTemplate;
 
         templateType.GetProperty("Id", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, container.ContainerId);
