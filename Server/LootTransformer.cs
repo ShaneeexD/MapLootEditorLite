@@ -44,7 +44,13 @@ public static class LootTransformer
                             continue;
                         }
 
-                        spawnpoints.Add(CreateSpawnpoint(spawn));
+                        var filteredItems = spawn.Items.Where(ShouldSpawnItem).ToList();
+                        if (filteredItems.Count == 0)
+                        {
+                            continue;
+                        }
+
+                        spawnpoints.Add(CreateSpawnpoint(spawn, filteredItems));
                     }
 
                     foreach (var zone in map.LootZones)
@@ -56,10 +62,16 @@ public static class LootTransformer
 
                         for (int i = 0; i < zone.Items.Count; i++)
                         {
+                            var item = zone.Items[i];
+                            if (!ShouldSpawnItem(item))
+                            {
+                                continue;
+                            }
+
                             var locationId = $"{zone.Id}_{i}";
                             if (RegisteredSpawnIds.Add(locationId))
                             {
-                                spawnpoints.Add(CreateZoneItemSpawnpoint(zone, zone.Items[i], i, random));
+                                spawnpoints.Add(CreateZoneItemSpawnpoint(zone, item, i, random));
                             }
                         }
                     }
@@ -75,10 +87,10 @@ public static class LootTransformer
         ServerPlugin.Logger?.Info($"[MLEL] Registered loot transformers for {registered} locations");
     }
 
-    private static Spawnpoint CreateSpawnpoint(LooseLootSpawn spawn)
+    private static Spawnpoint CreateSpawnpoint(LooseLootSpawn spawn, List<LootItem> filteredItems)
     {
-        var totalChance = TotalItemChance(spawn.Items) * spawn.SpawnChance / 100.0;
-        var items = BuildItems(spawn.Items, spawn.Id);
+        var totalChance = TotalItemChance(filteredItems) * spawn.SpawnChance / 100.0;
+        var items = BuildItems(filteredItems, spawn.Id);
         var rootId = items.Count > 0 ? items[0].Id : new MongoId();
 
         return new Spawnpoint
@@ -99,7 +111,7 @@ public static class LootTransformer
                 Root = rootId,
                 Items = items
             },
-            ItemDistribution = BuildItemDistribution(spawn.Items, items)
+            ItemDistribution = BuildItemDistribution(filteredItems, items)
         };
     }
 
@@ -186,6 +198,14 @@ public static class LootTransformer
                 Upd = new Upd { SpawnedInSession = true }
             };
         }).ToList();
+    }
+
+    private static bool ShouldSpawnItem(LootItem item)
+    {
+        if (item == null || !item.QuestOnly || string.IsNullOrWhiteSpace(item.QuestId))
+            return true;
+
+        return QuestFilter.IsQuestActive(item.QuestId);
     }
 
     private static List<LooseLootItemDistribution> BuildItemDistribution(List<LootItem> sourceItems, List<SptLootItem> sptItems)

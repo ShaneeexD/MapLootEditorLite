@@ -28,7 +28,7 @@ public static class InteractiveObjectTransformer
             }
 
             var containers = maps.SelectMany(m => m.InteractiveObjects ?? new List<InteractiveObject>())
-                .Where(o => o.InteractiveType == InteractiveObjectType.Container)
+                .Where(o => o.InteractiveType == InteractiveObjectType.Container && ShouldSpawnObject(o))
                 .ToList();
 
             if (containers.Count == 0)
@@ -42,6 +42,14 @@ public static class InteractiveObjectTransformer
         }
 
         ServerPlugin.Logger?.Info($"[MLEL] Registered interactive object transformers for {registered} locations");
+    }
+
+    private static bool ShouldSpawnObject(InteractiveObject obj)
+    {
+        if (obj == null || !obj.QuestOnly || string.IsNullOrWhiteSpace(obj.QuestId))
+            return true;
+
+        return QuestFilter.IsQuestActive(obj.QuestId);
     }
 
     private static void RegisterStaticLoot(object location, List<InteractiveObject> containers, string locationId)

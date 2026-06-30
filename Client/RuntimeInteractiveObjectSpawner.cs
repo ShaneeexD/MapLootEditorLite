@@ -7,6 +7,7 @@ using Comfort.Common;
 using EFT;
 using EFT.Interactive;
 using EFT.InventoryLogic;
+using EFT.Quests;
 using Newtonsoft.Json;
 using UnityEngine;
 
@@ -109,6 +110,12 @@ namespace MapLootEditorLite.Client
             Plugin.Log.LogInfo($"[MLEL Runtime] Spawning {objects.Count} interactive objects for map {mapId}");
             foreach (var obj in objects)
             {
+                if (obj.questOnly && !IsQuestActive(obj.questId))
+                {
+                    Plugin.Log.LogInfo($"[MLEL Runtime] Skipping quest-only interactive object '{obj.name}' (quest {obj.questId} not active).");
+                    continue;
+                }
+
                 StartCoroutine(SpawnObjectCoroutine(obj));
             }
         }
@@ -270,6 +277,24 @@ namespace MapLootEditorLite.Client
             return Guid.NewGuid().ToString("N").Substring(0, 24);
         }
 
+        private bool IsQuestActive(string questId)
+        {
+            if (string.IsNullOrWhiteSpace(questId))
+                return false;
+
+            var player = Singleton<GameWorld>.Instance?.MainPlayer;
+            if (player?.Profile?.QuestsData == null)
+                return false;
+
+            var quest = player.Profile.QuestsData.FirstOrDefault(q => q.Id == questId);
+            if (quest == null)
+                return false;
+
+            return quest.Status == EQuestStatus.AvailableForStart
+                || quest.Status == EQuestStatus.Started
+                || quest.Status == EQuestStatus.AvailableForFinish;
+        }
+
         private IEnumerator InitializeContainerLootCoroutine(InteractiveObject obj, LootableContainer lootable, GameWorld gameWorld)
         {
             var itemFactory = Singleton<ItemFactoryClass>.Instance;
@@ -357,6 +382,12 @@ namespace MapLootEditorLite.Client
             {
                 if (string.IsNullOrWhiteSpace(loot.template))
                     continue;
+
+                if (loot.questOnly && !IsQuestActive(loot.questId))
+                {
+                    Plugin.Log.LogInfo($"[MLEL Runtime] Skipping quest-only item {loot.template} for container '{obj.name}' (quest {loot.questId} not active).");
+                    continue;
+                }
 
                 if (loot.chance < 100f)
                 {

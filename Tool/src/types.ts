@@ -9,6 +9,8 @@ export interface LootItem {
   chance: number
   rotation: TransformData
   randomRotation: boolean
+  questOnly?: boolean
+  questId?: string
 }
 
 export function defaultLootItem(): LootItem {
@@ -17,6 +19,8 @@ export function defaultLootItem(): LootItem {
     chance: 100,
     rotation: defaultTransform(),
     randomRotation: true,
+    questOnly: false,
+    questId: '',
   }
 }
 
@@ -76,6 +80,8 @@ export enum ContainerLootMode {
 export interface InteractiveObjectItem {
   template: string
   chance: number
+  questOnly?: boolean
+  questId?: string
 }
 
 export interface InteractiveObject {
@@ -93,6 +99,8 @@ export interface InteractiveObject {
   lootMode?: ContainerLootMode
   items: InteractiveObjectItem[]
   spawnChance: number
+  questOnly?: boolean
+  questId?: string
 }
 
 export interface MapData {
@@ -202,7 +210,9 @@ export function defaultInteractiveObject(): InteractiveObject {
     containerId: '',
     containerTemplate: '578f87a3245977356274f2cb',
     lootMode: ContainerLootMode.Default,
-    items: [{ template: '', chance: 100 }],
+    items: [{ template: '', chance: 100, questOnly: false, questId: '' }],
     spawnChance: 100,
+    questOnly: false,
+    questId: '',
   }
 }

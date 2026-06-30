@@ -5,9 +5,11 @@ using System.Reflection;
 using System.Threading.Tasks;
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.DI;
+using SPTarkov.Server.Core.Helpers;
 using SPTarkov.Server.Core.Models.Spt.Mod;
 using SPTarkov.Server.Core.Models.Utils;
 using SPTarkov.Server.Core.Services;
+using MapLootEditorLite.Server.Patches;
 using WTTServerCommonLib;
 using Range = SemanticVersioning.Range;
 using Version = SemanticVersioning.Version;
@@ -40,13 +42,15 @@ public class ServerPlugin : IOnLoad
     private readonly ISptLogger<ServerPlugin> _logger;
     private readonly WTTServerCommonLib.WTTServerCommonLib _wttCommon;
     private readonly DatabaseService _databaseService;
+    private readonly ProfileHelper _profileHelper;
 
-    public ServerPlugin(ISptLogger<ServerPlugin> logger, WTTServerCommonLib.WTTServerCommonLib wttCommon, DatabaseService databaseService)
+    public ServerPlugin(ISptLogger<ServerPlugin> logger, WTTServerCommonLib.WTTServerCommonLib wttCommon, DatabaseService databaseService, ProfileHelper profileHelper)
     {
         _logger = logger;
         Logger = logger;
         _wttCommon = wttCommon;
         _databaseService = databaseService;
+        _profileHelper = profileHelper;
     }
 
     public async Task OnLoad()
@@ -76,8 +80,12 @@ public class ServerPlugin : IOnLoad
             await _wttCommon.CustomStaticSpawnService.CreateCustomStaticSpawns(assembly, Path.Combine("db", "CustomStaticSpawns"));
             _logger.Info($"[MLEL] Registered custom static spawns with WTT-CommonLib from {staticSpawnDirectory}");
 
+            QuestFilter.Initialize(_profileHelper);
             LootTransformer.Register(_databaseService);
             InteractiveObjectTransformer.Register(_databaseService);
+            new LocationControllerGenerateAllPatch().Enable();
+            new MatchControllerStartLocalRaidPatch().Enable();
+            _logger.Info("[MLEL] Enabled quest filter patches on LocationController.GenerateAll and MatchController.StartLocalRaid");
 
             _logger.Info($"[MLEL] MapLootEditorLite server mod loaded. {PackRegistry.TotalSpawnCount()} custom spawns registered across {packs.Count} packs.");
         }

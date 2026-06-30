@@ -522,6 +522,24 @@ function ItemListEditor({
               <Trash2 size={16} />
             </button>
           </div>
+          <div className="flex items-center gap-2 pl-2">
+            <Toggle
+              label="Quest only"
+              checked={item.questOnly ?? false}
+              onChange={(v) => update(i, { questOnly: v })}
+              tooltip="Only spawn this item when the specified quest is active."
+            />
+            {item.questOnly && (
+              <div className="flex-1">
+                <TextField
+                  label="Quest ID"
+                  value={item.questId || ''}
+                  onChange={(v) => update(i, { questId: v })}
+                  tooltip="Quest template ID that must be active for this item to spawn."
+                />
+              </div>
+            )}
+          </div>
           {showRotation && (
             <div className="flex items-center gap-2 pl-2">
               <Toggle
@@ -606,7 +624,7 @@ function SpawnList({
           </div>
           <div className="flex items-end">
             <Toggle
-              label="Forced (Quest)"
+              label="Forced"
               checked={form.forced}
               onChange={(v) => setForm((f) => ({ ...f, forced: v }))}
               tooltip="Always spawn these items, typically used for quest items."
@@ -681,7 +699,7 @@ function SpawnList({
                     tooltip="Whether this spawn can be looted again during the raid."
                   />
                   <Toggle
-                    label="Forced (Quest)"
+                    label="Forced"
                     checked={spawn.forced ?? false}
                     onChange={(v) => update(i, { forced: v })}
                     tooltip="Always spawn these items, typically used for quest items."
@@ -781,7 +799,7 @@ function ZoneList({
           />
           <div className="flex items-end">
             <Toggle
-              label="Forced (Quest)"
+              label="Forced"
               checked={form.forced}
               onChange={(v) => setForm((f) => ({ ...f, forced: v }))}
               tooltip="Always spawn these items, typically used for quest items."
@@ -829,7 +847,7 @@ function ZoneList({
               <div className="flex items-end justify-between">
                 <div className="flex flex-col gap-1">
                   <Toggle
-                    label="Forced (Quest)"
+                    label="Forced"
                     checked={zone.forced ?? false}
                     onChange={(v) => update(i, { forced: v })}
                     tooltip="Always spawn these items, typically used for quest items."
@@ -1016,6 +1034,22 @@ function InteractiveObjectList({
             max={100}
             tooltip="Percent chance this object is spawned (0-100)."
           />
+          <div className="flex items-end gap-2">
+            <Toggle
+              label="Quest only"
+              checked={form.questOnly ?? false}
+              onChange={(v) => setForm((f) => ({ ...f, questOnly: v }))}
+              tooltip="Only spawn this object when the specified quest is active."
+            />
+          </div>
+          {(form.questOnly ?? false) && (
+            <TextField
+              label="Quest ID"
+              value={form.questId || ''}
+              onChange={(v) => setForm((f) => ({ ...f, questId: v }))}
+              tooltip="Quest template ID that must be active for this object to spawn."
+            />
+          )}
           <TextField
             label="Source Object Name"
             value={form.sourceObjectName || ''}
@@ -1110,6 +1144,22 @@ function InteractiveObjectList({
                 max={100}
                 tooltip="Percent chance this object is spawned (0-100)."
               />
+              <div className="flex items-end gap-2">
+                <Toggle
+                  label="Quest only"
+                  checked={obj.questOnly ?? false}
+                  onChange={(v) => update(i, { questOnly: v })}
+                  tooltip="Only spawn this object when the specified quest is active."
+                />
+              </div>
+              {(obj.questOnly ?? false) && (
+                <TextField
+                  label="Quest ID"
+                  value={obj.questId || ''}
+                  onChange={(v) => update(i, { questId: v })}
+                  tooltip="Quest template ID that must be active for this object to spawn."
+                />
+              )}
               <TextField
                 label="Source Object Name"
                 value={obj.sourceObjectName || ''}
@@ -1207,19 +1257,39 @@ function InteractiveItemListEditor({
         {tooltip && <Tooltip text={tooltip} />}
       </label>
       {value.map((item, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <div className="flex-1">
-            <ItemSelector label="" value={item.template} onChange={(v) => update(i, { template: v })} tooltip="Item template ID to inject." />
+        <div key={i} className="space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <ItemSelector label="" value={item.template} onChange={(v) => update(i, { template: v })} tooltip="Item template ID to inject." />
+            </div>
+            <div className="w-28">
+              <NumberField label="%" value={item.chance} onChange={(v) => update(i, { chance: v })} min={0} max={100} tooltip="Percent chance this item is injected (0-100)." />
+            </div>
+            <button onClick={() => onChange(removeAt(value, i))} className="btn-danger p-2">
+              <Trash2 size={16} />
+            </button>
           </div>
-          <div className="w-28">
-            <NumberField label="%" value={item.chance} onChange={(v) => update(i, { chance: v })} min={0} max={100} tooltip="Percent chance this item is injected (0-100)." />
+          <div className="flex items-center gap-2 pl-2">
+            <Toggle
+              label="Quest only"
+              checked={item.questOnly ?? false}
+              onChange={(v) => update(i, { questOnly: v })}
+              tooltip="Only inject this item when the specified quest is active."
+            />
+            {item.questOnly && (
+              <div className="flex-1">
+                <TextField
+                  label="Quest ID"
+                  value={item.questId || ''}
+                  onChange={(v) => update(i, { questId: v })}
+                  tooltip="Quest template ID that must be active for this item to be injected."
+                />
+              </div>
+            )}
           </div>
-          <button onClick={() => onChange(removeAt(value, i))} className="btn-danger p-2">
-            <Trash2 size={16} />
-          </button>
         </div>
       ))}
-      <button onClick={() => onChange([...value, { template: '', chance: 100 }])} className="btn-secondary text-sm flex items-center gap-1">
+      <button onClick={() => onChange([...value, { template: '', chance: 100, questOnly: false, questId: '' }])} className="btn-secondary text-sm flex items-center gap-1">
         <Plus size={14} /> Add Item
       </button>
     </div>

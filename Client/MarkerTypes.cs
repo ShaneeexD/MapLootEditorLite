@@ -91,6 +91,8 @@ namespace MapLootEditorLite.Client
         public TransformData rotation = new TransformData();
         public bool randomRotation = true;
         public float yOffset = 0f;
+        public bool questOnly = false;
+        public string questId = "";
     }
 
     public class LooseLootSpawn : MarkerBase
@@ -203,6 +205,8 @@ namespace MapLootEditorLite.Client
         public ContainerLootMode lootMode = ContainerLootMode.Default;
         public List<LootItem> items = new List<LootItem>();
         public float spawnChance = 100f;
+        public bool questOnly = false;
+        public string questId = "";
 
         public override MarkerKind Kind => MarkerKind.InteractiveObject;
     }

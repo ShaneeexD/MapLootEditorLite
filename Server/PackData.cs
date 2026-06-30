@@ -52,6 +52,12 @@ public record LootItem
 
     [JsonPropertyName("randomRotation")]
     public bool RandomRotation { get; set; } = true;
+
+    [JsonPropertyName("questOnly")]
+    public bool QuestOnly { get; set; } = false;
+
+    [JsonPropertyName("questId")]
+    public string QuestId { get; set; } = string.Empty;
 }
 
 public record LooseLootSpawn
@@ -318,4 +324,10 @@ public record InteractiveObject
 
     [JsonPropertyName("spawnChance")]
     public double SpawnChance { get; set; } = 100;
+
+    [JsonPropertyName("questOnly")]
+    public bool QuestOnly { get; set; } = false;
+
+    [JsonPropertyName("questId")]
+    public string QuestId { get; set; } = string.Empty;
 }
