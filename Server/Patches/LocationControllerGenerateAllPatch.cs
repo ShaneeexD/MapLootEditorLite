@@ -13,13 +13,13 @@ public class LocationControllerGenerateAllPatch : AbstractPatch
         return AccessTools.Method(typeof(LocationController), nameof(LocationController.GenerateAll));
     }
 
-    [HarmonyPrefix]
+    [PatchPrefix]
     public static void Prefix(MongoId sessionId)
     {
         QuestFilterContext.CurrentSessionId = sessionId.ToString();
     }
 
-    [HarmonyPostfix]
+    [PatchPostfix]
     public static void Postfix()
     {
         QuestFilterContext.CurrentSessionId = null;

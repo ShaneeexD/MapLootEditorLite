@@ -14,13 +14,13 @@ public class MatchControllerStartLocalRaidPatch : AbstractPatch
         return AccessTools.Method(typeof(MatchController), nameof(MatchController.StartLocalRaid));
     }
 
-    [HarmonyPrefix]
+    [PatchPrefix]
     public static void Prefix(MongoId sessionId, StartLocalRaidRequestData request)
     {
         QuestFilterContext.CurrentSessionId = sessionId.ToString();
     }
 
-    [HarmonyPostfix]
+    [PatchPostfix]
     public static void Postfix()
     {
         QuestFilterContext.CurrentSessionId = null;
