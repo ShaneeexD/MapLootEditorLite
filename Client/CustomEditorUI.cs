@@ -1610,8 +1610,8 @@ namespace MapLootEditorLite.Client
                 UIBuilder.AddHorizontalLayout(pageRow, 4, 2, false, false);
                 UIBuilder.AddLayoutElement(pageRow, null, 22, null, 22, null, 0);
                 UIBuilder.CreateButton(pageRow, "<", () => { _itemsListPage--; RefreshInspector(); }, 30, 22, 10);
-                UIBuilder.CreateText(pageRow, $"Page {_itemsListPage + 1} / {pageCount} ({items.Count} items)", 11, Color.white);
                 UIBuilder.CreateButton(pageRow, ">", () => { _itemsListPage++; RefreshInspector(); }, 30, 22, 10);
+                UIBuilder.CreateText(_inspectorContent, $"Page {_itemsListPage + 1} / {pageCount} ({items.Count} items)", 11, Color.white);
             }
 
             for (int i = start; i < end; i++)
