@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using Comfort.Common;
 using EFT.InventoryLogic;
 using Newtonsoft.Json;
@@ -37,6 +38,8 @@ namespace MapLootEditorLite.Client
         private RectTransform _inspectorContent;
         private RectTransform _prefabsContent;
         private RectTransform _groupsContent;
+        private int _itemsListPage;
+        private List<LootItem> _itemsListPageTarget;
 
         private Text _titleText;
         private Text _deleteConfirmText;
@@ -336,7 +339,8 @@ namespace MapLootEditorLite.Client
             {
                 new MenuItem("Hierarchy", subItems: new List<MenuItem>
                 {
-                    new MenuItem("Toggle Vanilla Gizmos", () => controller.ToggleVanillaGizmos())
+                    new MenuItem("Toggle Vanilla Gizmos", () => controller.ToggleVanillaGizmos()),
+                    new MenuItem("Toggle Pack Gizmos", () => controller.TogglePackGizmos())
                 })
             }, 40, 22);
             BuildMenuButton(row1, "Add Spawn", new List<MenuItem>
@@ -1257,6 +1261,26 @@ namespace MapLootEditorLite.Client
             }
 
             BuildReadOnlyLabel(_inspectorContent, "Items", items.Count.ToString());
+
+            const int LabelThreshold = 100;
+            if (items.Count > LabelThreshold)
+            {
+                var sb = new StringBuilder();
+                for (int i = 0; i < items.Count; i++)
+                {
+                    var item = items[i];
+                    var label = ItemNameResolver.GetNameOrId(item.template ?? "");
+                    sb.AppendLine($"  {i + 1}. {label}  ({item.chance:F2}%)");
+                }
+
+                var text = UIBuilder.CreateText(_inspectorContent, sb.ToString(), 11, new Color(0.72f, 0.72f, 0.72f, 1f));
+                text.alignment = TextAnchor.UpperLeft;
+                var le = text.GetComponent<LayoutElement>();
+                if (le != null)
+                    le.preferredHeight = items.Count * 14f;
+                return;
+            }
+
             for (int i = 0; i < items.Count; i++)
             {
                 var item = items[i];
@@ -1565,7 +1589,32 @@ namespace MapLootEditorLite.Client
 
             UIBuilder.CreateText(_inspectorContent, "Items (chance does not need to add to 100):", 11, Color.white, FontStyle.Bold);
 
-            for (int i = 0; i < items.Count; i++)
+            const int pageSize = 50;
+            int start = 0;
+            int end = items.Count;
+            int pageCount = 1;
+
+            if (items.Count > pageSize)
+            {
+                if (_itemsListPageTarget != items)
+                {
+                    _itemsListPageTarget = items;
+                    _itemsListPage = 0;
+                }
+                pageCount = (items.Count + pageSize - 1) / pageSize;
+                _itemsListPage = Mathf.Clamp(_itemsListPage, 0, pageCount - 1);
+                start = _itemsListPage * pageSize;
+                end = Mathf.Min(start + pageSize, items.Count);
+
+                var pageRow = UIBuilder.CreatePanel("ItemsPageRow", _inspectorContent, new Color(0, 0, 0, 0));
+                UIBuilder.AddHorizontalLayout(pageRow, 4, 2, false, false);
+                UIBuilder.AddLayoutElement(pageRow, null, 22, null, 22, null, 0);
+                UIBuilder.CreateButton(pageRow, "<", () => { _itemsListPage--; RefreshInspector(); }, 30, 22, 10);
+                UIBuilder.CreateText(pageRow, $"Page {_itemsListPage + 1} / {pageCount} ({items.Count} items)", 11, Color.white);
+                UIBuilder.CreateButton(pageRow, ">", () => { _itemsListPage++; RefreshInspector(); }, 30, 22, 10);
+            }
+
+            for (int i = start; i < end; i++)
             {
                 var item = items[i];
                 if (item.rotation == null)

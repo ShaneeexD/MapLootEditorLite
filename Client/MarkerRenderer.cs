@@ -40,6 +40,7 @@ namespace MapLootEditorLite.Client
         public GizmoMode GizmoMode { get; set; } = GizmoMode.Translate;
         public bool ShowGizmo { get; set; } = true;
         public bool ShowVanillaGizmos { get; set; } = true;
+        public bool ShowPackGizmos { get; set; } = true;
         public GizmoAxis HoveredAxis { get; private set; }
         public GizmoAxis ActiveAxis { get; set; }
 
@@ -83,6 +84,17 @@ namespace MapLootEditorLite.Client
                     if (_visuals.TryGetValue(marker.id, out GameObject existingVanillaVisual))
                     {
                         UnityEngine.Object.Destroy(existingVanillaVisual);
+                        _visuals.Remove(marker.id);
+                        _zoneShapeCache.Remove(marker.id);
+                    }
+                    continue;
+                }
+
+                if (!marker.isVanilla && !ShowPackGizmos)
+                {
+                    if (_visuals.TryGetValue(marker.id, out GameObject existingPackVisual))
+                    {
+                        UnityEngine.Object.Destroy(existingPackVisual);
                         _visuals.Remove(marker.id);
                         _zoneShapeCache.Remove(marker.id);
                     }
@@ -169,6 +181,8 @@ namespace MapLootEditorLite.Client
             foreach (var marker in _manager.GetAllMarkersIncludingVanilla())
             {
                 if (marker.isVanilla && !ShowVanillaGizmos)
+                    continue;
+                if (!marker.isVanilla && !ShowPackGizmos)
                     continue;
 
                 var screenPos = camera.WorldToScreenPoint(marker.position.ToVector3());
