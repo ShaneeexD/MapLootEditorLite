@@ -81,6 +81,9 @@ namespace MapLootEditorLite.Client
         public TransformData rotation = new TransformData();
 
         [JsonIgnore]
+        public bool isVanilla = false;
+
+        [JsonIgnore]
         public abstract MarkerKind Kind { get; }
     }
 

@@ -81,6 +81,9 @@ namespace MapLootEditorLite.Client
         private RectTransform _hierarchyResizeHandle;
         private RectTransform _inspectorResizeHandle;
 
+        private Button _packTabButton;
+        private Button _vanillaTabButton;
+        private bool _vanillaHierarchyActive;
 
         private RectTransform _prefabsTab;
         private RectTransform _scatterTab;
@@ -326,7 +329,8 @@ namespace MapLootEditorLite.Client
             BuildMenuButton(row1, "File", new List<MenuItem>
             {
                 new MenuItem("Export", () => DirectExport()),
-                new MenuItem("Export As", () => ShowExportDialog())
+                new MenuItem("Export As", () => ShowExportDialog()),
+                new MenuItem("Import Vanilla Loot", () => controller.ImportVanillaLoot())
             }, 40, 22);
             BuildMenuButton(row1, "Add Spawn", new List<MenuItem>
             {
@@ -388,10 +392,40 @@ namespace MapLootEditorLite.Client
             UIBuilder.AddHorizontalLayout(header, 4, 0, false, true);
             UIBuilder.CreateText(header, "Hierarchy", 12, Color.white, FontStyle.Bold);
 
-            // Scroll — second child, fills remaining height
+            // Tab bar — Pack / Vanilla
+            var tabBar = UIBuilder.CreatePanel("HierarchyTabBar", _hierarchyPanel, new Color(0.08f, 0.08f, 0.08f, 1f));
+            UIBuilder.AddLayoutElement(tabBar, null, 24, null, 24, null, 0);
+            UIBuilder.AddHorizontalLayout(tabBar, 2, 0, false, false);
+            _packTabButton = UIBuilder.CreateButton(tabBar, "Pack", () => SelectHierarchyTab(false), 60, 20);
+            _vanillaTabButton = UIBuilder.CreateButton(tabBar, "Vanilla", () => SelectHierarchyTab(true), 60, 20);
+            UpdateHierarchyTabButtons();
+
+            // Scroll — fills remaining height
             var scroll = UIBuilder.CreateScrollView(_hierarchyPanel, out _hierarchyContent, out _, 0, 0, 14);
             UIBuilder.AddLayoutElement(scroll.gameObject, null, null, null, null, null, 1);
             UIBuilder.AddVerticalLayout(_hierarchyContent, 1, 2, true, true);
+        }
+
+        private void SelectHierarchyTab(bool vanilla)
+        {
+            _vanillaHierarchyActive = vanilla;
+            if (manager != null)
+                manager.IsVanillaActive = vanilla;
+            UpdateHierarchyTabButtons();
+            RequestHierarchyRefresh();
+            RequestInspectorRefresh();
+        }
+
+        private void UpdateHierarchyTabButtons()
+        {
+            if (_packTabButton == null || _vanillaTabButton == null)
+                return;
+            _packTabButton.GetComponent<Image>().color = !_vanillaHierarchyActive
+                ? new Color(0.25f, 0.45f, 0.75f, 1f)
+                : new Color(0.24f, 0.24f, 0.24f, 1f);
+            _vanillaTabButton.GetComponent<Image>().color = _vanillaHierarchyActive
+                ? new Color(0.25f, 0.45f, 0.75f, 1f)
+                : new Color(0.24f, 0.24f, 0.24f, 1f);
         }
 
         private void BuildInspectorPanel()
@@ -993,7 +1027,7 @@ namespace MapLootEditorLite.Client
                 return;
             ClearChildren(_hierarchyContent);
 
-            var allMarkers = manager.GetAllMarkers().Where(MatchesSearch).ToList();
+            var allMarkers = manager.GetActiveMarkers().Where(MatchesSearch).ToList();
 
             // Grouped sections (collapsible)
             var grouped = allMarkers
@@ -1057,7 +1091,7 @@ namespace MapLootEditorLite.Client
 
             // Transparent clickable area — clicking selects the marker
             var selBtn = UIBuilder.CreateButton(row,
-                $"{marker.Kind} | {marker.name}",
+                $"{(marker.isVanilla ? "[V] " : "")}{marker.Kind} | {marker.name}",
                 () =>
                 {
                     if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
@@ -1105,6 +1139,12 @@ namespace MapLootEditorLite.Client
 
             var selectedCount = manager.SelectedIds.Count;
             UIBuilder.CreateText(_inspectorContent, selectedCount > 1 ? $"Selected {selectedCount} markers (primary: {selected.name})" : $"Selected: {selected.Kind} - {selected.name}", 12, Color.white, FontStyle.Bold);
+
+            if (selected.isVanilla)
+            {
+                BuildVanillaInspector(selected);
+                return;
+            }
 
             BuildStringField(_inspectorContent, "Name", selected.name, (v) => { selected.name = v; manager.IsDirty = true; RequestHierarchyRefresh(); });
             BuildStringField(_inspectorContent, "Group", selected.group ?? "", (v) => { selected.group = v; manager.IsDirty = true; RequestHierarchyRefresh(); });
@@ -1155,6 +1195,86 @@ namespace MapLootEditorLite.Client
             }, 90, 22);
             if (selected is LootZone lz)
                 UIBuilder.CreateButton(previewRow, "Preview Random In Zone", () => previews.SpawnAllInZone(lz), 140, 22);
+        }
+
+        private void BuildVanillaInspector(MarkerBase selected)
+        {
+            UIBuilder.CreateText(_inspectorContent, "Vanilla reference (read-only)", 12, new Color(0.85f, 0.7f, 0.4f, 1f), FontStyle.Bold);
+
+            BuildReadOnlyLabel(_inspectorContent, "Name", selected.name);
+            BuildReadOnlyLabel(_inspectorContent, "Group", selected.group ?? "");
+            BuildReadOnlyLabel(_inspectorContent, "Kind", selected.Kind.ToString());
+            BuildReadOnlyLabel(_inspectorContent, "Position", $"{selected.position.x:F3}, {selected.position.y:F3}, {selected.position.z:F3}");
+            BuildReadOnlyLabel(_inspectorContent, "Rotation", $"{selected.rotation.x:F3}, {selected.rotation.y:F3}, {selected.rotation.z:F3}");
+
+            switch (selected)
+            {
+                case LooseLootSpawn spawn:
+                    BuildReadOnlyLabel(_inspectorContent, "Spawn Chance", $"{spawn.spawnChance:F2}%");
+                    BuildReadOnlyLabel(_inspectorContent, "Forced", spawn.forced.ToString());
+                    BuildReadOnlyLabel(_inspectorContent, "Use Gravity", spawn.useGravity.ToString());
+                    BuildVanillaItemList(spawn.items);
+                    break;
+                case InteractiveObject obj:
+                    BuildReadOnlyLabel(_inspectorContent, "Container Template", FormatContainerTemplate(obj.containerTemplate));
+                    BuildReadOnlyLabel(_inspectorContent, "Loot Mode", obj.lootMode.ToString());
+                    BuildReadOnlyLabel(_inspectorContent, "Spawn Chance", $"{obj.spawnChance:F2}%");
+                    BuildVanillaItemList(obj.items);
+                    break;
+                case LootZone zone:
+                    BuildReadOnlyLabel(_inspectorContent, "Shape", zone.shape.ToString());
+                    BuildReadOnlyLabel(_inspectorContent, "Radius", zone.radius.ToString("F2"));
+                    BuildVanillaItemList(zone.items);
+                    break;
+                case StaticObject obj:
+                    BuildReadOnlyLabel(_inspectorContent, "Prefab Path", obj.prefabPath ?? "");
+                    break;
+                case WTTQuestZone zone:
+                    BuildReadOnlyLabel(_inspectorContent, "Zone Id", zone.zoneId ?? "");
+                    BuildReadOnlyLabel(_inspectorContent, "Zone Type", zone.zoneType ?? "");
+                    break;
+                case WTTStaticObject obj:
+                    BuildReadOnlyLabel(_inspectorContent, "Spawn Type", obj.spawnType ?? "");
+                    BuildReadOnlyLabel(_inspectorContent, "Bundle Name", obj.bundleName ?? "");
+                    BuildReadOnlyLabel(_inspectorContent, "Prefab Name", obj.prefabName ?? "");
+                    break;
+            }
+        }
+
+        private void BuildVanillaItemList(List<LootItem> items)
+        {
+            if (items == null || items.Count == 0)
+            {
+                BuildReadOnlyLabel(_inspectorContent, "Items", "0");
+                return;
+            }
+
+            BuildReadOnlyLabel(_inspectorContent, "Items", items.Count.ToString());
+            for (int i = 0; i < items.Count; i++)
+            {
+                var item = items[i];
+                var label = ItemNameResolver.GetNameOrId(item.template ?? "");
+                BuildReadOnlyLabel(_inspectorContent, $"  Item {i + 1}", label);
+            }
+        }
+
+        private static string FormatContainerTemplate(string templateId)
+        {
+            if (string.IsNullOrEmpty(templateId))
+                return "";
+            var match = LootContainerTemplates.FirstOrDefault(t => t.id.Equals(templateId, StringComparison.OrdinalIgnoreCase));
+            if (match.name != null)
+                return $"{match.name} ({templateId})";
+            return ItemNameResolver.GetNameOrId(templateId);
+        }
+
+        private void BuildReadOnlyLabel(RectTransform parent, string label, string value)
+        {
+            var row = UIBuilder.CreatePanel("ReadOnlyLabel", parent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row, 2, 2, true, true);
+            UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
+            var text = UIBuilder.CreateText(row, $"{label}: {value ?? ""}", 11, new Color(0.72f, 0.72f, 0.72f, 1f));
+            text.alignment = TextAnchor.MiddleLeft;
         }
 
         private void BuildLooseLootSpawn(LooseLootSpawn spawn)
@@ -1352,7 +1472,7 @@ namespace MapLootEditorLite.Client
             UIBuilder.CreateButton(_inspectorContent, "Preview Object", () => previews.SpawnInteractivePreview(obj), 100, 24);
         }
 
-        private static readonly (string id, string name)[] LootContainerTemplates = new (string, string)[]
+        public static readonly (string id, string name)[] LootContainerTemplates = new (string, string)[]
         {
             ("566966cd4bdc2d0c4c8b4578", "Box full of junk"),
             ("5d6d2bb386f774785b07a77a", "Buried barrel cache"),

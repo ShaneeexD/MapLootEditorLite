@@ -288,6 +288,7 @@ namespace MapLootEditorLite.Client
                 _currentMapId = mapId;
                 _visualsCleared = false;
                 _previews.ClearAll();
+                _manager.VanillaData = null;
                 var mapData = LoadMapDataFromPacks(mapId) ?? JsonStorage.Load(mapId);
                 mapData.map = mapId;
                 _manager.SetMapData(mapData);
@@ -387,7 +388,7 @@ namespace MapLootEditorLite.Client
 
         private void HandleMovementInput()
         {
-            if (_manager.Selected == null)
+            if (_manager.Selected == null || _manager.Selected.isVanilla)
                 return;
 
             if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow) ||
@@ -840,7 +841,7 @@ namespace MapLootEditorLite.Client
                 }
             }
 
-            if (Input.GetMouseButton(0) && _manager.Selected != null)
+            if (Input.GetMouseButton(0) && _manager.Selected != null && !_manager.Selected.isVanilla)
             {
                 if (_activeGizmoAxis != GizmoAxis.None)
                 {
@@ -1185,6 +1186,24 @@ namespace MapLootEditorLite.Client
         public void ClearPreviews() => _previews.ClearAll();
         public void ClearVisuals() => _renderer.Clear();
 
+        public void ImportVanillaLoot()
+        {
+            if (string.IsNullOrEmpty(_currentMapId))
+            {
+                Plugin.Log.LogWarning("[MLEL] Cannot import vanilla loot: no map loaded.");
+                return;
+            }
+
+            var vanillaData = VanillaImporter.Import(_currentMapId);
+            if (vanillaData == null)
+                return;
+
+            _manager.VanillaData = vanillaData;
+            _renderer.Rebuild();
+            Plugin.Log.LogInfo($"[MLEL] Imported vanilla loot for {_currentMapId}.");
+            _ui?.RequestRefresh();
+        }
+
         public void Undo()
         {
             _manager.Undo();
@@ -1395,6 +1414,8 @@ namespace MapLootEditorLite.Client
 
                 if (copies.Count > 0)
                 {
+                    foreach (var c in copies)
+                        c.isVanilla = false;
                     _manager.SetSelection(copies);
                     _manager.IsDirty = true;
                     _renderer.Rebuild();

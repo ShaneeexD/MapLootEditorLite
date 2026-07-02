@@ -16,6 +16,7 @@ namespace MapLootEditorLite.Client
         public static ManualLogSource Log { get; private set; }
         public static KeyCode ToggleKey { get; private set; } = KeyCode.F8;
         public static string SptRoot { get; private set; } = string.Empty;
+        public static string SptServerRoot { get; private set; } = string.Empty;
         public static string ModDataDirectory { get; private set; } = string.Empty;
         public static string ServerModDirectory { get; private set; } = string.Empty;
         public static string ServerModPacksDirectory { get; private set; } = string.Empty;
@@ -32,7 +33,8 @@ namespace MapLootEditorLite.Client
             Log.LogInfo("Map Loot Editor Lite client plugin loaded");
 
             SptRoot = FindSptRoot(Info.Location);
-            var serverRoot = FindServerRoot(SptRoot);
+            SptServerRoot = FindServerRoot(SptRoot);
+            var serverRoot = SptServerRoot;
             ModDataDirectory = Path.Combine(SptRoot, "BepInEx", "config", "MapLootEditorLite");
             ServerModDirectory = Path.Combine(serverRoot, "user", "mods", "MapLootEditorLite");
             ServerModPacksDirectory = Path.Combine(ServerModDirectory, "packs");

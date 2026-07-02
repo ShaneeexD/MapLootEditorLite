@@ -9,6 +9,8 @@ namespace MapLootEditorLite.Client
     public class MarkerManager
     {
         public MapData Data { get; private set; }
+        public MapData VanillaData { get; set; }
+        public bool IsVanillaActive { get; set; }
 
         private MarkerBase _selected;
         public MarkerBase Selected
@@ -30,7 +32,7 @@ namespace MapLootEditorLite.Client
         {
             get
             {
-                var selected = GetAllMarkers().Where(m => SelectedIds.Contains(m.id)).ToList();
+                var selected = GetActiveMarkers().Where(m => SelectedIds.Contains(m.id)).ToList();
                 if (selected.Count == 0)
                     return Vector3.zero;
                 var sum = Vector3.zero;
@@ -38,6 +40,48 @@ namespace MapLootEditorLite.Client
                     sum += m.position.ToVector3();
                 return sum / selected.Count;
             }
+        }
+
+        public bool IsVanilla(MarkerBase marker) => marker?.isVanilla == true;
+
+        public IEnumerable<MarkerBase> GetActiveMarkers()
+        {
+            if (IsVanillaActive)
+                return GetVanillaMarkers();
+            return GetAllMarkers();
+        }
+
+        public IEnumerable<MarkerBase> GetVanillaMarkers()
+        {
+            if (VanillaData == null)
+                yield break;
+
+            if (VanillaData.lootSpawns != null)
+                foreach (var m in VanillaData.lootSpawns)
+                    yield return m;
+            if (VanillaData.lootZones != null)
+                foreach (var m in VanillaData.lootZones)
+                    yield return m;
+            if (VanillaData.objects != null)
+                foreach (var m in VanillaData.objects)
+                    yield return m;
+            if (VanillaData.wttQuestZones != null)
+                foreach (var m in VanillaData.wttQuestZones)
+                    yield return m;
+            if (VanillaData.wttStaticObjects != null)
+                foreach (var m in VanillaData.wttStaticObjects)
+                    yield return m;
+            if (VanillaData.interactiveObjects != null)
+                foreach (var m in VanillaData.interactiveObjects)
+                    yield return m;
+        }
+
+        public IEnumerable<MarkerBase> GetAllMarkersIncludingVanilla()
+        {
+            foreach (var m in GetAllMarkers())
+                yield return m;
+            foreach (var m in GetVanillaMarkers())
+                yield return m;
         }
 
         private readonly List<string> _undoStack = new List<string>();
@@ -149,7 +193,7 @@ namespace MapLootEditorLite.Client
 
         public MarkerBase FindById(string id)
         {
-            return GetAllMarkers().FirstOrDefault(m => m.id == id);
+            return GetAllMarkersIncludingVanilla().FirstOrDefault(m => m.id == id);
         }
 
         public bool IsSelected(MarkerBase marker)
@@ -211,6 +255,7 @@ namespace MapLootEditorLite.Client
         {
             if (Data == null || marker == null)
                 return;
+            marker.isVanilla = false;
             switch (marker)
             {
                 case LooseLootSpawn s:
@@ -269,7 +314,7 @@ namespace MapLootEditorLite.Client
             foreach (var id in SelectedIds)
             {
                 var m = FindById(id);
-                if (m != null)
+                if (m != null && !IsVanilla(m))
                     m.group = group ?? "";
             }
             IsDirty = true;
@@ -280,7 +325,7 @@ namespace MapLootEditorLite.Client
             if (Data == null)
                 return;
 
-            var toDelete = SelectedIds.ToList();
+            var toDelete = SelectedIds.Where(id => !IsVanilla(FindById(id))).ToList();
             foreach (var id in toDelete)
             {
                 var m = FindById(id);
@@ -305,7 +350,7 @@ namespace MapLootEditorLite.Client
             if (Data == null)
                 return;
 
-            var originals = SelectedIds.Select(FindById).Where(m => m != null).ToList();
+            var originals = SelectedIds.Select(FindById).Where(m => m != null && !IsVanilla(m)).ToList();
             var newIds = new List<string>();
             foreach (var m in originals)
             {
@@ -455,7 +500,7 @@ namespace MapLootEditorLite.Client
 
         public void DeleteSelected()
         {
-            if (Selected == null || Data == null)
+            if (Selected == null || Data == null || IsVanilla(Selected))
                 return;
 
             switch (Selected)
@@ -474,7 +519,7 @@ namespace MapLootEditorLite.Client
 
         public MarkerBase DuplicateSelected()
         {
-            if (Selected == null)
+            if (Selected == null || IsVanilla(Selected))
                 return null;
 
             var json = JsonConvert.SerializeObject(Selected);
@@ -520,7 +565,7 @@ namespace MapLootEditorLite.Client
 
         public void MoveSelected(Vector3 delta)
         {
-            if (Selected == null)
+            if (Selected == null || IsVanilla(Selected))
                 return;
 
             Selected.position = TransformData.FromVector3(Selected.position.ToVector3() + delta);
@@ -529,7 +574,7 @@ namespace MapLootEditorLite.Client
 
         public void RotateSelected(Vector3 delta)
         {
-            if (Selected == null)
+            if (Selected == null || IsVanilla(Selected))
                 return;
 
             Selected.rotation = TransformData.FromVector3(Selected.rotation.ToVector3() + delta);
@@ -538,7 +583,7 @@ namespace MapLootEditorLite.Client
 
         public void ChangeRadius(float delta)
         {
-            if (Selected is LootZone zone)
+            if (Selected is LootZone zone && !IsVanilla(zone))
             {
                 zone.radius = Mathf.Max(0.1f, zone.radius + delta);
                 IsDirty = true;
@@ -547,7 +592,7 @@ namespace MapLootEditorLite.Client
 
         public void SnapSelectedToGround()
         {
-            if (Selected == null)
+            if (Selected == null || IsVanilla(Selected))
                 return;
 
             var ground = GetGroundPosition(Selected.position.ToVector3());

@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace MapLootEditorLite.Client
@@ -25,6 +27,8 @@ namespace MapLootEditorLite.Client
         private readonly Color _interactiveWireColor = new Color(1f, 0.5f, 0f, 1.0f);
         private readonly Color _selectedColor = new Color(0.2f, 0.6f, 1f, 0.25f);
         private readonly Color _selectedWireColor = new Color(0.2f, 0.6f, 1f, 1.0f);
+        private readonly Color _vanillaColor = new Color(0.8f, 0.8f, 0.8f, 0.35f);
+        private readonly Color _vanillaWireColor = new Color(0.8f, 0.8f, 0.8f, 0.85f);
         private readonly Color _gizmoXColor = new Color(1f, 0.2f, 0.2f, 0.9f);
         private readonly Color _gizmoYColor = new Color(0.2f, 1f, 0.2f, 0.9f);
         private readonly Color _gizmoZColor = new Color(0.2f, 0.4f, 1f, 0.9f);
@@ -60,7 +64,7 @@ namespace MapLootEditorLite.Client
             if (_manager?.Data == null)
                 return;
 
-            foreach (var marker in _manager.GetAllMarkers())
+            foreach (var marker in _manager.GetAllMarkersIncludingVanilla())
             {
                 CreateVisual(marker);
             }
@@ -71,7 +75,7 @@ namespace MapLootEditorLite.Client
             if (_manager?.Data == null)
                 return;
 
-            foreach (var marker in _manager.GetAllMarkers())
+            foreach (var marker in _manager.GetAllMarkersIncludingVanilla())
             {
                 if (marker is LootZone currentZone && _visuals.TryGetValue(marker.id, out GameObject existingVisual))
                 {
@@ -150,15 +154,29 @@ namespace MapLootEditorLite.Client
                 normal = { textColor = Color.white }
             };
 
-            foreach (var marker in _manager.GetAllMarkers())
+            foreach (var marker in _manager.GetAllMarkersIncludingVanilla())
             {
                 var screenPos = camera.WorldToScreenPoint(marker.position.ToVector3());
                 if (screenPos.z <= 0)
                     continue;
 
                 var rect = new Rect(screenPos.x - 50f, Screen.height - screenPos.y - 30f, 100f, 20f);
-                GUI.Label(rect, marker.name, style);
+                GUI.Label(rect, GetMarkerLabel(marker), style);
             }
+        }
+
+        private static string GetMarkerLabel(MarkerBase marker)
+        {
+            if (!marker.isVanilla)
+                return marker.name;
+
+            if (marker is LooseLootSpawn spawn && spawn.items != null && spawn.items.Count > 0)
+                return ItemNameResolver.GetNameOrId(spawn.items[0].template ?? marker.name);
+
+            if (marker is InteractiveObject obj)
+                return ItemNameResolver.GetNameOrId(obj.containerTemplate ?? marker.name);
+
+            return marker.name;
         }
 
         public void Clear()
@@ -484,6 +502,10 @@ namespace MapLootEditorLite.Client
             {
                 color = _selectedColor;
             }
+            else if (marker.isVanilla)
+            {
+                color = _vanillaColor;
+            }
             else if (marker is LooseLootSpawn)
             {
                 color = _looseColor;
@@ -520,6 +542,8 @@ namespace MapLootEditorLite.Client
                     Color wireColor;
                     if (selected)
                         wireColor = _selectedWireColor;
+                    else if (marker.isVanilla)
+                        wireColor = _vanillaWireColor;
                     else if (marker is StaticObject)
                         wireColor = _objectWireColor;
                     else if (marker is WTTQuestZone)
@@ -550,7 +574,7 @@ namespace MapLootEditorLite.Client
             MarkerBase best = null;
             float bestScore = float.MaxValue;
 
-            foreach (var marker in _manager.GetAllMarkers())
+            foreach (var marker in _manager.GetAllMarkersIncludingVanilla())
             {
                 var worldPos = marker.position.ToVector3();
                 var projected = camera.WorldToScreenPoint(worldPos);
@@ -642,7 +666,7 @@ namespace MapLootEditorLite.Client
 
         private void UpdateGizmo()
         {
-            if (_manager?.Selected == null || !ShowGizmo)
+            if (_manager?.Selected == null || !ShowGizmo || _manager.Selected.isVanilla)
             {
                 DestroyGizmo();
                 return;
