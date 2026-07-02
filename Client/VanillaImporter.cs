@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using EFT.Interactive;
+using EFT.InventoryLogic;
 using Newtonsoft.Json;
 using UnityEngine;
 
@@ -121,8 +122,8 @@ namespace MapLootEditorLite.Client
                     return;
 
                 BuildContainerCache();
-                ImportStaticContainerList(data, file.staticContainers);
-                ImportStaticContainerList(data, file.staticForced);
+                ImportStaticContainerList(data, file.staticContainers, dir);
+                ImportStaticContainerList(data, file.staticForced, dir);
             }
             catch (Exception ex)
             {
@@ -131,6 +132,7 @@ namespace MapLootEditorLite.Client
         }
 
         private static Dictionary<string, LootableContainer> _containerCache;
+        private static Dictionary<string, List<LootItem>> _staticLootCache;
 
         private static void BuildContainerCache()
         {
@@ -151,6 +153,7 @@ namespace MapLootEditorLite.Client
         private static void ClearContainerCache()
         {
             _containerCache = null;
+            _staticLootCache = null;
         }
 
         private static LootableContainer FindContainer(string id)
@@ -162,7 +165,7 @@ namespace MapLootEditorLite.Client
             return null;
         }
 
-        private static void ImportStaticContainerList(MapData data, List<VanillaSpawnpoint> list)
+        private static void ImportStaticContainerList(MapData data, List<VanillaSpawnpoint> list, string dir)
         {
             if (list == null)
                 return;
@@ -173,7 +176,7 @@ namespace MapLootEditorLite.Client
                     continue;
 
                 var root = sp.template.Items?.FirstOrDefault(i => string.IsNullOrEmpty(i.parentId));
-                var containerTpl = root?._tpl ?? "578f87a3245977356274f2cb";
+                var containerTpl = root?._tpl ?? sp.template.Root ?? "578f87a3245977356274f2cb";
 
                 var sceneContainer = FindContainer(sp.template.Id);
                 var scenePos = sceneContainer != null ? sceneContainer.transform.position : (Vector3?)null;
@@ -193,12 +196,15 @@ namespace MapLootEditorLite.Client
                     items = new List<LootItem>()
                 };
 
+                // Use the static data items if they are real forced loot (not just the container root).
                 if (sp.template.Items != null)
                 {
                     foreach (var item in sp.template.Items)
                     {
                         if (string.IsNullOrEmpty(item?._tpl))
                             continue;
+                        if (string.IsNullOrEmpty(item.parentId))
+                            continue; // container root item is not loot
                         marker.items.Add(new LootItem
                         {
                             template = item._tpl,
@@ -208,7 +214,70 @@ namespace MapLootEditorLite.Client
                     }
                 }
 
+                // Otherwise fall back to the vanilla static loot distribution for this container type.
+                if (marker.items.Count == 0)
+                    AddStaticLootDistribution(marker, containerTpl, dir);
+
                 data.interactiveObjects.Add(marker);
+            }
+        }
+
+        private static void AddStaticLootDistribution(InteractiveObject marker, string containerTpl, string dir)
+        {
+            if (_staticLootCache == null)
+                LoadStaticLootCache(dir);
+
+            if (_staticLootCache == null || !_staticLootCache.TryGetValue(containerTpl, out var distribution))
+                return;
+
+            marker.items.AddRange(distribution);
+        }
+
+        private static void LoadStaticLootCache(string dir)
+        {
+            _staticLootCache = new Dictionary<string, List<LootItem>>(StringComparer.OrdinalIgnoreCase);
+            var path = Path.Combine(dir, "staticLoot.json");
+            if (!File.Exists(path))
+                return;
+
+            try
+            {
+                var json = File.ReadAllText(path);
+                var file = JsonConvert.DeserializeObject<Dictionary<string, StaticLootEntry>>(json);
+                if (file == null)
+                    return;
+
+                foreach (var kvp in file)
+                {
+                    var tpl = kvp.Key;
+                    var entry = kvp.Value;
+                    if (entry?.itemDistribution == null || entry.itemDistribution.Count == 0)
+                        continue;
+
+                    var total = entry.itemDistribution.Sum(d => d.relativeProbability);
+                    if (total <= 0)
+                        continue;
+
+                    var items = new List<LootItem>();
+                    foreach (var dist in entry.itemDistribution)
+                    {
+                        if (string.IsNullOrEmpty(dist.tpl))
+                            continue;
+                        items.Add(new LootItem
+                        {
+                            template = dist.tpl,
+                            chance = (dist.relativeProbability / total) * 100f,
+                            randomRotation = true
+                        });
+                    }
+
+                    items.Sort((a, b) => b.chance.CompareTo(a.chance));
+                    _staticLootCache[tpl] = items;
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"[MLEL] Failed to load staticLoot.json from {dir}: {ex.Message}");
             }
         }
 
@@ -283,6 +352,19 @@ namespace MapLootEditorLite.Client
         private class VanillaUpd
         {
             // Ignored for now
+        }
+
+        private class StaticLootEntry
+        {
+            public List<StaticLootDistribution> itemcountDistribution = new List<StaticLootDistribution>();
+            public List<StaticLootDistribution> itemDistribution = new List<StaticLootDistribution>();
+        }
+
+        private class StaticLootDistribution
+        {
+            public string tpl;
+            public float relativeProbability;
+            public int count;
         }
     }
 }

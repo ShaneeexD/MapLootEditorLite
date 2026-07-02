@@ -39,6 +39,7 @@ namespace MapLootEditorLite.Client
 
         public GizmoMode GizmoMode { get; set; } = GizmoMode.Translate;
         public bool ShowGizmo { get; set; } = true;
+        public bool ShowVanillaGizmos { get; set; } = true;
         public GizmoAxis HoveredAxis { get; private set; }
         public GizmoAxis ActiveAxis { get; set; }
 
@@ -77,6 +78,17 @@ namespace MapLootEditorLite.Client
 
             foreach (var marker in _manager.GetAllMarkersIncludingVanilla())
             {
+                if (marker.isVanilla && !ShowVanillaGizmos)
+                {
+                    if (_visuals.TryGetValue(marker.id, out GameObject existingVanillaVisual))
+                    {
+                        UnityEngine.Object.Destroy(existingVanillaVisual);
+                        _visuals.Remove(marker.id);
+                        _zoneShapeCache.Remove(marker.id);
+                    }
+                    continue;
+                }
+
                 if (marker is LootZone currentZone && _visuals.TryGetValue(marker.id, out GameObject existingVisual))
                 {
                     if (_zoneShapeCache.TryGetValue(marker.id, out ZoneShape cachedShape) && cachedShape != currentZone.shape)
@@ -156,6 +168,9 @@ namespace MapLootEditorLite.Client
 
             foreach (var marker in _manager.GetAllMarkersIncludingVanilla())
             {
+                if (marker.isVanilla && !ShowVanillaGizmos)
+                    continue;
+
                 var screenPos = camera.WorldToScreenPoint(marker.position.ToVector3());
                 if (screenPos.z <= 0)
                     continue;
@@ -196,7 +211,7 @@ namespace MapLootEditorLite.Client
             switch (marker)
             {
                 case LooseLootSpawn _:
-                    visual = CreatePrimitiveNoCollider(PrimitiveType.Sphere, 0.15f);
+                    visual = CreatePrimitiveVisual(PrimitiveType.Sphere, 0.15f);
                     break;
                 case LootZone zone:
                     visual = CreateZoneVisual(zone);
@@ -217,22 +232,35 @@ namespace MapLootEditorLite.Client
                     return null;
             }
 
-            visual.name = $"MLE_Gizmo_{marker.name}";
+            visual.name = $"MLE_Gizmo_{marker.id}";
             visual.transform.SetParent(_root.transform, false);
             visual.transform.position = marker.position.ToVector3();
             visual.transform.rotation = marker.rotation.ToQuaternion();
+            SetLayerRecursive(visual, 2);
+
+            var visualTag = visual.GetComponent<MarkerVisual>() ?? visual.AddComponent<MarkerVisual>();
+            visualTag.markerId = marker.id;
 
             _visuals[marker.id] = visual;
             ApplyColor(visual, marker, false);
             return visual;
         }
 
-        private GameObject CreatePrimitiveNoCollider(PrimitiveType type, float baseScale)
+        private GameObject CreatePrimitiveVisual(PrimitiveType type, float baseScale)
         {
             var go = GameObject.CreatePrimitive(type);
-            UnityEngine.Object.Destroy(go.GetComponent<Collider>());
+            var collider = go.GetComponent<Collider>();
+            if (collider != null)
+                collider.isTrigger = true;
             go.transform.localScale = Vector3.one * baseScale;
             return go;
+        }
+
+        private static void SetLayerRecursive(GameObject go, int layer)
+        {
+            go.layer = layer;
+            foreach (Transform child in go.transform)
+                SetLayerRecursive(child.gameObject, layer);
         }
 
         private GameObject CreateZoneVisual(LootZone zone)
@@ -252,7 +280,7 @@ namespace MapLootEditorLite.Client
 
         private GameObject CreateSphereVisual()
         {
-            var go = CreatePrimitiveNoCollider(PrimitiveType.Sphere, 1f);
+            var go = CreatePrimitiveVisual(PrimitiveType.Sphere, 1f);
             var wire = new GameObject("wire_sphere");
             wire.transform.SetParent(go.transform, false);
             wire.transform.localScale = Vector3.one;
@@ -273,7 +301,7 @@ namespace MapLootEditorLite.Client
 
         private GameObject CreateBoxVisual()
         {
-            var go = CreatePrimitiveNoCollider(PrimitiveType.Cube, 1f);
+            var go = CreatePrimitiveVisual(PrimitiveType.Cube, 1f);
             var wire = new GameObject("wire_box");
             wire.transform.SetParent(go.transform, false);
             wire.transform.localScale = Vector3.one;
@@ -294,7 +322,7 @@ namespace MapLootEditorLite.Client
 
         private GameObject CreateStaticObjectVisual()
         {
-            var go = CreatePrimitiveNoCollider(PrimitiveType.Cube, 0.5f);
+            var go = CreatePrimitiveVisual(PrimitiveType.Cube, 0.5f);
             var wire = new GameObject("wire_box");
             wire.transform.SetParent(go.transform, false);
             wire.transform.localScale = Vector3.one;
@@ -315,7 +343,7 @@ namespace MapLootEditorLite.Client
 
         private GameObject CreateInteractiveObjectVisual()
         {
-            var go = CreatePrimitiveNoCollider(PrimitiveType.Cube, 0.5f);
+            var go = CreatePrimitiveVisual(PrimitiveType.Cube, 0.5f);
             var wire = new GameObject("wire_box");
             wire.transform.SetParent(go.transform, false);
             wire.transform.localScale = Vector3.one;
@@ -336,7 +364,7 @@ namespace MapLootEditorLite.Client
 
         private GameObject CreateWTTQuestZoneVisual()
         {
-            var go = CreatePrimitiveNoCollider(PrimitiveType.Cube, 1f);
+            var go = CreatePrimitiveVisual(PrimitiveType.Cube, 1f);
             var wire = new GameObject("wire_box");
             wire.transform.SetParent(go.transform, false);
             wire.transform.localScale = Vector3.one;
@@ -357,7 +385,7 @@ namespace MapLootEditorLite.Client
 
         private GameObject CreateWTTStaticObjectVisual()
         {
-            var go = CreatePrimitiveNoCollider(PrimitiveType.Cube, 0.5f);
+            var go = CreatePrimitiveVisual(PrimitiveType.Cube, 0.5f);
             var wire = new GameObject("wire_box");
             wire.transform.SetParent(go.transform, false);
             wire.transform.localScale = Vector3.one;
@@ -378,12 +406,12 @@ namespace MapLootEditorLite.Client
 
         private GameObject CreateCylinderVisual()
         {
-            return CreatePrimitiveNoCollider(PrimitiveType.Cylinder, 1f);
+            return CreatePrimitiveVisual(PrimitiveType.Cylinder, 1f);
         }
 
         private GameObject CreateCapsuleVisual()
         {
-            return CreatePrimitiveNoCollider(PrimitiveType.Capsule, 1f);
+            return CreatePrimitiveVisual(PrimitiveType.Capsule, 1f);
         }
 
         private Material GetWireMaterial()
@@ -571,9 +599,31 @@ namespace MapLootEditorLite.Client
             if (_manager?.Data == null || camera == null)
                 return null;
 
+            // First try raycasting against the marker visuals (whole box/sphere/wireframe).
+            var ray = camera.ScreenPointToRay(screenPos);
+            const int markerLayerMask = 1 << 2;
+            var hits = Physics.RaycastAll(ray, maxDistance, markerLayerMask, QueryTriggerInteraction.Collide);
             MarkerBase best = null;
-            float bestScore = float.MaxValue;
+            float bestDist = float.MaxValue;
+            foreach (var hit in hits)
+            {
+                var visual = hit.collider != null ? hit.collider.GetComponentInParent<MarkerVisual>() : null;
+                if (visual == null)
+                    continue;
+                var marker = _manager.FindById(visual.markerId);
+                if (marker == null)
+                    continue;
+                if (hit.distance < bestDist)
+                {
+                    bestDist = hit.distance;
+                    best = marker;
+                }
+            }
+            if (best != null)
+                return best;
 
+            // Fallback: distance from the projected center point.
+            float bestScore = float.MaxValue;
             foreach (var marker in _manager.GetAllMarkersIncludingVanilla())
             {
                 var worldPos = marker.position.ToVector3();
@@ -808,7 +858,7 @@ namespace MapLootEditorLite.Client
         private GameObject CreateGizmoHandle()
         {
             var type = GizmoMode == GizmoMode.Scale ? PrimitiveType.Cube : PrimitiveType.Sphere;
-            return CreatePrimitiveNoCollider(type, _gizmoHandleSize);
+            return CreatePrimitiveVisual(type, _gizmoHandleSize);
         }
 
         private void DestroyGizmo()

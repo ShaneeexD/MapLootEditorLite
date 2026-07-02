@@ -123,4 +123,8 @@ $RECYCLE.BIN/
 # Linux
 *~
 .directory
+
+
 TODO.txt
+fetch_api_names.py
+inspect_static_loot.py

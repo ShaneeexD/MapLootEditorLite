@@ -78,6 +78,8 @@ namespace MapLootEditorLite.Client
             Log.LogInfo("Runtime static object spawner attached");
             gameObject.AddComponent<RuntimeInteractiveObjectSpawner>();
             Log.LogInfo("Runtime interactive object spawner attached");
+
+            StartCoroutine(ItemNameResolver.LoadApiNames());
         }
 
         private static string FindSptRoot(string pluginPath)

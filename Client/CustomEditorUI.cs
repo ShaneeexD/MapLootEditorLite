@@ -332,6 +332,13 @@ namespace MapLootEditorLite.Client
                 new MenuItem("Export As", () => ShowExportDialog()),
                 new MenuItem("Import Vanilla Loot", () => controller.ImportVanillaLoot())
             }, 40, 22);
+            BuildMenuButton(row1, "View", new List<MenuItem>
+            {
+                new MenuItem("Hierarchy", subItems: new List<MenuItem>
+                {
+                    new MenuItem("Toggle Vanilla Gizmos", () => controller.ToggleVanillaGizmos())
+                })
+            }, 40, 22);
             BuildMenuButton(row1, "Add Spawn", new List<MenuItem>
             {
                 new MenuItem("Common", subItems: new List<MenuItem>

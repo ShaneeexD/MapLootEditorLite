@@ -631,6 +631,14 @@ namespace MapLootEditorLite.Client
                 ExitFreeCam();
         }
 
+        public void ToggleVanillaGizmos()
+        {
+            if (_renderer == null)
+                return;
+            _renderer.ShowVanillaGizmos = !_renderer.ShowVanillaGizmos;
+            Plugin.Log.LogInfo($"[MLEL] Vanilla gizmos: {(_renderer.ShowVanillaGizmos ? "ON" : "OFF")}");
+        }
+
         private void EnterFreeCam()
         {
             EnsureMapLoaded();
