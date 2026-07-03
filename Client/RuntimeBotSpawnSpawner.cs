@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Comfort.Common;
 using EFT;
 using EFT.Game.Spawning;
@@ -20,6 +21,15 @@ namespace MapLootEditorLite.Client
         private GameWorld _currentWorld;
         private string _currentMapId;
         private static bool _patchApplied;
+        private List<SpawnRequest> _spawnRequests = new List<SpawnRequest>();
+
+        private class SpawnRequest
+        {
+            public BotZone Zone;
+            public SpawnPointMarker Marker;
+            public BotSpawnPoint Point;
+            public BotSpawnZone ZoneData;
+        }
 
         private void Awake()
         {
@@ -36,6 +46,7 @@ namespace MapLootEditorLite.Client
         {
             _currentWorld = null;
             _currentMapId = null;
+            _spawnRequests.Clear();
         }
 
         private void LoadPacks()
@@ -83,7 +94,8 @@ namespace MapLootEditorLite.Client
                 var harmony = new Harmony("com.maplooteditorlite.botspawns");
                 var method = AccessTools.Method(typeof(BotsController), nameof(BotsController.Init));
                 var prefix = AccessTools.Method(typeof(RuntimeBotSpawnSpawner), nameof(InitBotsControllerPrefix));
-                harmony.Patch(method, prefix: new HarmonyMethod(prefix));
+                var postfix = AccessTools.Method(typeof(RuntimeBotSpawnSpawner), nameof(InitBotsControllerPostfix));
+                harmony.Patch(method, prefix: new HarmonyMethod(prefix), postfix: new HarmonyMethod(postfix));
                 Plugin.Log.LogInfo("[MLEL Bot] Patched BotsController.Init.");
             }
             catch (Exception ex)
@@ -110,6 +122,24 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        public static void InitBotsControllerPostfix(BotsController __instance)
+        {
+            if (Instance == null)
+            {
+                Plugin.Log.LogWarning("[MLEL Bot] No spawner instance, skipping custom bot spawn.");
+                return;
+            }
+
+            try
+            {
+                Instance.ForceSpawnCustomBots(__instance);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[MLEL Bot] Error in postfix: {ex.Message}");
+            }
+        }
+
         private void SpawnCustomMarkers(BotZone[] botZones)
         {
             var world = Singleton<GameWorld>.Instance;
@@ -125,6 +155,7 @@ namespace MapLootEditorLite.Client
 
             _currentWorld = world;
             _currentMapId = mapId;
+            _spawnRequests.Clear();
 
             var points = new List<BotSpawnPoint>();
             var zones = new List<BotSpawnZone>();
@@ -145,6 +176,7 @@ namespace MapLootEditorLite.Client
                 }
             }
 
+            Plugin.Log.LogInfo($"[MLEL Bot] Spawning for map '{mapId}' with {points.Count} points and {zones.Count} zones from {_packs.Count} packs.");
             if (points.Count == 0 && zones.Count == 0)
             {
                 Plugin.Log.LogInfo($"[MLEL Bot] No custom bot spawn data for map {mapId}.");
@@ -159,7 +191,7 @@ namespace MapLootEditorLite.Client
                 if (point.spawnChance < 100f && rng.NextDouble() * 100 > point.spawnChance)
                     continue;
                 var zoneName = ResolveBotZoneName(point.botZoneName, point.position.ToVector3(), botZones);
-                var marker = CreateSpawnMarker(point.id, point.position.ToVector3(), point.rotation.ToVector3().y, point.radius, point.side, point.category, point.delayToCanSpawnSec, zoneName);
+                var marker = CreateSpawnMarker(point.id, point.position.ToVector3(), point.rotation.ToVector3().y, point.radius, point.side, point.category, point.delayToCanSpawnSec, zoneName, botZones, point);
                 if (marker != null)
                     created++;
             }
@@ -173,16 +205,16 @@ namespace MapLootEditorLite.Client
                         continue;
                     var pos = GetRandomPointInZone(zone);
                     var id = $"{zone.id}_spawn_{i}";
-                    var marker = CreateSpawnMarker(id, pos, zone.rotation.ToVector3().y, 1f, zone.side, zone.category, zone.delayToCanSpawnSec, zoneName);
+                    var marker = CreateSpawnMarker(id, pos, zone.rotation.ToVector3().y, 1f, zone.side, zone.category, zone.delayToCanSpawnSec, zoneName, botZones, zoneData: zone);
                     if (marker != null)
                         created++;
                 }
             }
 
-            Plugin.Log.LogInfo($"[MLEL Bot] Created {created} custom bot spawn markers for map {mapId}.");
+            Plugin.Log.LogInfo($"[MLEL Bot] Created {created} custom bot spawn markers for map {mapId} across {botZones?.Length ?? 0} zones.");
         }
 
-        private SpawnPointMarker CreateSpawnMarker(string id, Vector3 position, float rotationY, float radius, BotSpawnSide side, BotSpawnCategory category, float delay, string botZoneName)
+        private SpawnPointMarker CreateSpawnMarker(string id, Vector3 position, float rotationY, float radius, BotSpawnSide side, BotSpawnCategory category, float delay, string botZoneName, BotZone[] botZones, BotSpawnPoint point = null, BotSpawnZone zoneData = null)
         {
             try
             {
@@ -201,7 +233,30 @@ namespace MapLootEditorLite.Client
                     CorePointId = 0,
                     ColliderParams = new SpawnSphereParams { Center = Vector3.zero, Radius = radius }
                 };
-                return SpawnPointMarker.Create(@params);
+
+                var zone = string.IsNullOrEmpty(botZoneName) ? null : botZones?.FirstOrDefault(z => z != null && z.name == botZoneName);
+                if (zone == null)
+                {
+                    Plugin.Log.LogWarning($"[MLEL Bot] No BotZone found for marker {id} (resolved name: '{botZoneName}'). Skipping.");
+                    return null;
+                }
+                if (zone.SpawnPointMarkers == null)
+                    zone.SpawnPointMarkers = new List<SpawnPointMarker>();
+
+                var marker = SpawnPointMarker.Create(@params, zone.transform);
+                if (marker == null)
+                {
+                    Plugin.Log.LogError($"[MLEL Bot] SpawnPointMarker.Create returned null for {id}.");
+                    return null;
+                }
+
+                if (zone != null && !zone.SpawnPointMarkers.Contains(marker))
+                    zone.SpawnPointMarkers.Add(marker);
+
+                _spawnRequests.Add(new SpawnRequest { Zone = zone, Marker = marker, Point = point, ZoneData = zoneData });
+
+                Plugin.Log.LogInfo($"[MLEL Bot] Created marker {id} at {position} in zone '{botZoneName}' (category: {category}, side: {side}).");
+                return marker;
             }
             catch (Exception ex)
             {
@@ -317,6 +372,71 @@ namespace MapLootEditorLite.Client
             var completed = quest.Status == EQuestStatus.Success;
 
             return (questOnly && active) || (questCompleted && completed);
+        }
+
+        private void ForceSpawnCustomBots(BotsController controller)
+        {
+            if (controller?.BotSpawner == null)
+            {
+                Plugin.Log.LogWarning("[MLEL Bot] BotsController or BotSpawner is null, cannot force custom spawn.");
+                return;
+            }
+
+            Plugin.Log.LogInfo($"[MLEL Bot] Forcing spawn for {_spawnRequests.Count} custom bot requests.");
+            foreach (var request in _spawnRequests)
+            {
+                SpawnBotAt(controller, request);
+            }
+        }
+
+        private async void SpawnBotAt(BotsController controller, SpawnRequest request)
+        {
+            try
+            {
+                var wildSpawnType = ResolveWildSpawnType(request);
+                if (!wildSpawnType.HasValue)
+                {
+                    Plugin.Log.LogWarning("[MLEL Bot] Skipping spawn request with unknown wild spawn type.");
+                    return;
+                }
+
+                var side = ResolveSide(request);
+                var difficulty = BotDifficulty.normal;
+                var point = request.Marker.SpawnPoint;
+                var data = await BotCreationDataClass.Create(new BotProfileDataClass(side, wildSpawnType.Value, difficulty, 0f, null, false), controller.BotSpawner.BotCreator, 1, controller.BotSpawner);
+                controller.BotSpawner.TryToSpawnInZoneAndDelay(request.Zone, data, true, true, new List<ISpawnPoint> { point }, true);
+                Plugin.Log.LogInfo($"[MLEL Bot] Submitted forced spawn at {point.Position} ({wildSpawnType.Value}, {side}, zone={request.Zone.name}).");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[MLEL Bot] Failed to force spawn bot: {ex.Message}");
+            }
+        }
+
+        private WildSpawnType? ResolveWildSpawnType(SpawnRequest request)
+        {
+            var wildSpawnType = request.Point?.wildSpawnType ?? request.ZoneData?.wildSpawnType;
+            if (string.IsNullOrWhiteSpace(wildSpawnType))
+                return WildSpawnType.assault;
+            if (Enum.TryParse<WildSpawnType>(wildSpawnType, true, out var result))
+                return result;
+            Plugin.Log.LogWarning($"[MLEL Bot] Unknown WildSpawnType: {wildSpawnType}");
+            return null;
+        }
+
+        private EPlayerSide ResolveSide(SpawnRequest request)
+        {
+            var wildSpawnType = request.Point?.wildSpawnType ?? request.ZoneData?.wildSpawnType;
+            if ("pmcBEAR".Equals(wildSpawnType, StringComparison.OrdinalIgnoreCase))
+                return EPlayerSide.Bear;
+            if ("pmcUSEC".Equals(wildSpawnType, StringComparison.OrdinalIgnoreCase))
+                return EPlayerSide.Usec;
+            var side = request.Point?.side ?? request.ZoneData?.side ?? BotSpawnSide.Savage;
+            if (side == BotSpawnSide.Bear)
+                return EPlayerSide.Bear;
+            if (side == BotSpawnSide.Usec)
+                return EPlayerSide.Usec;
+            return EPlayerSide.Savage;
         }
 
         private void OnDestroy()
