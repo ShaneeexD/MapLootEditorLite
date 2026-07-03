@@ -395,7 +395,7 @@ namespace MapLootEditorLite.Client
                 SpawnPreviewForMarker(marker);
         }
 
-        public void ClearAll()
+        public void ClearAll(bool clearStaticSources = false)
         {
             foreach (var preview in _previews)
             {
@@ -412,7 +412,9 @@ namespace MapLootEditorLite.Client
                     UnityEngine.Object.Destroy(preview);
             }
             _staticPreviews.Clear();
-            _staticSources.Clear();
+
+            if (clearStaticSources)
+                _staticSources.Clear();
         }
 
         public void ClearByMarkerId(string markerId)
@@ -719,9 +721,13 @@ namespace MapLootEditorLite.Client
 
         private GameObject FindSourceObject(string name, Vector3 position)
         {
+            if (string.IsNullOrEmpty(name))
+                return null;
+
             GameObject best = null;
             float bestDist = float.MaxValue;
             var sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
+            int candidates = 0;
 
             for (int i = 0; i < sceneCount; i++)
             {
@@ -735,6 +741,7 @@ namespace MapLootEditorLite.Client
                     foreach (var t in root.GetComponentsInChildren<Transform>(true))
                     {
                         if (t.name != name) continue;
+                        candidates++;
                         var dist = (t.position - position).sqrMagnitude;
                         if (dist < bestDist)
                         {
@@ -745,7 +752,35 @@ namespace MapLootEditorLite.Client
                 }
             }
 
-            return best;
+            if (best != null)
+            {
+                Plugin.Log.LogInfo($"[MLEL Preview] Found source object '{name}' at {best.transform.position} (distance {(float)Math.Sqrt(bestDist):F2}, candidates {candidates}).");
+                return best;
+            }
+
+            // Fallback: source object may have moved (e.g., opened door). Try matching by name only.
+            for (int i = 0; i < sceneCount; i++)
+            {
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
+                if (!scene.isLoaded)
+                    continue;
+
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    if (root == _root) continue;
+                    foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                    {
+                        if (string.Equals(t.name, name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            Plugin.Log.LogInfo($"[MLEL Preview] Found source object '{name}' by name fallback at {t.position} (recorded position was {position}).");
+                            return t.gameObject;
+                        }
+                    }
+                }
+            }
+
+            Plugin.Log.LogWarning($"[MLEL Preview] No source object named '{name}' found near {position}. Scanned {candidates} candidates.");
+            return null;
         }
 
         private void SpawnStaticInstance(GameObject source, StaticObject marker, bool isFallback)

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using SPTarkov.Server.Core.Models.Common;
 using SPTarkov.Server.Core.Models.Eft.Common;
 using SPTarkov.Server.Core.Models.Eft.Common.Tables;
@@ -10,12 +11,33 @@ namespace MapLootEditorLite.Server;
 
 public static class LootTransformer
 {
-    private static readonly HashSet<string> RegisteredSpawnIds = new HashSet<string>();
+    // Tracks which LooseLoot instances have already had a transformer attached, so Register() can be safely called again when locations are regenerated.
+    private static readonly ConditionalWeakTable<object, object> RegisteredLooseLoot = new ConditionalWeakTable<object, object>();
+    private static DatabaseService? _databaseService;
 
     public static void Register(DatabaseService databaseService)
     {
-        var locations = databaseService.GetLocations().GetDictionary();
+        _databaseService = databaseService;
+        RegisterInternal();
+    }
+
+    public static void Register()
+    {
+        RegisterInternal();
+    }
+
+    private static void RegisterInternal()
+    {
+        if (_databaseService is null)
+        {
+            ServerPlugin.Logger?.Warning("[MLEL] LootTransformer.Register() called before DatabaseService was set; skipping.");
+            return;
+        }
+
+        var databaseService = _databaseService;
+        var locations = databaseService!.GetLocations().GetDictionary();
         var registered = 0;
+        var skipped = 0;
 
         foreach (var (locationId, location) in locations)
         {
@@ -25,21 +47,42 @@ public static class LootTransformer
                 continue;
             }
 
-            location.LooseLoot?.AddTransformer(looseLoot =>
+            var looseLoot = location.LooseLoot;
+            if (looseLoot == null)
             {
-                if (looseLoot == null)
+                ServerPlugin.Logger?.Warning($"[MLEL] Location '{locationId}' has no LooseLoot; skipping loot transformer.");
+                continue;
+            }
+
+            if (RegisteredLooseLoot.TryGetValue(looseLoot, out _))
+            {
+                skipped++;
+                continue;
+            }
+            RegisteredLooseLoot.Add(looseLoot, true);
+
+            looseLoot.AddTransformer(looseLootObj =>
+            {
+                if (looseLootObj == null)
                 {
-                    return looseLoot;
+                    return looseLootObj;
                 }
 
-                var spawnpoints = looseLoot.Spawnpoints?.ToList() ?? [];
+                var spawnpoints = looseLootObj.Spawnpoints?.ToList() ?? [];
+                var existingIds = new HashSet<string>(spawnpoints.Select(s => s.LocationId));
                 var random = new Random();
+                var added = 0;
 
                 foreach (var map in maps)
                 {
                     foreach (var spawn in map.LootSpawns)
                     {
-                        if (spawn.Forced || !RegisteredSpawnIds.Add(spawn.Id))
+                        if (spawn.Forced)
+                        {
+                            continue;
+                        }
+
+                        if (!existingIds.Add(spawn.Id))
                         {
                             continue;
                         }
@@ -51,6 +94,7 @@ public static class LootTransformer
                         }
 
                         spawnpoints.Add(CreateSpawnpoint(spawn, filteredItems));
+                        added++;
                     }
 
                     foreach (var zone in map.LootZones)
@@ -69,22 +113,28 @@ public static class LootTransformer
                             }
 
                             var locationId = $"{zone.Id}_{i}";
-                            if (RegisteredSpawnIds.Add(locationId))
+                            if (!existingIds.Add(locationId))
                             {
-                                spawnpoints.Add(CreateZoneItemSpawnpoint(zone, item, i, random));
+                                continue;
                             }
+
+                            spawnpoints.Add(CreateZoneItemSpawnpoint(zone, item, i, random));
+                            added++;
                         }
                     }
                 }
 
-                looseLoot.Spawnpoints = spawnpoints;
-                return looseLoot;
+                if (added > 0)
+                    ServerPlugin.Logger?.Info($"[MLEL] Added {added} custom loot spawnpoints to {locationId}.");
+
+                looseLootObj.Spawnpoints = spawnpoints;
+                return looseLootObj;
             });
 
             registered++;
         }
 
-        ServerPlugin.Logger?.Info($"[MLEL] Registered loot transformers for {registered} locations");
+        ServerPlugin.Logger?.Info($"[MLEL] Registered loot transformers for {registered} locations (skipped {skipped} already-registered).");
     }
 
     private static Spawnpoint CreateSpawnpoint(LooseLootSpawn spawn, List<LootItem> filteredItems)

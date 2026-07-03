@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using SPTarkov.Server.Core.Models.Common;
 using SPTarkov.Server.Core.Models.Eft.Common;
 using SPTarkov.Server.Core.Models.Eft.Common.Tables;
@@ -12,11 +13,32 @@ namespace MapLootEditorLite.Server;
 
 public static class InteractiveObjectTransformer
 {
-    private static readonly HashSet<string> RegisteredContainerIds = new HashSet<string>();
+    // Tracks which StaticLoot/StaticContainers instances have already had transformers attached, so Register() can be safely called again when locations are regenerated.
+    private static readonly ConditionalWeakTable<object, object> RegisteredStaticLoot = new ConditionalWeakTable<object, object>();
+    private static readonly ConditionalWeakTable<object, object> RegisteredStaticContainers = new ConditionalWeakTable<object, object>();
+    private static DatabaseService? _databaseService;
 
     public static void Register(DatabaseService databaseService)
     {
-        var locations = databaseService.GetLocations().GetDictionary();
+        _databaseService = databaseService;
+        RegisterInternal();
+    }
+
+    public static void Register()
+    {
+        RegisterInternal();
+    }
+
+    private static void RegisterInternal()
+    {
+        if (_databaseService is null)
+        {
+            ServerPlugin.Logger?.Warning("[MLEL] InteractiveObjectTransformer.Register() called before DatabaseService was set; skipping.");
+            return;
+        }
+
+        var databaseService = _databaseService;
+        var locations = databaseService!.GetLocations().GetDictionary();
         var registered = 0;
 
         foreach (var (locationId, location) in locations)
@@ -77,8 +99,15 @@ public static class InteractiveObjectTransformer
                 return;
             }
 
+            if (RegisteredStaticLoot.TryGetValue(staticLoot, out _))
+            {
+                ServerPlugin.Logger?.Info($"[MLEL] StaticLoot transformer already registered for {locationId}; skipping.");
+                return;
+            }
+            RegisteredStaticLoot.Add(staticLoot, true);
+
             var transformedContainers = containers
-                .Where(c => !string.IsNullOrWhiteSpace(c.ContainerId) && c.LootMode != ContainerLootMode.Custom && RegisteredContainerIds.Add(c.ContainerId))
+                .Where(c => !string.IsNullOrWhiteSpace(c.ContainerId) && c.LootMode != ContainerLootMode.Custom)
                 .ToList();
 
             if (transformedContainers.Count == 0)
@@ -232,6 +261,13 @@ public static class InteractiveObjectTransformer
                 ServerPlugin.Logger?.Warning($"[MLEL] Location '{locationId}' StaticContainers has no AddTransformer method; custom containers will not be registered.");
                 return;
             }
+
+            if (RegisteredStaticContainers.TryGetValue(staticContainers, out _))
+            {
+                ServerPlugin.Logger?.Info($"[MLEL] StaticContainers transformer already registered for {locationId}; skipping.");
+                return;
+            }
+            RegisteredStaticContainers.Add(staticContainers, true);
 
             var parameterType = addTransformer.GetParameters().First().ParameterType;
             var genericArg = parameterType.GetGenericArguments().FirstOrDefault();

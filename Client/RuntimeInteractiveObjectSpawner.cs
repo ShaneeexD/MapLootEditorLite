@@ -59,8 +59,8 @@ namespace MapLootEditorLite.Client
             var directories = new List<string>();
             if (!string.IsNullOrEmpty(Plugin.ServerModPacksDirectory) && Directory.Exists(Plugin.ServerModPacksDirectory))
                 directories.Add(Plugin.ServerModPacksDirectory);
-            if (!string.IsNullOrEmpty(Plugin.ServerModExportsDirectory) && Directory.Exists(Plugin.ServerModExportsDirectory))
-                directories.Add(Plugin.ServerModExportsDirectory);
+
+            // Interactive objects should only spawn from published packs, not from exports used for editing.
 
             if (directories.Count == 0)
             {

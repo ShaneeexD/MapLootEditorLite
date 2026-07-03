@@ -24,6 +24,7 @@ namespace MapLootEditorLite.Client
         public static ConfigEntry<bool> EnableEditor;
         public static ConfigEntry<bool> EnableDebugVisuals;
         public static ConfigEntry<float> UIScale;
+        public static ConfigEntry<float> VanillaRenderDistance;
         public static MapEditorController Controller { get; private set; }
 
         private void Awake()
@@ -63,6 +64,7 @@ namespace MapLootEditorLite.Client
             EnableEditor = base.Config.Bind("General", "EnableEditor", true, "Enable the in-raid F8 editor");
             EnableDebugVisuals = base.Config.Bind("General", "EnableDebugVisuals", false, "Show debug visuals in raid");
             UIScale = base.Config.Bind("General", "UIScale", 1.0f, new ConfigDescription("Scale of the editor UI window", new AcceptableValueRange<float>(0.5f, 2.0f)));
+            VanillaRenderDistance = base.Config.Bind("General", "VanillaRenderDistance", 50f, new ConfigDescription("Maximum distance to render vanilla gizmos (0 = unlimited)", new AcceptableValueRange<float>(0f, 500f)));
 
             if (EnableEditor.Value)
             {

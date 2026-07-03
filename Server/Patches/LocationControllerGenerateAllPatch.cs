@@ -22,6 +22,8 @@ public class LocationControllerGenerateAllPatch : AbstractPatch
     [PatchPostfix]
     public static void Postfix()
     {
+        LootTransformer.Register();
+        InteractiveObjectTransformer.Register();
         QuestFilterContext.CurrentSessionId = null;
     }
 }

@@ -31,6 +31,7 @@ namespace MapLootEditorLite.Client
         private RectTransform _bottomPanel;
         private RectTransform _deleteConfirmPanel;
         private RectTransform _exportDialogPanel;
+        private RectTransform _renderDistanceDialogPanel;
         private RectTransform _contextMenuPanel;
         private string _fieldClipboard = "";
 
@@ -40,10 +41,13 @@ namespace MapLootEditorLite.Client
         private RectTransform _groupsContent;
         private int _itemsListPage;
         private List<LootItem> _itemsListPageTarget;
+        private int _hierarchyPage;
+        private string _hierarchyPageTarget;
 
         private Text _titleText;
         private Text _deleteConfirmText;
         private InputField _exportPackInput;
+        private InputField _renderDistanceInput;
         private InputField _searchInput;
         private InputField _groupInput;
         private InputField _prefabNameInput;
@@ -299,6 +303,7 @@ namespace MapLootEditorLite.Client
             BuildBottomPanel();
             BuildDeleteConfirm();
             BuildExportDialog();
+            BuildRenderDistanceDialog();
             BuildContextMenu();
             BuildResizeHandles();
 
@@ -341,7 +346,8 @@ namespace MapLootEditorLite.Client
                 {
                     new MenuItem("Toggle Vanilla Gizmos", () => controller.ToggleVanillaGizmos()),
                     new MenuItem("Toggle Pack Gizmos", () => controller.TogglePackGizmos())
-                })
+                }),
+                new MenuItem("Vanilla Render Distance", () => ShowRenderDistanceDialog())
             }, 40, 22);
             BuildMenuButton(row1, "Add Spawn", new List<MenuItem>
             {
@@ -964,6 +970,60 @@ namespace MapLootEditorLite.Client
                 _exportDialogPanel.gameObject.SetActive(false);
         }
 
+        private void BuildRenderDistanceDialog()
+        {
+            _renderDistanceDialogPanel = UIBuilder.CreatePanel("RenderDistanceDialog", _canvas.transform, new Color(0.08f, 0.08f, 0.08f, 0.95f));
+            _renderDistanceDialogPanel.anchorMin = new Vector2(0.5f, 0.5f);
+            _renderDistanceDialogPanel.anchorMax = new Vector2(0.5f, 0.5f);
+            _renderDistanceDialogPanel.pivot = new Vector2(0.5f, 0.5f);
+            _renderDistanceDialogPanel.sizeDelta = new Vector2(340, 140);
+            UIBuilder.AddVerticalLayout(_renderDistanceDialogPanel, 12, 8, true, true);
+
+            UIBuilder.CreateText(_renderDistanceDialogPanel, "Vanilla Render Distance", 13, Color.white, FontStyle.Bold);
+            UIBuilder.CreateText(_renderDistanceDialogPanel, "Max distance to render vanilla gizmos (0 = unlimited):", 11, new Color(0.7f, 0.7f, 0.7f, 1f));
+            _renderDistanceInput = UIBuilder.CreateInputField(_renderDistanceDialogPanel, "meters", (Plugin.VanillaRenderDistance?.Value ?? 50f).ToString("F0"), null, 240, 22);
+
+            var row = UIBuilder.CreatePanel("RenderDistanceDialogRow", _renderDistanceDialogPanel, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row, 8, 8, false, false);
+            UIBuilder.AddLayoutElement(row, null, 32, null, 32, null, null);
+
+            UIBuilder.CreateButton(row, "Apply", () => ConfirmRenderDistance(), 100, 28);
+            UIBuilder.CreateButton(row, "Cancel", () => CancelRenderDistance(), 100, 28);
+
+            _renderDistanceDialogPanel.gameObject.SetActive(false);
+        }
+
+        private void ShowRenderDistanceDialog()
+        {
+            CloseAllMenus();
+            if (_renderDistanceDialogPanel == null || _renderDistanceInput == null) return;
+            _renderDistanceInput.text = (Plugin.VanillaRenderDistance?.Value ?? 50f).ToString("F0");
+            _renderDistanceDialogPanel.gameObject.SetActive(true);
+        }
+
+        private void ConfirmRenderDistance()
+        {
+            if (_renderDistanceDialogPanel == null || _renderDistanceInput == null) return;
+            if (float.TryParse(_renderDistanceInput.text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value))
+            {
+                value = Mathf.Clamp(value, 0f, 500f);
+                if (Plugin.VanillaRenderDistance != null)
+                    Plugin.VanillaRenderDistance.Value = value;
+                if (renderer != null)
+                {
+                    renderer.VanillaRenderDistance = value;
+                    renderer.Rebuild();
+                }
+            }
+            _renderDistanceDialogPanel.gameObject.SetActive(false);
+        }
+
+        private void CancelRenderDistance()
+        {
+            if (_renderDistanceDialogPanel != null)
+                _renderDistanceDialogPanel.gameObject.SetActive(false);
+        }
+
         private void BuildContextMenu()
         {
             _contextMenuPanel = UIBuilder.CreatePanel("ContextMenu", _canvas.transform, new Color(0.12f, 0.12f, 0.12f, 0.98f));
@@ -1032,6 +1092,30 @@ namespace MapLootEditorLite.Client
             _titleText.text = $"Map Loot Editor Lite - {map} ({count} markers)";
         }
 
+        private abstract class HierarchyEntry { }
+        private sealed class GroupHeaderEntry : HierarchyEntry
+        {
+            public readonly string Key;
+            public readonly int Count;
+            public readonly bool Collapsed;
+            public GroupHeaderEntry(string key, int count, bool collapsed)
+            {
+                Key = key;
+                Count = count;
+                Collapsed = collapsed;
+            }
+        }
+        private sealed class MarkerEntry : HierarchyEntry
+        {
+            public readonly MarkerBase Marker;
+            public readonly bool Indent;
+            public MarkerEntry(MarkerBase marker, bool indent)
+            {
+                Marker = marker;
+                Indent = indent;
+            }
+        }
+
         private void RefreshHierarchy()
         {
             if (_hierarchyContent == null || manager == null)
@@ -1039,6 +1123,8 @@ namespace MapLootEditorLite.Client
             ClearChildren(_hierarchyContent);
 
             var allMarkers = manager.GetActiveMarkers().Where(MatchesSearch).ToList();
+
+            var entries = new List<HierarchyEntry>();
 
             // Grouped sections (collapsible)
             var grouped = allMarkers
@@ -1050,36 +1136,76 @@ namespace MapLootEditorLite.Client
             {
                 var key = grp.Key;
                 bool collapsed = _collapsedGroups.Contains(key);
-
-                var grpHdr = UIBuilder.CreatePanel("GrpHdr", _hierarchyContent, new Color(0.18f, 0.2f, 0.28f, 0.9f));
-                UIBuilder.AddHorizontalLayout(grpHdr, 3, 1, false, false);
-                UIBuilder.AddLayoutElement(grpHdr, null, 18, null, 18, null, 0);
-                UIBuilder.CreateLabel(grpHdr, collapsed ? "\u25ba" : "\u25bc", 10, 12, 14);
-                UIBuilder.CreateLabel(grpHdr, $"{key}  ({grp.Count()})", 10, 0, 14);
-                var capturedKey = key;
-                var hdrBtn = grpHdr.gameObject.AddComponent<Button>();
-                hdrBtn.targetGraphic = grpHdr.GetComponent<Image>();
-                var hdrBtnColors = hdrBtn.colors;
-                hdrBtnColors.normalColor = new Color(0.18f, 0.2f, 0.28f, 0.9f);
-                hdrBtnColors.highlightedColor = new Color(0.25f, 0.28f, 0.38f, 1f);
-                hdrBtn.colors = hdrBtnColors;
-                hdrBtn.onClick.AddListener(() =>
-                {
-                    if (_collapsedGroups.Contains(capturedKey)) _collapsedGroups.Remove(capturedKey);
-                    else _collapsedGroups.Add(capturedKey);
-                    manager.SelectGroup(capturedKey);
-                    RequestHierarchyRefresh();
-                    RequestInspectorRefresh();
-                });
-
+                entries.Add(new GroupHeaderEntry(key, grp.Count(), collapsed));
                 if (!collapsed)
+                {
                     foreach (var m in grp)
-                        BuildHierarchyRow(m, indent: true);
+                        entries.Add(new MarkerEntry(m, indent: true));
+                }
             }
 
             // Ungrouped items
             foreach (var m in allMarkers.Where(m => string.IsNullOrWhiteSpace(m.group)))
-                BuildHierarchyRow(m, indent: false);
+                entries.Add(new MarkerEntry(m, indent: false));
+
+            const int pageSize = 100;
+            int start = 0;
+            int end = entries.Count;
+            int pageCount = 1;
+
+            if (entries.Count > pageSize)
+            {
+                var pageKey = (_vanillaHierarchyActive ? "vanilla" : "pack") + "|" + (_searchText ?? "");
+                if (_hierarchyPageTarget != pageKey)
+                {
+                    _hierarchyPageTarget = pageKey;
+                    _hierarchyPage = 0;
+                }
+                pageCount = (entries.Count + pageSize - 1) / pageSize;
+                _hierarchyPage = Mathf.Clamp(_hierarchyPage, 0, pageCount - 1);
+                start = _hierarchyPage * pageSize;
+                end = Mathf.Min(start + pageSize, entries.Count);
+
+                var pageRow = UIBuilder.CreatePanel("HierarchyPageRow", _hierarchyContent, new Color(0, 0, 0, 0));
+                UIBuilder.AddHorizontalLayout(pageRow, 4, 2, false, false);
+                UIBuilder.AddLayoutElement(pageRow, null, 22, null, 22, null, 0);
+                UIBuilder.CreateButton(pageRow, "<", () => { _hierarchyPage--; RequestHierarchyRefresh(); }, 30, 22, 10);
+                UIBuilder.CreateText(pageRow, $"Page {_hierarchyPage + 1} / {pageCount} ({entries.Count} rows)", 11, Color.white);
+                UIBuilder.CreateButton(pageRow, ">", () => { _hierarchyPage++; RequestHierarchyRefresh(); }, 30, 22, 10);
+            }
+
+            for (int i = start; i < end; i++)
+            {
+                if (entries[i] is GroupHeaderEntry g)
+                    BuildHierarchyGroupHeader(g);
+                else if (entries[i] is MarkerEntry m)
+                    BuildHierarchyRow(m.Marker, m.Indent);
+            }
+        }
+
+        private void BuildHierarchyGroupHeader(GroupHeaderEntry entry)
+        {
+            var key = entry.Key;
+            var grpHdr = UIBuilder.CreatePanel("GrpHdr", _hierarchyContent, new Color(0.18f, 0.2f, 0.28f, 0.9f));
+            UIBuilder.AddHorizontalLayout(grpHdr, 3, 1, false, false);
+            UIBuilder.AddLayoutElement(grpHdr, null, 18, null, 18, null, 0);
+            UIBuilder.CreateLabel(grpHdr, entry.Collapsed ? "\u25ba" : "\u25bc", 10, 12, 14);
+            UIBuilder.CreateLabel(grpHdr, $"{key}  ({entry.Count})", 10, 0, 14);
+            var capturedKey = key;
+            var hdrBtn = grpHdr.gameObject.AddComponent<Button>();
+            hdrBtn.targetGraphic = grpHdr.GetComponent<Image>();
+            var hdrBtnColors = hdrBtn.colors;
+            hdrBtnColors.normalColor = new Color(0.18f, 0.2f, 0.28f, 0.9f);
+            hdrBtnColors.highlightedColor = new Color(0.25f, 0.28f, 0.38f, 1f);
+            hdrBtn.colors = hdrBtnColors;
+            hdrBtn.onClick.AddListener(() =>
+            {
+                if (_collapsedGroups.Contains(capturedKey)) _collapsedGroups.Remove(capturedKey);
+                else _collapsedGroups.Add(capturedKey);
+                manager.SelectGroup(capturedKey);
+                RequestHierarchyRefresh();
+                RequestInspectorRefresh();
+            });
         }
 
         private void BuildHierarchyRow(MarkerBase marker, bool indent)

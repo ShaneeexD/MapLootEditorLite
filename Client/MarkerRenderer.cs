@@ -41,6 +41,7 @@ namespace MapLootEditorLite.Client
         public bool ShowGizmo { get; set; } = true;
         public bool ShowVanillaGizmos { get; set; } = true;
         public bool ShowPackGizmos { get; set; } = true;
+        public float VanillaRenderDistance { get; set; } = 150f;
         public GizmoAxis HoveredAxis { get; private set; }
         public GizmoAxis ActiveAxis { get; set; }
 
@@ -66,8 +67,18 @@ namespace MapLootEditorLite.Client
             if (_manager?.Data == null)
                 return;
 
+            var camera = Camera.main;
+            var cameraPos = camera != null ? camera.transform.position : Vector3.zero;
+
             foreach (var marker in _manager.GetAllMarkersIncludingVanilla())
             {
+                if (marker.isVanilla && VanillaRenderDistance > 0f && camera != null)
+                {
+                    var distance = Vector3.Distance(cameraPos, marker.position.ToVector3());
+                    if (distance > VanillaRenderDistance)
+                        continue;
+                }
+
                 CreateVisual(marker);
             }
         }
@@ -76,6 +87,9 @@ namespace MapLootEditorLite.Client
         {
             if (_manager?.Data == null)
                 return;
+
+            var camera = Camera.main;
+            var cameraPos = camera != null ? camera.transform.position : Vector3.zero;
 
             foreach (var marker in _manager.GetAllMarkersIncludingVanilla())
             {
@@ -101,6 +115,20 @@ namespace MapLootEditorLite.Client
                     continue;
                 }
 
+                if (marker.isVanilla && VanillaRenderDistance > 0f && camera != null)
+                {
+                    var distance = Vector3.Distance(cameraPos, marker.position.ToVector3());
+                    if (distance > VanillaRenderDistance)
+                    {
+                        if (_visuals.TryGetValue(marker.id, out GameObject farVisual))
+                        {
+                            if (farVisual.activeSelf)
+                                farVisual.SetActive(false);
+                        }
+                        continue;
+                    }
+                }
+
                 if (marker is LootZone currentZone && _visuals.TryGetValue(marker.id, out GameObject existingVisual))
                 {
                     if (_zoneShapeCache.TryGetValue(marker.id, out ZoneShape cachedShape) && cachedShape != currentZone.shape)
@@ -117,6 +145,9 @@ namespace MapLootEditorLite.Client
 
                 if (visual != null)
                 {
+                    if (!visual.activeSelf)
+                        visual.SetActive(true);
+
                     visual.transform.position = marker.position.ToVector3();
                     visual.transform.rotation = marker.rotation.ToQuaternion();
 
@@ -184,6 +215,12 @@ namespace MapLootEditorLite.Client
                     continue;
                 if (!marker.isVanilla && !ShowPackGizmos)
                     continue;
+                if (marker.isVanilla && VanillaRenderDistance > 0f && camera != null)
+                {
+                    var distance = Vector3.Distance(camera.transform.position, marker.position.ToVector3());
+                    if (distance > VanillaRenderDistance)
+                        continue;
+                }
 
                 var screenPos = camera.WorldToScreenPoint(marker.position.ToVector3());
                 if (screenPos.z <= 0)

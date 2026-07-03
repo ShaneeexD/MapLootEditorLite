@@ -73,7 +73,10 @@ namespace MapLootEditorLite.Client
             _previewRoot = new GameObject("MLE_PreviewRoot");
             _previewRoot.transform.SetParent(transform, false);
 
-            _renderer = new MarkerRenderer(_manager, _visualRoot);
+            _renderer = new MarkerRenderer(_manager, _visualRoot)
+            {
+                VanillaRenderDistance = Plugin.VanillaRenderDistance?.Value ?? 150f
+            };
             _previews = new LootPreviewSpawner(_previewRoot);
             _ui = gameObject.AddComponent<CustomEditorUI>();
             _ui.Init(this, _manager, _renderer, _previews);
@@ -258,7 +261,7 @@ namespace MapLootEditorLite.Client
 
         private void OnDestroy()
         {
-            _previews?.ClearAll();
+            _previews?.ClearAll(true);
             _renderer?.Clear();
         }
 
@@ -269,7 +272,7 @@ namespace MapLootEditorLite.Client
             {
                 if (_currentGameWorld != null)
                 {
-                    _previews.ClearAll();
+                    _previews.ClearAll(true);
                     _renderer.Clear();
                     _visualsCleared = true;
                 }
@@ -287,7 +290,7 @@ namespace MapLootEditorLite.Client
             {
                 _currentMapId = mapId;
                 _visualsCleared = false;
-                _previews.ClearAll();
+                _previews.ClearAll(true);
                 _manager.VanillaData = null;
                 var mapData = LoadMapDataFromPacks(mapId) ?? JsonStorage.Load(mapId);
                 mapData.map = mapId;

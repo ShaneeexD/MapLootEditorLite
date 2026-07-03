@@ -18,6 +18,8 @@ public class MatchControllerStartLocalRaidPatch : AbstractPatch
     public static void Prefix(MongoId sessionId, StartLocalRaidRequestData request)
     {
         QuestFilterContext.CurrentSessionId = sessionId.ToString();
+        LootTransformer.Register();
+        InteractiveObjectTransformer.Register();
     }
 
     [PatchPostfix]
