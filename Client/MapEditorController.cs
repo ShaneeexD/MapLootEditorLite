@@ -1067,6 +1067,8 @@ namespace MapLootEditorLite.Client
                                 mez.scale = TransformData.FromVector3(startScale + centerScaleDelta);
                             else if (m is BotSpawnZone mbz)
                                 mbz.scale = TransformData.FromVector3(startScale + centerScaleDelta);
+                            else if (m is TriggerZone mtz)
+                                mtz.scale = TransformData.FromVector3(startScale + centerScaleDelta);
                         }
                         _renderer.Rebuild();
                     }
@@ -1112,6 +1114,11 @@ namespace MapLootEditorLite.Client
                         else if (_manager.Selected is BotSpawnZone bz)
                         {
                             bz.scale = TransformData.FromVector3(newScale);
+                            _renderer.Rebuild();
+                        }
+                        else if (_manager.Selected is TriggerZone tz)
+                        {
+                            tz.scale = TransformData.FromVector3(newScale);
                             _renderer.Rebuild();
                         }
                     }
@@ -1162,6 +1169,8 @@ namespace MapLootEditorLite.Client
                 _gizmoDragStartMarkerScale = ez.scale?.ToVector3() ?? Vector3.one;
             else if (_manager.Selected is BotSpawnZone bz)
                 _gizmoDragStartMarkerScale = bz.scale?.ToVector3() ?? Vector3.one;
+            else if (_manager.Selected is TriggerZone tz)
+                _gizmoDragStartMarkerScale = tz.scale?.ToVector3() ?? Vector3.one;
 
             _gizmoDragStartCenter = _manager.SelectedIds.Count > 1 ? _manager.SelectionCenter : _gizmoDragStartMarkerPos;
             _gizmoDragStartCenterRot = _manager.SelectedIds.Count > 1 ? Quaternion.identity : _manager.Selected.rotation.ToQuaternion();
@@ -1190,6 +1199,8 @@ namespace MapLootEditorLite.Client
                     _gizmoDragStartScales[id] = mez.scale?.ToVector3() ?? Vector3.one;
                 else if (m is BotSpawnZone mbz)
                     _gizmoDragStartScales[id] = mbz.scale?.ToVector3() ?? Vector3.one;
+                else if (m is TriggerZone mtz)
+                    _gizmoDragStartScales[id] = mtz.scale?.ToVector3() ?? Vector3.one;
                 else
                     _gizmoDragStartScales[id] = Vector3.one;
             }

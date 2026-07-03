@@ -88,6 +88,7 @@ namespace MapLootEditorLite.Client
             light.color = marker.color.ToColor().linear;
             light.intensity = marker.intensity;
             light.range = marker.range;
+            light.enabled = marker.enabled;
             if (light.type == LightType.Spot)
                 light.spotAngle = marker.spotAngle;
 

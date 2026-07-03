@@ -27,7 +27,22 @@ namespace MapLootEditorLite.Client
         private BotsController _botsController;
         private List<TriggerZone> _triggerZones = new List<TriggerZone>();
         private Dictionary<string, List<TriggerSpawnData>> _triggeredSpawnData = new Dictionary<string, List<TriggerSpawnData>>();
-        private HashSet<string> _activatedTriggers = new HashSet<string>();
+        private Dictionary<string, TriggerState> _triggerStates = new Dictionary<string, TriggerState>();
+        private List<PendingTrigger> _pendingTriggers = new List<PendingTrigger>();
+        private float _raidStartTime;
+
+        private class TriggerState
+        {
+            public float LastActivationTime;
+            public HashSet<string> ActivatedPlayers = new HashSet<string>();
+        }
+
+        private class PendingTrigger
+        {
+            public TriggerZone Trigger;
+            public string PlayerProfileId;
+            public float ActivationTime;
+        }
 
         private class SpawnRequest
         {
@@ -66,7 +81,9 @@ namespace MapLootEditorLite.Client
             _botsController = null;
             _triggerZones.Clear();
             _triggeredSpawnData.Clear();
-            _activatedTriggers.Clear();
+            _triggerStates.Clear();
+            _pendingTriggers.Clear();
+            _raidStartTime = 0f;
         }
 
         private void LoadPacks()
@@ -178,7 +195,9 @@ namespace MapLootEditorLite.Client
             _spawnRequests.Clear();
             _triggerZones.Clear();
             _triggeredSpawnData.Clear();
-            _activatedTriggers.Clear();
+            _triggerStates.Clear();
+            _pendingTriggers.Clear();
+            _raidStartTime = Time.time;
 
             var points = new List<BotSpawnPoint>();
             var zones = new List<BotSpawnZone>();
@@ -695,7 +714,7 @@ namespace MapLootEditorLite.Client
 
         private void Update()
         {
-            if (_botsController == null || _triggerZones.Count == 0)
+            if (_triggerZones.Count == 0)
                 return;
 
             var player = _currentWorld?.MainPlayer;
@@ -703,13 +722,64 @@ namespace MapLootEditorLite.Client
                 return;
 
             var playerPos = player.Transform.position;
+            var profileId = player.ProfileId ?? "";
+            var side = player.Side;
+            var raidTime = Time.time - _raidStartTime;
+
+            for (int i = _pendingTriggers.Count - 1; i >= 0; i--)
+            {
+                var pending = _pendingTriggers[i];
+                if (Time.time >= pending.ActivationTime)
+                {
+                    _pendingTriggers.RemoveAt(i);
+                    ActivateTrigger(pending.Trigger, pending.PlayerProfileId);
+                }
+            }
+
             foreach (var trigger in _triggerZones)
             {
-                if (_activatedTriggers.Contains(trigger.name))
+                if (!IsPlayerInsideTrigger(trigger, playerPos))
                     continue;
-                if (IsPlayerInsideTrigger(trigger, playerPos))
-                    ActivateTrigger(trigger.name);
+
+                if (!CanTriggerActivate(trigger, profileId, side, raidTime))
+                    continue;
+
+                if (trigger.delaySeconds > 0f)
+                {
+                    if (!_pendingTriggers.Any(p => p.Trigger == trigger && p.PlayerProfileId == profileId))
+                        _pendingTriggers.Add(new PendingTrigger { Trigger = trigger, PlayerProfileId = profileId, ActivationTime = Time.time + trigger.delaySeconds });
+                    continue;
+                }
+
+                ActivateTrigger(trigger, profileId);
             }
+        }
+
+        private bool CanTriggerActivate(TriggerZone trigger, string profileId, EPlayerSide side, float raidTime)
+        {
+            if (trigger.minRaidTime > 0f && raidTime < trigger.minRaidTime)
+                return false;
+            if (trigger.maxRaidTime > 0f && raidTime > trigger.maxRaidTime)
+                return false;
+
+            if (trigger.allowedSide == TriggerSide.Pmc && side != EPlayerSide.Bear && side != EPlayerSide.Usec)
+                return false;
+            if (trigger.allowedSide == TriggerSide.Scav && side != EPlayerSide.Savage)
+                return false;
+
+            if (!_triggerStates.TryGetValue(trigger.name, out var state))
+                return true;
+
+            if (trigger.triggerMode == TriggerMode.OneTime)
+                return false;
+
+            if (trigger.triggerMode == TriggerMode.OncePerPlayer && state.ActivatedPlayers.Contains(profileId))
+                return false;
+
+            if (trigger.triggerMode == TriggerMode.Repeatable && trigger.cooldownSeconds > 0f && Time.time - state.LastActivationTime < trigger.cooldownSeconds)
+                return false;
+
+            return true;
         }
 
         private bool IsPlayerInsideTrigger(TriggerZone trigger, Vector3 position)
@@ -733,20 +803,58 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        private void ActivateTrigger(string name)
+        private void ActivateTrigger(TriggerZone trigger, string profileId)
         {
-            if (_activatedTriggers.Contains(name) || !_triggeredSpawnData.TryGetValue(name, out var data))
-                return;
-            _activatedTriggers.Add(name);
-
-            Plugin.Log.LogInfo($"[MLEL Bot] Trigger zone '{name}' activated.");
-
-            foreach (var spawn in data)
+            if (trigger.triggerChance < 100f && _rng.NextDouble() * 100 > trigger.triggerChance)
             {
-                if (spawn.Point != null)
-                    SpawnTriggeredPoint(spawn.Point, spawn.BotZone);
-                else if (spawn.Zone != null)
-                    SpawnTriggeredZone(spawn.Zone, spawn.BotZone);
+                Plugin.Log.LogInfo($"[MLEL Bot] Trigger zone '{trigger.name}' failed chance roll ({trigger.triggerChance:F2}%).");
+                return;
+            }
+
+            if (!_triggerStates.TryGetValue(trigger.name, out var state))
+            {
+                state = new TriggerState();
+                _triggerStates[trigger.name] = state;
+            }
+            state.LastActivationTime = Time.time;
+            state.ActivatedPlayers.Add(profileId);
+
+            Plugin.Log.LogInfo($"[MLEL Bot] Trigger zone '{trigger.name}' activated for player {profileId}.");
+
+            ApplyTriggerLightActions(trigger);
+
+            if (_triggeredSpawnData.TryGetValue(trigger.name, out var data))
+            {
+                foreach (var spawn in data)
+                {
+                    if (spawn.Point != null)
+                        SpawnTriggeredPoint(spawn.Point, spawn.BotZone);
+                    else if (spawn.Zone != null)
+                        SpawnTriggeredZone(spawn.Zone, spawn.BotZone);
+                }
+            }
+        }
+
+        private void ApplyTriggerLightActions(TriggerZone trigger)
+        {
+            if (trigger.lightZoneNames == null || trigger.lightZoneNames.Count == 0)
+                return;
+
+            var spawner = RuntimeLightZoneSpawner.Instance;
+            if (spawner == null)
+            {
+                Plugin.Log.LogWarning("[MLEL Bot] Cannot apply light actions: RuntimeLightZoneSpawner is not available.");
+                return;
+            }
+
+            foreach (var name in trigger.lightZoneNames)
+            {
+                bool? desiredState = null;
+                if (trigger.lightAction == TriggerLightAction.Enable)
+                    desiredState = true;
+                else if (trigger.lightAction == TriggerLightAction.Disable)
+                    desiredState = false;
+                spawner.SetLightState(name, desiredState);
             }
         }
 

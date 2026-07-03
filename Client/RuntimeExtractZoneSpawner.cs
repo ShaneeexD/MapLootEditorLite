@@ -198,6 +198,7 @@ namespace MapLootEditorLite.Client
                         list.Add(point);
                         ExfiltrationControllerClass.Instance.ExfiltrationPoints = list.ToArray();
                         _spawned.Add(point);
+                        ApplyLinkedLightActions(zone);
                         Plugin.Log.LogInfo($"[MLEL Extract] Registered custom extract zone '{zone.name}' ({zone.exitName}) at {zone.position.x:F2}, {zone.position.y:F2}, {zone.position.z:F2}.");
                     }
                 }
@@ -205,6 +206,29 @@ namespace MapLootEditorLite.Client
                 {
                     Plugin.Log.LogError($"[MLEL Extract] Failed to create extract zone '{zone.name}': {ex.Message}");
                 }
+            }
+        }
+
+        private void ApplyLinkedLightActions(ExtractZone zone)
+        {
+            if (!zone.linkLights || zone.lightZoneNames == null || zone.lightZoneNames.Count == 0)
+                return;
+
+            var spawner = RuntimeLightZoneSpawner.Instance;
+            if (spawner == null)
+            {
+                Plugin.Log.LogWarning("[MLEL Extract] Cannot apply linked light actions: RuntimeLightZoneSpawner is not available.");
+                return;
+            }
+
+            foreach (var name in zone.lightZoneNames)
+            {
+                bool? desiredState = null;
+                if (zone.lightAction == TriggerLightAction.Enable)
+                    desiredState = true;
+                else if (zone.lightAction == TriggerLightAction.Disable)
+                    desiredState = false;
+                spawner.SetLightState(name, desiredState);
             }
         }
 

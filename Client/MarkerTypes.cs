@@ -38,6 +38,30 @@ namespace MapLootEditorLite.Client
     }
 
     [JsonConverter(typeof(StringEnumConverter))]
+    public enum TriggerMode
+    {
+        OneTime,
+        Repeatable,
+        OncePerPlayer
+    }
+
+    [JsonConverter(typeof(StringEnumConverter))]
+    public enum TriggerLightAction
+    {
+        Toggle,
+        Enable,
+        Disable
+    }
+
+    [JsonConverter(typeof(StringEnumConverter))]
+    public enum TriggerSide
+    {
+        Any,
+        Pmc,
+        Scav
+    }
+
+    [JsonConverter(typeof(StringEnumConverter))]
     public enum BotSpawnSide
     {
         Savage,
@@ -439,6 +463,9 @@ namespace MapLootEditorLite.Client
         public bool questCompleted = false;
         public string questId = "";
         public List<ExtractZoneRequirement> requirements = new List<ExtractZoneRequirement>();
+        public bool linkLights = false;
+        public TriggerLightAction lightAction = TriggerLightAction.Toggle;
+        public List<string> lightZoneNames = new List<string>();
 
         public override MarkerKind Kind => MarkerKind.ExtractZone;
     }
@@ -457,6 +484,15 @@ namespace MapLootEditorLite.Client
     {
         public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
         public ZoneShape shape = ZoneShape.Sphere;
+        public TriggerMode triggerMode = TriggerMode.OneTime;
+        public float triggerChance = 100f;
+        public float delaySeconds = 0f;
+        public float cooldownSeconds = 0f;
+        public float minRaidTime = 0f;
+        public float maxRaidTime = 0f;
+        public TriggerSide allowedSide = TriggerSide.Any;
+        public TriggerLightAction lightAction = TriggerLightAction.Toggle;
+        public List<string> lightZoneNames = new List<string>();
         public override MarkerKind Kind => MarkerKind.TriggerZone;
     }
 
@@ -533,6 +569,7 @@ namespace MapLootEditorLite.Client
         public float range = 10f;
         public float spotAngle = 30f;
         public string lightType = "Point";
+        public bool enabled = true;
         public float spawnChance = 100f;
         public bool questOnly = false;
         public bool questCompleted = false;

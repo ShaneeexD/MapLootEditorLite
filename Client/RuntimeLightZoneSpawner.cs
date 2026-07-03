@@ -180,10 +180,11 @@ namespace MapLootEditorLite.Client
             light.color = zone.color.ToColor().linear;
             light.intensity = zone.intensity;
             light.range = zone.range;
+            light.enabled = zone.enabled;
             if (light.type == LightType.Spot)
                 light.spotAngle = zone.spotAngle;
 
-            Plugin.Log.LogInfo($"[MLEL Light] Created light '{zone.name}' color={zone.color.r:F2},{zone.color.g:F2},{zone.color.b:F2},{zone.color.a:F2} linear={light.color.r:F2},{light.color.g:F2},{light.color.b:F2}.");
+            Plugin.Log.LogInfo($"[MLEL Light] Created light '{zone.name}' enabled={zone.enabled} color={zone.color.r:F2},{zone.color.g:F2},{zone.color.b:F2},{zone.color.a:F2} linear={light.color.r:F2},{light.color.g:F2},{light.color.b:F2}.");
 
             return go;
         }
@@ -193,6 +194,32 @@ namespace MapLootEditorLite.Client
             if (Enum.TryParse<LightType>(type, true, out var result))
                 return result;
             return LightType.Point;
+        }
+
+        public void SetLightState(string name, bool? active)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+
+            var normalized = name.Trim();
+            bool any = false;
+            foreach (var go in _spawned)
+            {
+                if (go == null)
+                    continue;
+                if (!go.name.Equals($"CustomLightZone_{normalized}", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var light = go.GetComponent<Light>();
+                if (light == null)
+                    continue;
+                any = true;
+                light.enabled = active ?? !light.enabled;
+            }
+
+            if (any)
+                Plugin.Log.LogInfo($"[MLEL Light] Trigger set light zone '{normalized}' to {(active.HasValue ? (active.Value ? "enabled" : "disabled") : "toggled")}.");
+            else
+                Plugin.Log.LogWarning($"[MLEL Light] Trigger could not find light zone '{normalized}'.");
         }
 
         private void ClearSpawned()

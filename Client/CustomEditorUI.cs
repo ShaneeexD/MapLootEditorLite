@@ -1709,6 +1709,20 @@ namespace MapLootEditorLite.Client
                 BuildStringField(_inspectorContent, "Quest ID", zone.questId ?? "", (v) => { zone.questId = v; manager.IsDirty = true; });
             }
 
+            BuildToggleField(_inspectorContent, "Link Lights", zone.linkLights, (v) => { zone.linkLights = v; manager.IsDirty = true; RefreshInspector(); });
+            if (zone.linkLights)
+            {
+                if (zone.lightZoneNames == null)
+                    zone.lightZoneNames = new List<string>();
+                var actionNames = new[] { "Toggle", "Enable", "Disable" };
+                BuildDropdownField(_inspectorContent, "Light Action", actionNames[(int)zone.lightAction], actionNames, (v) =>
+                {
+                    zone.lightAction = (TriggerLightAction)Array.IndexOf(actionNames, v);
+                    manager.IsDirty = true;
+                });
+                BuildStringList(_inspectorContent, "Light Zone Names", zone.lightZoneNames, "light_zone");
+            }
+
             BuildExtractZoneRequirements(zone);
         }
 
@@ -1873,6 +1887,7 @@ namespace MapLootEditorLite.Client
             if ((zone.lightType ?? "Point") == "Spot")
                 BuildFloatField(_inspectorContent, "Spot Angle", zone.spotAngle, (v) => { zone.spotAngle = v; manager.IsDirty = true; });
             BuildFloatField(_inspectorContent, "Spawn Chance", zone.spawnChance, (v) => { zone.spawnChance = v; manager.IsDirty = true; });
+            BuildToggleField(_inspectorContent, "Enabled", zone.enabled, (v) => { zone.enabled = v; manager.IsDirty = true; });
 
             BuildToggleField(_inspectorContent, "Quest only", zone.questOnly, (v) => { zone.questOnly = v; manager.IsDirty = true; RefreshInspector(); });
             BuildToggleField(_inspectorContent, "Quest completed", zone.questCompleted, (v) => { zone.questCompleted = v; manager.IsDirty = true; RefreshInspector(); });
@@ -1891,8 +1906,31 @@ namespace MapLootEditorLite.Client
         {
             if (zone.scale == null)
                 zone.scale = new TransformData { x = 1f, y = 1f, z = 1f };
+            if (zone.lightZoneNames == null)
+                zone.lightZoneNames = new List<string>();
 
             BuildStringField(_inspectorContent, "Trigger Zone Name", zone.name ?? "", (v) => { zone.name = v; manager.IsDirty = true; });
+
+            var modeNames = new[] { "One Time", "Repeatable", "Once Per Player" };
+            BuildDropdownField(_inspectorContent, "Mode", modeNames[(int)zone.triggerMode], modeNames, (v) =>
+            {
+                zone.triggerMode = (TriggerMode)Array.IndexOf(modeNames, v);
+                manager.IsDirty = true;
+                RefreshInspector();
+            });
+
+            BuildFloatField(_inspectorContent, "Trigger Chance", zone.triggerChance, (v) => { zone.triggerChance = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Delay (sec)", zone.delaySeconds, (v) => { zone.delaySeconds = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Cooldown (sec)", zone.cooldownSeconds, (v) => { zone.cooldownSeconds = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Min Raid Time", zone.minRaidTime, (v) => { zone.minRaidTime = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Max Raid Time", zone.maxRaidTime, (v) => { zone.maxRaidTime = v; manager.IsDirty = true; });
+
+            var sideNames = new[] { "Any", "PMC", "Scav" };
+            BuildDropdownField(_inspectorContent, "Allowed Side", sideNames[(int)zone.allowedSide], sideNames, (v) =>
+            {
+                zone.allowedSide = (TriggerSide)Array.IndexOf(sideNames, v);
+                manager.IsDirty = true;
+            });
 
             var shapeRow = UIBuilder.CreatePanel("ShapeRow", _inspectorContent, new Color(0, 0, 0, 0));
             UIBuilder.AddHorizontalLayout(shapeRow, 2, 2, false, false);
@@ -1908,6 +1946,15 @@ namespace MapLootEditorLite.Client
             }
 
             BuildVector3Field(_inspectorContent, "Scale", zone.scale.ToVector3(), (v) => { zone.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
+
+            UIBuilder.CreateText(_inspectorContent, "Light Zone Actions", 11, Color.white, FontStyle.Bold);
+            var actionNames = new[] { "Toggle", "Enable", "Disable" };
+            BuildDropdownField(_inspectorContent, "Light Action", actionNames[(int)zone.lightAction], actionNames, (v) =>
+            {
+                zone.lightAction = (TriggerLightAction)Array.IndexOf(actionNames, v);
+                manager.IsDirty = true;
+            });
+            BuildStringList(_inspectorContent, "Light Zone Names", zone.lightZoneNames, "light_zone");
         }
 
         public static readonly (string id, string name)[] LootContainerTemplates = new (string, string)[]

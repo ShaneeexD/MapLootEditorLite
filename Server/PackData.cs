@@ -121,6 +121,15 @@ public record ExtractZone
 
     [JsonPropertyName("requirements")]
     public List<ExtractZoneRequirement> Requirements { get; set; } = [];
+
+    [JsonPropertyName("linkLights")]
+    public bool LinkLights { get; set; } = false;
+
+    [JsonPropertyName("lightAction")]
+    public TriggerLightAction LightAction { get; set; } = TriggerLightAction.Toggle;
+
+    [JsonPropertyName("lightZoneNames")]
+    public List<string> LightZoneNames { get; set; } = [];
 }
 
 public record BotSpawnPoint
@@ -232,6 +241,33 @@ public record TriggerZone
 
     [JsonPropertyName("shape")]
     public ZoneShape Shape { get; set; } = ZoneShape.Sphere;
+
+    [JsonPropertyName("triggerMode")]
+    public TriggerMode TriggerMode { get; set; } = TriggerMode.OneTime;
+
+    [JsonPropertyName("triggerChance")]
+    public float TriggerChance { get; set; } = 100f;
+
+    [JsonPropertyName("delaySeconds")]
+    public float DelaySeconds { get; set; } = 0f;
+
+    [JsonPropertyName("cooldownSeconds")]
+    public float CooldownSeconds { get; set; } = 0f;
+
+    [JsonPropertyName("minRaidTime")]
+    public float MinRaidTime { get; set; } = 0f;
+
+    [JsonPropertyName("maxRaidTime")]
+    public float MaxRaidTime { get; set; } = 0f;
+
+    [JsonPropertyName("allowedSide")]
+    public TriggerSide AllowedSide { get; set; } = TriggerSide.Any;
+
+    [JsonPropertyName("lightAction")]
+    public TriggerLightAction LightAction { get; set; } = TriggerLightAction.Toggle;
+
+    [JsonPropertyName("lightZoneNames")]
+    public List<string> LightZoneNames { get; set; } = [];
 }
 
 public record BotSpawnZone
@@ -358,6 +394,9 @@ public record LightZone
 
     [JsonPropertyName("lightType")]
     public string LightType { get; set; } = "Point";
+
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = true;
 
     [JsonPropertyName("spawnChance")]
     public double SpawnChance { get; set; } = 100;
@@ -637,6 +676,30 @@ public enum InteractiveObjectType
 {
     Door,
     Container
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum TriggerMode
+{
+    OneTime,
+    Repeatable,
+    OncePerPlayer
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum TriggerLightAction
+{
+    Toggle,
+    Enable,
+    Disable
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum TriggerSide
+{
+    Any,
+    Pmc,
+    Scav
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
