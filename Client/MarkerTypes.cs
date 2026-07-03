@@ -13,7 +13,18 @@ namespace MapLootEditorLite.Client
         StaticObject,
         WTTQuestZone,
         WTTStaticObject,
-        InteractiveObject
+        InteractiveObject,
+        ExtractZone
+    }
+
+    public enum ExtractZoneRequirementType
+    {
+        None,
+        TransferItem,
+        HasItem,
+        WearsItem,
+        QuestActive,
+        QuestCompleted
     }
 
     public enum InteractiveObjectType
@@ -39,6 +50,7 @@ namespace MapLootEditorLite.Client
         public List<WTTQuestZone> wttQuestZones = new List<WTTQuestZone>();
         public List<WTTStaticObject> wttStaticObjects = new List<WTTStaticObject>();
         public List<InteractiveObject> interactiveObjects = new List<InteractiveObject>();
+        public List<ExtractZone> extractZones = new List<ExtractZone>();
     }
 
     public class PackData
@@ -225,5 +237,31 @@ namespace MapLootEditorLite.Client
         public string questId = "";
 
         public override MarkerKind Kind => MarkerKind.InteractiveObject;
+    }
+
+    public class ExtractZoneRequirement
+    {
+        public string type = "None";
+        public string templateId = "";
+        public int count = 1;
+        public string requiredSlot = "";
+        public string requirementTip = "";
+    }
+
+    public class ExtractZone : MarkerBase
+    {
+        public float radius = 1f;
+        public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
+        public ZoneShape shape = ZoneShape.Box;
+        public string exitName = "";
+        public float exfiltrationTime = 5f;
+        public string exfiltrationType = "Individual";
+        public float spawnChance = 100f;
+        public bool questOnly = false;
+        public bool questCompleted = false;
+        public string questId = "";
+        public List<ExtractZoneRequirement> requirements = new List<ExtractZoneRequirement>();
+
+        public override MarkerKind Kind => MarkerKind.ExtractZone;
     }
 }

@@ -81,6 +81,8 @@ namespace MapLootEditorLite.Client
             Log.LogInfo("Runtime static object spawner attached");
             gameObject.AddComponent<RuntimeInteractiveObjectSpawner>();
             Log.LogInfo("Runtime interactive object spawner attached");
+            gameObject.AddComponent<RuntimeExtractZoneSpawner>();
+            Log.LogInfo("Runtime extract zone spawner attached");
 
             var raidResetHarmony = new Harmony("com.maplooteditorlite.raidreset");
             raidResetHarmony.PatchAll();

@@ -355,7 +355,8 @@ namespace MapLootEditorLite.Client
                 {
                     new MenuItem("Loot Spawn", () => controller.CreateLootSpawn()),
                     new MenuItem("Loot Zone", () => controller.CreateLootZone()),
-                    new MenuItem("Static Object", () => controller.CreateStaticObject())
+                    new MenuItem("Static Object", () => controller.CreateStaticObject()),
+                    new MenuItem("Extract Zone", () => controller.CreateExtractZone())
                 }),
                 new MenuItem("WTT", subItems: new List<MenuItem>
                 {
@@ -1318,6 +1319,9 @@ namespace MapLootEditorLite.Client
                 case InteractiveObject obj:
                     BuildInteractiveObject(obj);
                     break;
+                case ExtractZone zone:
+                    BuildExtractZone(zone);
+                    break;
             }
 
             var previewRow = UIBuilder.CreatePanel("PreviewRow", _inspectorContent, new Color(0, 0, 0, 0));
@@ -1374,6 +1378,12 @@ namespace MapLootEditorLite.Client
                     BuildReadOnlyLabel(_inspectorContent, "Spawn Type", obj.spawnType ?? "");
                     BuildReadOnlyLabel(_inspectorContent, "Bundle Name", obj.bundleName ?? "");
                     BuildReadOnlyLabel(_inspectorContent, "Prefab Name", obj.prefabName ?? "");
+                    break;
+                case ExtractZone zone:
+                    BuildReadOnlyLabel(_inspectorContent, "Shape", zone.shape.ToString());
+                    BuildReadOnlyLabel(_inspectorContent, "Exit Name", zone.exitName ?? "");
+                    BuildReadOnlyLabel(_inspectorContent, "Exfil Time", zone.exfiltrationTime.ToString("F1"));
+                    BuildReadOnlyLabel(_inspectorContent, "Spawn Chance", $"{zone.spawnChance:F2}%");
                     break;
             }
         }
@@ -1650,6 +1660,82 @@ namespace MapLootEditorLite.Client
             UIBuilder.CreateButton(_inspectorContent, "Preview Object", () => previews.SpawnInteractivePreview(obj), 100, 24);
         }
 
+        private void BuildExtractZone(ExtractZone zone)
+        {
+            if (zone.scale == null)
+                zone.scale = new TransformData { x = 1f, y = 1f, z = 1f };
+
+            BuildStringField(_inspectorContent, "Exit Name", zone.exitName ?? "", (v) => { zone.exitName = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Exfil Time", zone.exfiltrationTime, (v) => { zone.exfiltrationTime = v; manager.IsDirty = true; });
+            BuildDropdownField(_inspectorContent, "Exfil Type", zone.exfiltrationType ?? "Individual", new[] { "Individual", "SharedTimer", "Manual" }, (v) => { zone.exfiltrationType = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Spawn Chance", zone.spawnChance, (v) => { zone.spawnChance = v; manager.IsDirty = true; });
+
+            var shapeRow = UIBuilder.CreatePanel("ShapeRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(shapeRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(shapeRow, null, 20, null, 20, null, 0);
+            UIBuilder.CreateLabel(shapeRow, "Shape", 11, 44, 20);
+            var shapes = new[] { "Sphere", "Box", "Cylinder", "Capsule" };
+            for (int i = 0; i < shapes.Length; i++)
+            {
+                int idx = i;
+                var btn = UIBuilder.CreateButton(shapeRow, shapes[idx], () => { zone.shape = (ZoneShape)idx; manager.IsDirty = true; RefreshInspector(); }, 52, 20, 10);
+                if ((int)zone.shape == idx)
+                    btn.GetComponent<Image>().color = new Color(0.25f, 0.45f, 0.75f, 1f);
+            }
+
+            BuildFloatField(_inspectorContent, "Radius", zone.radius, (v) => { zone.radius = v; manager.IsDirty = true; });
+            BuildVector3Field(_inspectorContent, "Scale", zone.scale.ToVector3(), (v) => { zone.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
+
+            BuildToggleField(_inspectorContent, "Quest only", zone.questOnly, (v) => { zone.questOnly = v; manager.IsDirty = true; RefreshInspector(); });
+            BuildToggleField(_inspectorContent, "Quest completed", zone.questCompleted, (v) => { zone.questCompleted = v; manager.IsDirty = true; RefreshInspector(); });
+            if (zone.questOnly || zone.questCompleted)
+            {
+                BuildStringField(_inspectorContent, "Quest ID", zone.questId ?? "", (v) => { zone.questId = v; manager.IsDirty = true; });
+            }
+
+            BuildExtractZoneRequirements(zone);
+        }
+
+        private void BuildExtractZoneRequirements(ExtractZone zone)
+        {
+            if (zone.requirements == null)
+                zone.requirements = new List<ExtractZoneRequirement>();
+
+            UIBuilder.CreateText(_inspectorContent, "Requirements:", 11, Color.white, FontStyle.Bold);
+
+            for (int i = 0; i < zone.requirements.Count; i++)
+            {
+                var req = zone.requirements[i];
+                int idx = i;
+
+                var row = UIBuilder.CreatePanel("ReqRow", _inspectorContent, new Color(0, 0, 0, 0));
+                UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
+                UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
+                UIBuilder.CreateLabel(row, $"Req {i + 1}", 11, 38, 20);
+
+                BuildDropdownField(row, "", req.type ?? "None", new[] { "None", "TransferItem", "HasItem", "WearsItem", "QuestActive", "QuestCompleted" }, (v) =>
+                {
+                    req.type = v;
+                    manager.IsDirty = true;
+                    RefreshInspector();
+                });
+
+                UIBuilder.CreateButton(row, "X", () => { zone.requirements.RemoveAt(idx); manager.IsDirty = true; RefreshInspector(); }, 30, 20, 10);
+
+                if (req.type == "TransferItem" || req.type == "HasItem" || req.type == "WearsItem")
+                {
+                    BuildStringField(_inspectorContent, "Item Tpl", req.templateId ?? "", (v) => { req.templateId = v; manager.IsDirty = true; });
+                    BuildIntField(_inspectorContent, "Count", req.count, (v) => { req.count = v; manager.IsDirty = true; });
+                }
+                else if (req.type == "QuestActive" || req.type == "QuestCompleted")
+                {
+                    BuildStringField(_inspectorContent, "Quest ID", req.templateId ?? "", (v) => { req.templateId = v; manager.IsDirty = true; });
+                }
+            }
+
+            UIBuilder.CreateButton(_inspectorContent, "Add Requirement", () => { zone.requirements.Add(new ExtractZoneRequirement()); manager.IsDirty = true; RefreshInspector(); }, 100, 22);
+        }
+
         public static readonly (string id, string name)[] LootContainerTemplates = new (string, string)[]
         {
             ("566966cd4bdc2d0c4c8b4578", "Box full of junk"),
@@ -1703,7 +1789,9 @@ namespace MapLootEditorLite.Client
             var row = UIBuilder.CreatePanel("DropdownField", parent, new Color(0, 0, 0, 0));
             UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
             UIBuilder.AddLayoutElement(row, null, 24, null, 24, null, 0);
-            UIBuilder.CreateLabel(row, label, 11, 60, 24);
+            UIBuilder.AddContentSizeFitter(row.gameObject, ContentSizeFitter.FitMode.PreferredSize, ContentSizeFitter.FitMode.PreferredSize);
+            if (!string.IsNullOrEmpty(label))
+                UIBuilder.CreateLabel(row, label, 11, 60, 24);
             var display = value ?? "";
             if (string.IsNullOrEmpty(display))
                 display = "(none)";

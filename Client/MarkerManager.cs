@@ -74,6 +74,9 @@ namespace MapLootEditorLite.Client
             if (VanillaData.interactiveObjects != null)
                 foreach (var m in VanillaData.interactiveObjects)
                     yield return m;
+            if (VanillaData.extractZones != null)
+                foreach (var m in VanillaData.extractZones)
+                    yield return m;
         }
 
         public IEnumerable<MarkerBase> GetAllMarkersIncludingVanilla()
@@ -189,6 +192,9 @@ namespace MapLootEditorLite.Client
             if (Data.interactiveObjects != null)
                 foreach (var m in Data.interactiveObjects)
                     yield return m;
+            if (Data.extractZones != null)
+                foreach (var m in Data.extractZones)
+                    yield return m;
         }
 
         public MarkerBase FindById(string id)
@@ -282,6 +288,10 @@ namespace MapLootEditorLite.Client
                     Data.interactiveObjects ??= new List<InteractiveObject>();
                     Data.interactiveObjects.Add(io);
                     break;
+                case ExtractZone ez:
+                    Data.extractZones ??= new List<ExtractZone>();
+                    Data.extractZones.Add(ez);
+                    break;
             }
             IsDirty = true;
         }
@@ -339,6 +349,7 @@ namespace MapLootEditorLite.Client
                     case WTTQuestZone q: Data.wttQuestZones.Remove(q); break;
                     case WTTStaticObject w: Data.wttStaticObjects.Remove(w); break;
                     case InteractiveObject io: Data.interactiveObjects.Remove(io); break;
+                case ExtractZone ez: Data.extractZones.Remove(ez); break;
                 }
             }
             ClearSelection();
@@ -381,6 +392,10 @@ namespace MapLootEditorLite.Client
                     case InteractiveObject io:
                         copy = JsonConvert.DeserializeObject<InteractiveObject>(json);
                         Data.interactiveObjects.Add((InteractiveObject)copy);
+                        break;
+                    case ExtractZone ez:
+                        copy = JsonConvert.DeserializeObject<ExtractZone>(json);
+                        Data.extractZones.Add((ExtractZone)copy);
                         break;
                     default:
                         continue;
@@ -498,6 +513,27 @@ namespace MapLootEditorLite.Client
             return marker;
         }
 
+        public ExtractZone CreateExtractZone(Vector3 position)
+        {
+            Data.extractZones ??= new List<ExtractZone>();
+            var marker = new ExtractZone
+            {
+                name = "extract_zone",
+                position = TransformData.FromVector3(position),
+                rotation = TransformData.FromVector3(Vector3.zero),
+                scale = new TransformData { x = 1f, y = 1f, z = 1f },
+                radius = 1f,
+                shape = ZoneShape.Box,
+                exitName = "Custom Extract",
+                exfiltrationTime = 5f,
+                exfiltrationType = "Individual",
+                spawnChance = 100f
+            };
+            Data.extractZones.Add(marker);
+            IsDirty = true;
+            return marker;
+        }
+
         public void DeleteSelected()
         {
             if (Selected == null || Data == null || IsVanilla(Selected))
@@ -511,6 +547,7 @@ namespace MapLootEditorLite.Client
                 case WTTQuestZone q: Data.wttQuestZones.Remove(q); break;
                 case WTTStaticObject w: Data.wttStaticObjects.Remove(w); break;
                 case InteractiveObject io: Data.interactiveObjects.Remove(io); break;
+                case ExtractZone ez: Data.extractZones.Remove(ez); break;
             }
 
             Selected = null;
@@ -550,6 +587,10 @@ namespace MapLootEditorLite.Client
                 case InteractiveObject io:
                     copy = JsonConvert.DeserializeObject<InteractiveObject>(json);
                     Data.interactiveObjects.Add((InteractiveObject)copy);
+                    break;
+                case ExtractZone ez:
+                    copy = JsonConvert.DeserializeObject<ExtractZone>(json);
+                    Data.extractZones.Add((ExtractZone)copy);
                     break;
                 default:
                     return null;

@@ -37,6 +37,78 @@ public record MapData
 
     [JsonPropertyName("interactiveObjects")]
     public List<InteractiveObject> InteractiveObjects { get; set; } = [];
+
+    [JsonPropertyName("extractZones")]
+    public List<ExtractZone> ExtractZones { get; set; } = [];
+}
+
+public record ExtractZoneRequirement
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "None";
+
+    [JsonPropertyName("templateId")]
+    public string TemplateId { get; set; } = string.Empty;
+
+    [JsonPropertyName("count")]
+    public int Count { get; set; } = 1;
+
+    [JsonPropertyName("requiredSlot")]
+    public string RequiredSlot { get; set; } = string.Empty;
+
+    [JsonPropertyName("requirementTip")]
+    public string RequirementTip { get; set; } = string.Empty;
+}
+
+public record ExtractZone
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("group")]
+    public string Group { get; set; } = string.Empty;
+
+    [JsonPropertyName("position")]
+    public TransformData Position { get; set; } = new();
+
+    [JsonPropertyName("rotation")]
+    public TransformData Rotation { get; set; } = new();
+
+    [JsonPropertyName("scale")]
+    public TransformData Scale { get; set; } = new() { X = 1, Y = 1, Z = 1 };
+
+    [JsonPropertyName("radius")]
+    public double Radius { get; set; } = 1;
+
+    [JsonPropertyName("shape")]
+    public ZoneShape Shape { get; set; } = ZoneShape.Box;
+
+    [JsonPropertyName("exitName")]
+    public string ExitName { get; set; } = string.Empty;
+
+    [JsonPropertyName("exfiltrationTime")]
+    public double ExfiltrationTime { get; set; } = 5;
+
+    [JsonPropertyName("exfiltrationType")]
+    public string ExfiltrationType { get; set; } = "Individual";
+
+    [JsonPropertyName("spawnChance")]
+    public double SpawnChance { get; set; } = 100;
+
+    [JsonPropertyName("questOnly")]
+    public bool QuestOnly { get; set; } = false;
+
+    [JsonPropertyName("questCompleted")]
+    public bool QuestCompleted { get; set; } = false;
+
+    [JsonPropertyName("questId")]
+    public string QuestId { get; set; } = string.Empty;
+
+    [JsonPropertyName("requirements")]
+    public List<ExtractZoneRequirement> Requirements { get; set; } = [];
 }
 
 public record LootItem

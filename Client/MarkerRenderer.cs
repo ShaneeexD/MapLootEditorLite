@@ -25,6 +25,8 @@ namespace MapLootEditorLite.Client
         private readonly Color _wttStaticWireColor = new Color(0.8f, 0.4f, 0.2f, 1.0f);
         private readonly Color _interactiveColor = new Color(1f, 0.5f, 0f, 0.25f);
         private readonly Color _interactiveWireColor = new Color(1f, 0.5f, 0f, 1.0f);
+        private readonly Color _extractZoneColor = new Color(0.2f, 1f, 0.4f, 0.25f);
+        private readonly Color _extractZoneWireColor = new Color(0.2f, 1f, 0.4f, 1.0f);
         private readonly Color _selectedColor = new Color(0.2f, 0.6f, 1f, 0.25f);
         private readonly Color _selectedWireColor = new Color(0.2f, 0.6f, 1f, 1.0f);
         private readonly Color _vanillaColor = new Color(0.8f, 0.8f, 0.8f, 0.35f);
@@ -138,6 +140,15 @@ namespace MapLootEditorLite.Client
                     }
                 }
 
+                if (marker is ExtractZone currentEz && _visuals.TryGetValue(marker.id, out GameObject existingEzVisual))
+                {
+                    if (_zoneShapeCache.TryGetValue(marker.id, out ZoneShape cachedShape) && cachedShape != currentEz.shape)
+                    {
+                        UnityEngine.Object.Destroy(existingEzVisual);
+                        _visuals.Remove(marker.id);
+                    }
+                }
+
                 if (!_visuals.TryGetValue(marker.id, out GameObject visual))
                 {
                     visual = CreateVisual(marker);
@@ -156,6 +167,11 @@ namespace MapLootEditorLite.Client
                         ApplyZoneScale(visual, zone);
                         _zoneShapeCache[marker.id] = zone.shape;
                     }
+                    else if (marker is ExtractZone ez)
+                    {
+                        ApplyZoneScale(visual, ez);
+                        _zoneShapeCache[marker.id] = ez.shape;
+                    }
                     else if (marker is StaticObject so)
                     {
                         visual.transform.localScale = so.scale.ToVector3();
@@ -171,6 +187,10 @@ namespace MapLootEditorLite.Client
                     else if (marker is InteractiveObject io)
                     {
                         visual.transform.localScale = io.scale.ToVector3();
+                    }
+                    else if (marker is ExtractZone extractZone)
+                    {
+                        ApplyZoneScale(visual, extractZone);
                     }
 
                     bool isSelected = _manager.IsSelected(marker);
@@ -278,6 +298,9 @@ namespace MapLootEditorLite.Client
                     break;
                 case InteractiveObject _:
                     visual = CreateInteractiveObjectVisual();
+                    break;
+                case ExtractZone ez:
+                    visual = CreateExtractZoneVisual(ez);
                     break;
                 default:
                     return null;
@@ -465,6 +488,38 @@ namespace MapLootEditorLite.Client
             return CreatePrimitiveVisual(PrimitiveType.Capsule, 1f);
         }
 
+        private GameObject CreateExtractZoneVisual(ExtractZone ez)
+        {
+            GameObject visual;
+            switch (ez.shape)
+            {
+                case ZoneShape.Box:
+                    visual = CreateBoxVisual();
+                    break;
+                case ZoneShape.Cylinder:
+                    visual = CreateCylinderVisual();
+                    break;
+                case ZoneShape.Capsule:
+                    visual = CreateCapsuleVisual();
+                    break;
+                default:
+                    visual = CreateSphereVisual();
+                    break;
+            }
+
+            var wire = visual.transform.Find("wire_sphere") ?? visual.transform.Find("wire_box");
+            if (wire != null)
+            {
+                var lr = wire.GetComponent<LineRenderer>();
+                if (lr != null)
+                {
+                    lr.startColor = _extractZoneWireColor;
+                    lr.endColor = _extractZoneWireColor;
+                }
+            }
+            return visual;
+        }
+
         private Material GetWireMaterial()
         {
             if (_wireMaterial == null)
@@ -562,6 +617,26 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        private void ApplyZoneScale(GameObject visual, ExtractZone zone)
+        {
+            var scale = zone.scale ?? new TransformData { x = 1f, y = 1f, z = 1f };
+            switch (zone.shape)
+            {
+                case ZoneShape.Box:
+                    visual.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
+                    break;
+                case ZoneShape.Cylinder:
+                    visual.transform.localScale = new Vector3(zone.radius * 2f * scale.x, scale.y, zone.radius * 2f * scale.x);
+                    break;
+                case ZoneShape.Capsule:
+                    visual.transform.localScale = new Vector3(zone.radius * 2f * scale.x, scale.y, zone.radius * 2f * scale.x);
+                    break;
+                default:
+                    visual.transform.localScale = Vector3.one * zone.radius * 2f * scale.x;
+                    break;
+            }
+        }
+
         private void ApplyColor(GameObject visual, MarkerBase marker, bool selected)
         {
             var renderer = visual.GetComponent<Renderer>();
@@ -605,6 +680,10 @@ namespace MapLootEditorLite.Client
             {
                 color = _interactiveColor;
             }
+            else if (marker is ExtractZone)
+            {
+                color = _extractZoneColor;
+            }
             else
             {
                 color = _objectColor;
@@ -631,6 +710,8 @@ namespace MapLootEditorLite.Client
                         wireColor = _wttStaticWireColor;
                     else if (marker is InteractiveObject)
                         wireColor = _interactiveWireColor;
+                    else if (marker is ExtractZone)
+                        wireColor = _extractZoneWireColor;
                     else
                         wireColor = _zoneWireColor;
 
