@@ -1788,8 +1788,10 @@ namespace MapLootEditorLite.Client
         {
             var row = UIBuilder.CreatePanel("DropdownField", parent, new Color(0, 0, 0, 0));
             UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
-            UIBuilder.AddLayoutElement(row, null, 24, null, 24, null, 0);
-            UIBuilder.AddContentSizeFitter(row.gameObject, ContentSizeFitter.FitMode.PreferredSize, ContentSizeFitter.FitMode.PreferredSize);
+            int dropdownWidth = 94;
+            if (!string.IsNullOrEmpty(label))
+                dropdownWidth = 160;
+            UIBuilder.AddLayoutElement(row, null, 24, dropdownWidth, 24, null, 0);
             if (!string.IsNullOrEmpty(label))
                 UIBuilder.CreateLabel(row, label, 11, 60, 24);
             var display = value ?? "";
@@ -2109,7 +2111,7 @@ namespace MapLootEditorLite.Client
             if (parent == null)
                 return;
             for (int i = parent.childCount - 1; i >= 0; i--)
-                Destroy(parent.GetChild(i).gameObject);
+                DestroyImmediate(parent.GetChild(i).gameObject);
         }
 
         private bool MatchesSearch(MarkerBase marker)
