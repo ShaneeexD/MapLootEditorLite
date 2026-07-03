@@ -33,6 +33,8 @@ namespace MapLootEditorLite.Client
         private readonly Color _botSpawnZoneWireColor = new Color(1f, 0.2f, 0.2f, 1.0f);
         private readonly Color _lightZoneColor = new Color(1f, 1f, 0.2f, 0.6f);
         private readonly Color _lightZoneWireColor = new Color(1f, 1f, 0.2f, 1.0f);
+        private readonly Color _triggerZoneColor = new Color(1f, 0.2f, 1f, 0.15f);
+        private readonly Color _triggerZoneWireColor = new Color(1f, 0.2f, 1f, 1.0f);
         private readonly Color _selectedColor = new Color(0.2f, 0.6f, 1f, 0.25f);
         private readonly Color _selectedWireColor = new Color(0.2f, 0.6f, 1f, 1.0f);
         private readonly Color _vanillaColor = new Color(0.8f, 0.8f, 0.8f, 0.35f);
@@ -164,6 +166,15 @@ namespace MapLootEditorLite.Client
                     }
                 }
 
+                if (marker is TriggerZone currentTz && _visuals.TryGetValue(marker.id, out GameObject existingTzVisual))
+                {
+                    if (_zoneShapeCache.TryGetValue(marker.id, out ZoneShape cachedTzShape) && cachedTzShape != currentTz.shape)
+                    {
+                        UnityEngine.Object.Destroy(existingTzVisual);
+                        _visuals.Remove(marker.id);
+                    }
+                }
+
                 if (!_visuals.TryGetValue(marker.id, out GameObject visual))
                 {
                     visual = CreateVisual(marker);
@@ -215,6 +226,11 @@ namespace MapLootEditorLite.Client
                     else if (marker is LightZone lz)
                     {
                         ApplyLightZoneVisual(visual, lz);
+                    }
+                    else if (marker is TriggerZone tz)
+                    {
+                        ApplyZoneScale(visual, tz);
+                        _zoneShapeCache[marker.id] = tz.shape;
                     }
 
                     bool isSelected = _manager.IsSelected(marker);
@@ -334,6 +350,9 @@ namespace MapLootEditorLite.Client
                     break;
                 case LightZone lz:
                     visual = CreateLightZoneVisual(lz);
+                    break;
+                case TriggerZone tz:
+                    visual = CreateTriggerZoneVisual(tz);
                     break;
                 default:
                     return null;
@@ -529,6 +548,11 @@ namespace MapLootEditorLite.Client
         private GameObject CreateBotSpawnZoneVisual(BotSpawnZone bz)
         {
             return CreateZoneVisualWithColor(bz.shape, _botSpawnZoneWireColor);
+        }
+
+        private GameObject CreateTriggerZoneVisual(TriggerZone tz)
+        {
+            return CreateZoneVisualWithColor(tz.shape, _triggerZoneWireColor);
         }
 
         private GameObject CreateZoneVisualWithColor(ZoneShape shape, Color wireColor)
@@ -824,6 +848,26 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        private void ApplyZoneScale(GameObject visual, TriggerZone zone)
+        {
+            var scale = zone.scale ?? new TransformData { x = 1f, y = 1f, z = 1f };
+            switch (zone.shape)
+            {
+                case ZoneShape.Box:
+                    visual.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
+                    break;
+                case ZoneShape.Cylinder:
+                    visual.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
+                    break;
+                case ZoneShape.Capsule:
+                    visual.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
+                    break;
+                default:
+                    visual.transform.localScale = Vector3.one * scale.x;
+                    break;
+            }
+        }
+
         private void ApplyColor(GameObject visual, MarkerBase marker, bool selected)
         {
             var renderer = visual.GetComponent<Renderer>();
@@ -883,6 +927,10 @@ namespace MapLootEditorLite.Client
             {
                 color = _lightZoneColor;
             }
+            else if (marker is TriggerZone)
+            {
+                color = _triggerZoneColor;
+            }
             else
             {
                 color = _objectColor;
@@ -917,6 +965,8 @@ namespace MapLootEditorLite.Client
                         wireColor = _botSpawnZoneWireColor;
                     else if (marker is LightZone)
                         wireColor = _lightZoneWireColor;
+                    else if (marker is TriggerZone)
+                        wireColor = _triggerZoneWireColor;
                     else
                         wireColor = _zoneWireColor;
 

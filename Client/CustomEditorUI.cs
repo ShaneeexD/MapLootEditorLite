@@ -359,7 +359,8 @@ namespace MapLootEditorLite.Client
                     new MenuItem("Extract Zone", () => controller.CreateExtractZone()),
                     new MenuItem("Bot Spawn Point", () => controller.CreateBotSpawnPoint()),
                     new MenuItem("Bot Spawn Zone", () => controller.CreateBotSpawnZone()),
-                    new MenuItem("Light Zone", () => controller.CreateLightZone())
+                    new MenuItem("Light Zone", () => controller.CreateLightZone()),
+                    new MenuItem("Trigger Zone", () => controller.CreateTriggerZone())
                 }),
                 new MenuItem("WTT", subItems: new List<MenuItem>
                 {
@@ -1334,6 +1335,9 @@ namespace MapLootEditorLite.Client
                 case LightZone zone:
                     BuildLightZone(zone);
                     break;
+                case TriggerZone zone:
+                    BuildTriggerZone(zone);
+                    break;
             }
 
             var previewRow = UIBuilder.CreatePanel("PreviewRow", _inspectorContent, new Color(0, 0, 0, 0));
@@ -1762,10 +1766,23 @@ namespace MapLootEditorLite.Client
             });
             BuildReadOnlyLabel(_inspectorContent, "Side", point.side.ToString());
             BuildReadOnlyLabel(_inspectorContent, "Category", point.category.ToString());
+            BuildDropdownField(_inspectorContent, "Spawn Mode", point.spawnMode ?? "Forced", new[] { "Forced", "Potential" }, (v) =>
+            {
+                point.spawnMode = v;
+                manager.IsDirty = true;
+                RefreshInspector();
+            });
             BuildFloatField(_inspectorContent, "Spawn Chance", point.spawnChance, (v) => { point.spawnChance = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Bot Spawn Chance", point.botSpawnChance, (v) => { point.botSpawnChance = v; manager.IsDirty = true; });
             BuildFloatField(_inspectorContent, "Delay", point.delayToCanSpawnSec, (v) => { point.delayToCanSpawnSec = v; manager.IsDirty = true; });
             BuildFloatField(_inspectorContent, "Radius", point.radius, (v) => { point.radius = v; manager.IsDirty = true; });
             BuildStringField(_inspectorContent, "Bot Zone Name", point.botZoneName ?? "", (v) => { point.botZoneName = v; manager.IsDirty = true; });
+
+            BuildToggleField(_inspectorContent, "Trigger activated", point.triggerActivated, (v) => { point.triggerActivated = v; manager.IsDirty = true; RefreshInspector(); });
+            if (point.triggerActivated)
+                BuildStringField(_inspectorContent, "Trigger Zone Name", point.triggerZoneName ?? "", (v) => { point.triggerZoneName = v; manager.IsDirty = true; });
+
+            BuildStringList(_inspectorContent, "Random Types (per bot)", point.randomSpawnTypes, "assault");
 
             BuildToggleField(_inspectorContent, "Quest only", point.questOnly, (v) => { point.questOnly = v; manager.IsDirty = true; RefreshInspector(); });
             BuildToggleField(_inspectorContent, "Quest completed", point.questCompleted, (v) => { point.questCompleted = v; manager.IsDirty = true; RefreshInspector(); });
@@ -1795,8 +1812,15 @@ namespace MapLootEditorLite.Client
             });
             BuildReadOnlyLabel(_inspectorContent, "Side", zone.side.ToString());
             BuildReadOnlyLabel(_inspectorContent, "Category", zone.category.ToString());
+            BuildDropdownField(_inspectorContent, "Spawn Mode", zone.spawnMode ?? "Forced", new[] { "Forced", "Potential" }, (v) =>
+            {
+                zone.spawnMode = v;
+                manager.IsDirty = true;
+                RefreshInspector();
+            });
             BuildIntField(_inspectorContent, "Spawn Count", zone.spawnCount, (v) => { zone.spawnCount = v; manager.IsDirty = true; });
             BuildFloatField(_inspectorContent, "Spawn Chance", zone.spawnChance, (v) => { zone.spawnChance = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Bot Spawn Chance", zone.botSpawnChance, (v) => { zone.botSpawnChance = v; manager.IsDirty = true; });
             BuildFloatField(_inspectorContent, "Delay", zone.delayToCanSpawnSec, (v) => { zone.delayToCanSpawnSec = v; manager.IsDirty = true; });
 
             var shapeRow = UIBuilder.CreatePanel("ShapeRow", _inspectorContent, new Color(0, 0, 0, 0));
@@ -1815,6 +1839,13 @@ namespace MapLootEditorLite.Client
             BuildFloatField(_inspectorContent, "Radius", zone.radius, (v) => { zone.radius = v; manager.IsDirty = true; });
             BuildVector3Field(_inspectorContent, "Scale", zone.scale.ToVector3(), (v) => { zone.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
             BuildStringField(_inspectorContent, "Bot Zone Name", zone.botZoneName ?? "", (v) => { zone.botZoneName = v; manager.IsDirty = true; });
+
+            BuildToggleField(_inspectorContent, "Trigger activated", zone.triggerActivated, (v) => { zone.triggerActivated = v; manager.IsDirty = true; RefreshInspector(); });
+            if (zone.triggerActivated)
+                BuildStringField(_inspectorContent, "Trigger Zone Name", zone.triggerZoneName ?? "", (v) => { zone.triggerZoneName = v; manager.IsDirty = true; });
+
+            BuildStringList(_inspectorContent, "Random Types (per bot)", zone.randomSpawnTypes, "assault");
+            BuildBotSpawnGroupsList(zone);
 
             BuildToggleField(_inspectorContent, "Quest only", zone.questOnly, (v) => { zone.questOnly = v; manager.IsDirty = true; RefreshInspector(); });
             BuildToggleField(_inspectorContent, "Quest completed", zone.questCompleted, (v) => { zone.questCompleted = v; manager.IsDirty = true; RefreshInspector(); });
@@ -1854,6 +1885,29 @@ namespace MapLootEditorLite.Client
             UIBuilder.CreateButton(previewRow, "Preview Light", () => previews.SpawnLightPreview(zone), 100, 22);
 
             previews.SpawnLightPreview(zone);
+        }
+
+        private void BuildTriggerZone(TriggerZone zone)
+        {
+            if (zone.scale == null)
+                zone.scale = new TransformData { x = 1f, y = 1f, z = 1f };
+
+            BuildStringField(_inspectorContent, "Trigger Zone Name", zone.name ?? "", (v) => { zone.name = v; manager.IsDirty = true; });
+
+            var shapeRow = UIBuilder.CreatePanel("ShapeRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(shapeRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(shapeRow, null, 20, null, 20, null, 0);
+            UIBuilder.CreateLabel(shapeRow, "Shape", 11, 44, 20);
+            var shapes = new[] { "Sphere", "Box", "Cylinder", "Capsule" };
+            for (int i = 0; i < shapes.Length; i++)
+            {
+                int idx = i;
+                var btn = UIBuilder.CreateButton(shapeRow, shapes[idx], () => { zone.shape = (ZoneShape)idx; manager.IsDirty = true; RefreshInspector(); }, 52, 20, 10);
+                if ((int)zone.shape == idx)
+                    btn.GetComponent<Image>().color = new Color(0.25f, 0.45f, 0.75f, 1f);
+            }
+
+            BuildVector3Field(_inspectorContent, "Scale", zone.scale.ToVector3(), (v) => { zone.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
         }
 
         public static readonly (string id, string name)[] LootContainerTemplates = new (string, string)[]
@@ -2224,6 +2278,57 @@ namespace MapLootEditorLite.Client
         private void BuildToggleField(RectTransform parent, string label, bool value, UnityAction<bool> onChanged)
         {
             UIBuilder.CreateToggle(parent, label, value, (v) => onChanged?.Invoke(v), 20);
+        }
+
+        private void BuildStringList(RectTransform parent, string title, List<string> list, string placeholder = "wildSpawnType")
+        {
+            UIBuilder.CreateText(parent, title, 11, Color.white, FontStyle.Bold);
+            for (int i = 0; i < list.Count; i++)
+            {
+                int idx = i;
+                var row = UIBuilder.CreatePanel("StringListRow", parent, new Color(0, 0, 0, 0));
+                UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
+                UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
+                var input = BuildInputFieldInline(row, list[idx], (v) => { list[idx] = v; manager.IsDirty = true; }, 140, 20);
+                input.onEndEdit.AddListener(_ => RequestInspectorRefresh());
+                UIBuilder.CreateButton(row, "-", () => { list.RemoveAt(idx); manager.IsDirty = true; RefreshInspector(); }, 24, 20, 10);
+            }
+            UIBuilder.CreateButton(parent, "Add", () => { list.Add(placeholder); manager.IsDirty = true; RefreshInspector(); }, 80, 22);
+        }
+
+        private void BuildBotSpawnGroupsList(BotSpawnZone zone)
+        {
+            if (zone.randomGroups == null)
+                zone.randomGroups = new List<BotSpawnGroup>();
+
+            UIBuilder.CreateText(_inspectorContent, "Random Groups (one picked per raid):", 11, Color.white, FontStyle.Bold);
+
+            for (int i = 0; i < zone.randomGroups.Count; i++)
+            {
+                int idx = i;
+                var group = zone.randomGroups[idx];
+
+                var row = UIBuilder.CreatePanel("GroupRow", _inspectorContent, new Color(0, 0, 0, 0));
+                UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
+                UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
+                UIBuilder.CreateLabel(row, $"Group {idx + 1}", 11, 60, 22);
+                UIBuilder.CreateButton(row, "-", () => { zone.randomGroups.RemoveAt(idx); manager.IsDirty = true; RefreshInspector(); }, 24, 20, 10);
+
+                BuildIntField(_inspectorContent, "Count", group.spawnCount, (v) => { group.spawnCount = v; manager.IsDirty = true; });
+                var presetNames = BotSpawnPresetMapping.PresetNames.OrderBy(kvp => (int)kvp.Key).Select(kvp => kvp.Value).ToArray();
+                var currentName = BotSpawnPresetMapping.PresetNames.ContainsKey(group.preset) ? BotSpawnPresetMapping.PresetNames[group.preset] : group.preset.ToString();
+                BuildDropdownField(_inspectorContent, "Preset", currentName, presetNames, (v) =>
+                {
+                    var selected = BotSpawnPresetMapping.PresetNames.FirstOrDefault(kvp => kvp.Value == v).Key;
+                    group.preset = selected;
+                    BotSpawnPresetMapping.ApplyPreset(selected, group);
+                    manager.IsDirty = true;
+                    RefreshInspector();
+                });
+                BuildStringField(_inspectorContent, "Wild Type", group.wildSpawnType ?? "", (v) => { group.wildSpawnType = v; manager.IsDirty = true; });
+            }
+
+            UIBuilder.CreateButton(_inspectorContent, "Add Group", () => { zone.randomGroups.Add(new BotSpawnGroup { id = Guid.NewGuid().ToString("N").Substring(0, 8) }); manager.IsDirty = true; RefreshInspector(); }, 100, 22);
         }
 
         private void ClearChildren(RectTransform parent)

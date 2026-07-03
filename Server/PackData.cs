@@ -49,6 +49,9 @@ public record MapData
 
     [JsonPropertyName("lightZones")]
     public List<LightZone> LightZones { get; set; } = [];
+
+    [JsonPropertyName("triggerZones")]
+    public List<TriggerZone> TriggerZones { get; set; } = [];
 }
 
 public record ExtractZoneRequirement
@@ -169,6 +172,66 @@ public record BotSpawnPoint
 
     [JsonPropertyName("questId")]
     public string QuestId { get; set; } = string.Empty;
+
+    [JsonPropertyName("spawnMode")]
+    public string SpawnMode { get; set; } = "Forced";
+
+    [JsonPropertyName("botSpawnChance")]
+    public double BotSpawnChance { get; set; } = 100;
+
+    [JsonPropertyName("randomSpawnTypes")]
+    public List<string> RandomSpawnTypes { get; set; } = new();
+
+    [JsonPropertyName("triggerActivated")]
+    public bool TriggerActivated { get; set; } = false;
+
+    [JsonPropertyName("triggerZoneName")]
+    public string TriggerZoneName { get; set; } = string.Empty;
+}
+
+public record BotSpawnGroup
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("spawnCount")]
+    public int SpawnCount { get; set; } = 1;
+
+    [JsonPropertyName("preset")]
+    public BotSpawnPreset Preset { get; set; } = BotSpawnPreset.Scav;
+
+    [JsonPropertyName("wildSpawnType")]
+    public string WildSpawnType { get; set; } = string.Empty;
+
+    [JsonPropertyName("side")]
+    public BotSpawnSide Side { get; set; } = BotSpawnSide.Savage;
+
+    [JsonPropertyName("category")]
+    public BotSpawnCategory Category { get; set; } = BotSpawnCategory.Bot;
+}
+
+public record TriggerZone
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("group")]
+    public string Group { get; set; } = string.Empty;
+
+    [JsonPropertyName("position")]
+    public TransformData Position { get; set; } = new();
+
+    [JsonPropertyName("rotation")]
+    public TransformData Rotation { get; set; } = new();
+
+    [JsonPropertyName("scale")]
+    public TransformData Scale { get; set; } = new() { X = 1, Y = 1, Z = 1 };
+
+    [JsonPropertyName("shape")]
+    public ZoneShape Shape { get; set; } = ZoneShape.Sphere;
 }
 
 public record BotSpawnZone
@@ -229,6 +292,24 @@ public record BotSpawnZone
 
     [JsonPropertyName("questId")]
     public string QuestId { get; set; } = string.Empty;
+
+    [JsonPropertyName("spawnMode")]
+    public string SpawnMode { get; set; } = "Forced";
+
+    [JsonPropertyName("botSpawnChance")]
+    public double BotSpawnChance { get; set; } = 100;
+
+    [JsonPropertyName("randomSpawnTypes")]
+    public List<string> RandomSpawnTypes { get; set; } = new();
+
+    [JsonPropertyName("randomGroups")]
+    public List<BotSpawnGroup> RandomGroups { get; set; } = new();
+
+    [JsonPropertyName("triggerActivated")]
+    public bool TriggerActivated { get; set; } = false;
+
+    [JsonPropertyName("triggerZoneName")]
+    public string TriggerZoneName { get; set; } = string.Empty;
 }
 
 public record LightColorData

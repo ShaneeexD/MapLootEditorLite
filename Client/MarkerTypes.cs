@@ -17,7 +17,8 @@ namespace MapLootEditorLite.Client
         ExtractZone,
         BotSpawnPoint,
         BotSpawnZone,
-        LightZone
+        LightZone,
+        TriggerZone
     }
 
     public enum ExtractZoneRequirementType
@@ -128,6 +129,12 @@ namespace MapLootEditorLite.Client
             ApplyPreset(preset, ref zone.side, ref zone.category);
         }
 
+        public static void ApplyPreset(BotSpawnPreset preset, BotSpawnGroup group)
+        {
+            group.wildSpawnType = GetWildSpawnType(preset);
+            ApplyPreset(preset, ref group.side, ref group.category);
+        }
+
         private static void ApplyPreset(BotSpawnPreset preset, ref BotSpawnSide side, ref BotSpawnCategory category)
         {
             switch (preset)
@@ -221,6 +228,7 @@ namespace MapLootEditorLite.Client
         public List<BotSpawnPoint> botSpawnPoints = new List<BotSpawnPoint>();
         public List<BotSpawnZone> botSpawnZones = new List<BotSpawnZone>();
         public List<LightZone> lightZones = new List<LightZone>();
+        public List<TriggerZone> triggerZones = new List<TriggerZone>();
     }
 
     public class PackData
@@ -435,6 +443,23 @@ namespace MapLootEditorLite.Client
         public override MarkerKind Kind => MarkerKind.ExtractZone;
     }
 
+    public class BotSpawnGroup
+    {
+        public string id = "";
+        public int spawnCount = 1;
+        public BotSpawnPreset preset = BotSpawnPreset.Scav;
+        public string wildSpawnType = "";
+        public BotSpawnSide side = BotSpawnSide.Savage;
+        public BotSpawnCategory category = BotSpawnCategory.Bot;
+    }
+
+    public class TriggerZone : MarkerBase
+    {
+        public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
+        public ZoneShape shape = ZoneShape.Sphere;
+        public override MarkerKind Kind => MarkerKind.TriggerZone;
+    }
+
     public class BotSpawnPoint : MarkerBase
     {
         public float radius = 1f;
@@ -448,6 +473,11 @@ namespace MapLootEditorLite.Client
         public bool questOnly = false;
         public bool questCompleted = false;
         public string questId = "";
+        public string spawnMode = "Forced";
+        public float botSpawnChance = 100f;
+        public List<string> randomSpawnTypes = new();
+        public bool triggerActivated = false;
+        public string triggerZoneName = "";
 
         public override MarkerKind Kind => MarkerKind.BotSpawnPoint;
     }
@@ -468,6 +498,12 @@ namespace MapLootEditorLite.Client
         public bool questOnly = false;
         public bool questCompleted = false;
         public string questId = "";
+        public string spawnMode = "Forced";
+        public float botSpawnChance = 100f;
+        public List<string> randomSpawnTypes = new();
+        public List<BotSpawnGroup> randomGroups = new();
+        public bool triggerActivated = false;
+        public string triggerZoneName = "";
 
         public override MarkerKind Kind => MarkerKind.BotSpawnZone;
     }

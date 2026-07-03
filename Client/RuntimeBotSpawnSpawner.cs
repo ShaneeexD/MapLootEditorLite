@@ -23,6 +23,11 @@ namespace MapLootEditorLite.Client
         private string _currentMapId;
         private static bool _patchApplied;
         private List<SpawnRequest> _spawnRequests = new List<SpawnRequest>();
+        private System.Random _rng;
+        private BotsController _botsController;
+        private List<TriggerZone> _triggerZones = new List<TriggerZone>();
+        private Dictionary<string, List<TriggerSpawnData>> _triggeredSpawnData = new Dictionary<string, List<TriggerSpawnData>>();
+        private HashSet<string> _activatedTriggers = new HashSet<string>();
 
         private class SpawnRequest
         {
@@ -30,6 +35,15 @@ namespace MapLootEditorLite.Client
             public SpawnPointMarker Marker;
             public BotSpawnPoint Point;
             public BotSpawnZone ZoneData;
+            public BotSpawnGroup Group;
+            public string ResolvedWildSpawnType;
+        }
+
+        private class TriggerSpawnData
+        {
+            public BotSpawnPoint Point;
+            public BotSpawnZone Zone;
+            public BotZone BotZone;
         }
 
         private void Awake()
@@ -39,6 +53,7 @@ namespace MapLootEditorLite.Client
 
         private void Start()
         {
+            _rng = new System.Random();
             LoadPacks();
             ApplyPatch();
         }
@@ -48,6 +63,10 @@ namespace MapLootEditorLite.Client
             _currentWorld = null;
             _currentMapId = null;
             _spawnRequests.Clear();
+            _botsController = null;
+            _triggerZones.Clear();
+            _triggeredSpawnData.Clear();
+            _activatedTriggers.Clear();
         }
 
         private void LoadPacks()
@@ -157,6 +176,9 @@ namespace MapLootEditorLite.Client
             _currentWorld = world;
             _currentMapId = mapId;
             _spawnRequests.Clear();
+            _triggerZones.Clear();
+            _triggeredSpawnData.Clear();
+            _activatedTriggers.Clear();
 
             var points = new List<BotSpawnPoint>();
             var zones = new List<BotSpawnZone>();
@@ -174,48 +196,133 @@ namespace MapLootEditorLite.Client
                         if (QuestConditionsMet(zone.questOnly, zone.questCompleted, zone.questId))
                             zones.Add(zone);
                     }
+                    foreach (var trigger in map.triggerZones ?? new List<TriggerZone>())
+                    {
+                        _triggerZones.Add(trigger);
+                    }
                 }
             }
 
-            Plugin.Log.LogInfo($"[MLEL Bot] Spawning for map '{mapId}' with {points.Count} points and {zones.Count} zones from {_packs.Count} packs.");
-            if (points.Count == 0 && zones.Count == 0)
+            Plugin.Log.LogInfo($"[MLEL Bot] Spawning for map '{mapId}' with {points.Count} points, {zones.Count} zones, and {_triggerZones.Count} trigger zones from {_packs.Count} packs.");
+            if (points.Count == 0 && zones.Count == 0 && _triggerZones.Count == 0)
             {
-                Plugin.Log.LogInfo($"[MLEL Bot] No custom bot spawn data for map {mapId}.");
+                Plugin.Log.LogInfo($"[MLEL Bot] No custom bot spawn or trigger data for map {mapId}.");
                 return;
             }
 
-            var rng = new System.Random();
+            foreach (var point in points.Where(p => p.triggerActivated))
+            {
+                var zoneName = ResolveBotZoneName(point.botZoneName, point.position.ToVector3(), botZones);
+                var botZone = botZones?.FirstOrDefault(z => z.name == zoneName);
+                if (botZone == null)
+                {
+                    Plugin.Log.LogWarning($"[MLEL Bot] Trigger-activated point {point.id} has no valid BotZone, skipping.");
+                    continue;
+                }
+                AddTriggeredSpawnData(point.triggerZoneName, new TriggerSpawnData { Point = point, BotZone = botZone });
+            }
+
+            foreach (var zone in zones.Where(z => z.triggerActivated))
+            {
+                var zoneName = ResolveBotZoneName(zone.botZoneName, zone.position.ToVector3(), botZones);
+                var botZone = botZones?.FirstOrDefault(z => z.name == zoneName);
+                if (botZone == null)
+                {
+                    Plugin.Log.LogWarning($"[MLEL Bot] Trigger-activated zone {zone.id} has no valid BotZone, skipping.");
+                    continue;
+                }
+                AddTriggeredSpawnData(zone.triggerZoneName, new TriggerSpawnData { Zone = zone, BotZone = botZone });
+            }
+
             var created = 0;
 
-            foreach (var point in points)
+            foreach (var point in points.Where(p => !p.triggerActivated))
             {
-                if (point.spawnChance < 100f && rng.NextDouble() * 100 > point.spawnChance)
+                if (point.spawnChance < 100f && _rng.NextDouble() * 100 > point.spawnChance)
                     continue;
                 var zoneName = ResolveBotZoneName(point.botZoneName, point.position.ToVector3(), botZones);
-                var marker = CreateSpawnMarker(point.id, point.position.ToVector3(), point.rotation.ToVector3().y, point.radius, point.side, point.category, point.delayToCanSpawnSec, zoneName, botZones, point);
+                var resolvedType = point.randomSpawnTypes != null && point.randomSpawnTypes.Count > 0
+                    ? point.randomSpawnTypes[_rng.Next(point.randomSpawnTypes.Count)]
+                    : point.wildSpawnType;
+                var marker = CreateSpawnMarker(point.id, point.position.ToVector3(), point.rotation.ToVector3().y, point.radius, point.side, point.category, point.delayToCanSpawnSec, zoneName, botZones, point, resolvedType: resolvedType);
                 if (marker != null)
                     created++;
             }
 
-            foreach (var zone in zones)
+            foreach (var zone in zones.Where(z => !z.triggerActivated))
             {
+                if (zone.spawnChance < 100f && _rng.NextDouble() * 100 > zone.spawnChance)
+                    continue;
+
                 var zoneName = ResolveBotZoneName(zone.botZoneName, zone.position.ToVector3(), botZones);
-                for (int i = 0; i < zone.spawnCount; i++)
-                {
-                    if (zone.spawnChance < 100f && rng.NextDouble() * 100 > zone.spawnChance)
-                        continue;
-                    var pos = GetRandomPointInZone(zone);
-                    var id = $"{zone.id}_spawn_{i}";
-                    var marker = CreateSpawnMarker(id, pos, zone.rotation.ToVector3().y, 1f, zone.side, zone.category, zone.delayToCanSpawnSec, zoneName, botZones, zoneData: zone);
-                    if (marker != null)
-                        created++;
-                }
+                created += CreateZoneMarkers(zone, botZones, zoneName, "spawn").Count;
             }
 
-            Plugin.Log.LogInfo($"[MLEL Bot] Created {created} custom bot spawn markers for map {mapId} across {botZones?.Length ?? 0} zones.");
+            Plugin.Log.LogInfo($"[MLEL Bot] Created {created} custom bot spawn markers for map {mapId} across {botZones?.Length ?? 0} zones. {points.Count(p => p.triggerActivated) + zones.Count(z => z.triggerActivated)} spawns are trigger-activated.");
         }
 
-        private SpawnPointMarker CreateSpawnMarker(string id, Vector3 position, float rotationY, float radius, BotSpawnSide side, BotSpawnCategory category, float delay, string botZoneName, BotZone[] botZones, BotSpawnPoint point = null, BotSpawnZone zoneData = null)
+        private void AddTriggeredSpawnData(string triggerZoneName, TriggerSpawnData data)
+        {
+            var key = triggerZoneName ?? "";
+            if (!_triggeredSpawnData.ContainsKey(key))
+                _triggeredSpawnData[key] = new List<TriggerSpawnData>();
+            _triggeredSpawnData[key].Add(data);
+        }
+
+        private List<SpawnRequest> CreateZoneMarkers(BotSpawnZone zone, BotZone[] botZones, string zoneName, string idSuffix)
+        {
+            var requests = new List<SpawnRequest>();
+            if (zone.randomGroups != null && zone.randomGroups.Count > 0)
+            {
+                var group = zone.randomGroups[_rng.Next(zone.randomGroups.Count)];
+                for (int i = 0; i < group.spawnCount; i++)
+                {
+                    var pos = GetRandomPointInZone(zone);
+                    var id = $"{zone.id}_{idSuffix}_group_{group.id}_spawn_{i}";
+                    var marker = CreateSpawnMarker(id, pos, zone.rotation.ToVector3().y, 1f, group.side, group.category, zone.delayToCanSpawnSec, zoneName, botZones, zoneData: zone, group: group, resolvedType: group.wildSpawnType);
+                    if (marker != null)
+                    {
+                        var request = _spawnRequests.LastOrDefault(r => r.Marker == marker);
+                        if (request != null)
+                            requests.Add(request);
+                    }
+                }
+            }
+            else if (zone.randomSpawnTypes != null && zone.randomSpawnTypes.Count > 0)
+            {
+                for (int i = 0; i < zone.spawnCount; i++)
+                {
+                    var type = zone.randomSpawnTypes[_rng.Next(zone.randomSpawnTypes.Count)];
+                    var pos = GetRandomPointInZone(zone);
+                    var id = $"{zone.id}_{idSuffix}_random_spawn_{i}";
+                    var marker = CreateSpawnMarker(id, pos, zone.rotation.ToVector3().y, 1f, zone.side, zone.category, zone.delayToCanSpawnSec, zoneName, botZones, zoneData: zone, resolvedType: type);
+                    if (marker != null)
+                    {
+                        var request = _spawnRequests.LastOrDefault(r => r.Marker == marker);
+                        if (request != null)
+                            requests.Add(request);
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < zone.spawnCount; i++)
+                {
+                    var pos = GetRandomPointInZone(zone);
+                    var id = $"{zone.id}_{idSuffix}_spawn_{i}";
+                    var marker = CreateSpawnMarker(id, pos, zone.rotation.ToVector3().y, 1f, zone.side, zone.category, zone.delayToCanSpawnSec, zoneName, botZones, zoneData: zone);
+                    if (marker != null)
+                    {
+                        var request = _spawnRequests.LastOrDefault(r => r.Marker == marker);
+                        if (request != null)
+                            requests.Add(request);
+                    }
+                }
+            }
+            return requests;
+        }
+
+        private SpawnPointMarker CreateSpawnMarker(string id, Vector3 position, float rotationY, float radius, BotSpawnSide side, BotSpawnCategory category, float delay, string botZoneName, BotZone[] botZones, BotSpawnPoint point = null, BotSpawnZone zoneData = null, BotSpawnGroup group = null, string resolvedType = null)
         {
             try
             {
@@ -254,7 +361,7 @@ namespace MapLootEditorLite.Client
                 if (zone != null && !zone.SpawnPointMarkers.Contains(marker))
                     zone.SpawnPointMarkers.Add(marker);
 
-                _spawnRequests.Add(new SpawnRequest { Zone = zone, Marker = marker, Point = point, ZoneData = zoneData });
+                _spawnRequests.Add(new SpawnRequest { Zone = zone, Marker = marker, Point = point, ZoneData = zoneData, Group = group, ResolvedWildSpawnType = resolvedType });
 
                 Plugin.Log.LogInfo($"[MLEL Bot] Created marker {id} at {position} in zone '{botZoneName}' (category: {category}, side: {side}).");
                 return marker;
@@ -377,6 +484,7 @@ namespace MapLootEditorLite.Client
 
         private void ForceSpawnCustomBots(BotsController controller)
         {
+            _botsController = controller;
             if (controller?.BotSpawner == null)
             {
                 Plugin.Log.LogWarning("[MLEL Bot] BotsController or BotSpawner is null, cannot force custom spawn.");
@@ -389,7 +497,9 @@ namespace MapLootEditorLite.Client
                 UpdateMarkerCorePoint(controller, request.Marker);
             }
 
-            var zoneGroups = _spawnRequests
+            var forcedRequests = _spawnRequests.Where(r => IsForcedSpawn(r) && BotSpawnChancePassed(r)).ToList();
+
+            var zoneGroups = forcedRequests
                 .Where(r => r.ZoneData != null)
                 .GroupBy(r => r.ZoneData)
                 .ToList();
@@ -399,10 +509,24 @@ namespace MapLootEditorLite.Client
                 SpawnZoneGroup(controller, group.Key, group.ToList());
             }
 
-            foreach (var request in _spawnRequests.Where(r => r.ZoneData == null))
+            foreach (var request in forcedRequests.Where(r => r.ZoneData == null))
             {
                 SpawnBotAt(controller, request);
             }
+        }
+
+        private bool IsForcedSpawn(SpawnRequest request)
+        {
+            var mode = request.Point?.spawnMode ?? request.ZoneData?.spawnMode ?? "Forced";
+            return !string.Equals(mode, "Potential", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool BotSpawnChancePassed(SpawnRequest request)
+        {
+            var chance = request.Point?.botSpawnChance ?? request.ZoneData?.botSpawnChance ?? 100f;
+            if (chance >= 100f)
+                return true;
+            return _rng.NextDouble() * 100 <= chance;
         }
 
         private async void SpawnZoneGroup(BotsController controller, BotSpawnZone zoneData, List<SpawnRequest> requests)
@@ -530,10 +654,12 @@ namespace MapLootEditorLite.Client
 
         private WildSpawnType? ResolveWildSpawnType(SpawnRequest request)
         {
-            var wildSpawnType = request.Point?.wildSpawnType ?? request.ZoneData?.wildSpawnType;
+            var wildSpawnType = request.ResolvedWildSpawnType;
+            if (string.IsNullOrWhiteSpace(wildSpawnType))
+                wildSpawnType = request.Group?.wildSpawnType ?? request.Point?.wildSpawnType ?? request.ZoneData?.wildSpawnType;
             if (string.IsNullOrWhiteSpace(wildSpawnType))
             {
-                var preset = request.Point?.preset ?? request.ZoneData?.preset ?? BotSpawnPreset.Scav;
+                var preset = request.Group?.preset ?? request.Point?.preset ?? request.ZoneData?.preset ?? BotSpawnPreset.Scav;
                 wildSpawnType = BotSpawnPresetMapping.GetWildSpawnType(preset);
                 Plugin.Log.LogInfo($"[MLEL Bot] wildSpawnType empty, inferred '{wildSpawnType}' from preset {preset}.");
             }
@@ -547,22 +673,143 @@ namespace MapLootEditorLite.Client
 
         private EPlayerSide ResolveSide(SpawnRequest request)
         {
-            var wildSpawnType = request.Point?.wildSpawnType ?? request.ZoneData?.wildSpawnType;
+            var wildSpawnType = request.ResolvedWildSpawnType;
+            if (string.IsNullOrWhiteSpace(wildSpawnType))
+                wildSpawnType = request.Group?.wildSpawnType ?? request.Point?.wildSpawnType ?? request.ZoneData?.wildSpawnType;
             if (string.IsNullOrWhiteSpace(wildSpawnType))
             {
-                var preset = request.Point?.preset ?? request.ZoneData?.preset ?? BotSpawnPreset.Scav;
+                var preset = request.Group?.preset ?? request.Point?.preset ?? request.ZoneData?.preset ?? BotSpawnPreset.Scav;
                 wildSpawnType = BotSpawnPresetMapping.GetWildSpawnType(preset);
             }
             if ("pmcBEAR".Equals(wildSpawnType, StringComparison.OrdinalIgnoreCase))
                 return EPlayerSide.Bear;
             if ("pmcUSEC".Equals(wildSpawnType, StringComparison.OrdinalIgnoreCase))
                 return EPlayerSide.Usec;
-            var side = request.Point?.side ?? request.ZoneData?.side ?? BotSpawnSide.Savage;
+            var side = request.Group?.side ?? request.Point?.side ?? request.ZoneData?.side ?? BotSpawnSide.Savage;
             if (side == BotSpawnSide.Bear)
                 return EPlayerSide.Bear;
             if (side == BotSpawnSide.Usec)
                 return EPlayerSide.Usec;
             return EPlayerSide.Savage;
+        }
+
+        private void Update()
+        {
+            if (_botsController == null || _triggerZones.Count == 0)
+                return;
+
+            var player = _currentWorld?.MainPlayer;
+            if (player == null || player.Transform == null)
+                return;
+
+            var playerPos = player.Transform.position;
+            foreach (var trigger in _triggerZones)
+            {
+                if (_activatedTriggers.Contains(trigger.name))
+                    continue;
+                if (IsPlayerInsideTrigger(trigger, playerPos))
+                    ActivateTrigger(trigger.name);
+            }
+        }
+
+        private bool IsPlayerInsideTrigger(TriggerZone trigger, Vector3 position)
+        {
+            var center = trigger.position.ToVector3();
+            var rotation = trigger.rotation.ToQuaternion();
+            var scale = trigger.scale.ToVector3();
+            var localPos = Quaternion.Inverse(rotation) * (position - center);
+
+            switch (trigger.shape)
+            {
+                case ZoneShape.Box:
+                    return Mathf.Abs(localPos.x) <= scale.x / 2f && Mathf.Abs(localPos.y) <= scale.y / 2f && Mathf.Abs(localPos.z) <= scale.z / 2f;
+                case ZoneShape.Cylinder:
+                case ZoneShape.Capsule:
+                    var radius = Mathf.Max(scale.x, scale.z) / 2f;
+                    var distXZ = Mathf.Sqrt(localPos.x * localPos.x + localPos.z * localPos.z);
+                    return distXZ <= radius && Mathf.Abs(localPos.y) <= scale.y / 2f;
+                default:
+                    return localPos.magnitude <= scale.x / 2f;
+            }
+        }
+
+        private void ActivateTrigger(string name)
+        {
+            if (_activatedTriggers.Contains(name) || !_triggeredSpawnData.TryGetValue(name, out var data))
+                return;
+            _activatedTriggers.Add(name);
+
+            Plugin.Log.LogInfo($"[MLEL Bot] Trigger zone '{name}' activated.");
+
+            foreach (var spawn in data)
+            {
+                if (spawn.Point != null)
+                    SpawnTriggeredPoint(spawn.Point, spawn.BotZone);
+                else if (spawn.Zone != null)
+                    SpawnTriggeredZone(spawn.Zone, spawn.BotZone);
+            }
+        }
+
+        private void SpawnTriggeredPoint(BotSpawnPoint point, BotZone botZone)
+        {
+            if (_botsController?.BotSpawner == null)
+                return;
+
+            if (point.spawnChance < 100f && _rng.NextDouble() * 100 > point.spawnChance)
+            {
+                Plugin.Log.LogInfo($"[MLEL Bot] Trigger-activated point {point.id} failed spawn chance.");
+                return;
+            }
+
+            var resolvedType = point.randomSpawnTypes != null && point.randomSpawnTypes.Count > 0
+                ? point.randomSpawnTypes[_rng.Next(point.randomSpawnTypes.Count)]
+                : point.wildSpawnType;
+
+            var marker = CreateSpawnMarker(point.id, point.position.ToVector3(), point.rotation.ToVector3().y, point.radius, point.side, point.category, point.delayToCanSpawnSec, botZone.name, new[] { botZone }, point, resolvedType: resolvedType);
+            if (marker == null)
+                return;
+
+            var request = _spawnRequests.LastOrDefault(r => r.Marker == marker);
+            if (request == null)
+                return;
+
+            UpdateMarkerCorePoint(_botsController, marker);
+            if (BotSpawnChancePassed(request))
+                SpawnBotAt(_botsController, request);
+            else
+                Plugin.Log.LogInfo($"[MLEL Bot] Trigger-activated point {point.id} failed bot spawn chance.");
+        }
+
+        private void SpawnTriggeredZone(BotSpawnZone zone, BotZone botZone)
+        {
+            if (_botsController?.BotSpawner == null)
+                return;
+
+            if (zone.spawnChance < 100f && _rng.NextDouble() * 100 > zone.spawnChance)
+            {
+                Plugin.Log.LogInfo($"[MLEL Bot] Trigger-activated zone {zone.id} failed spawn chance.");
+                return;
+            }
+
+            var requests = CreateZoneMarkers(zone, new[] { botZone }, botZone.name, "trigger");
+            if (requests.Count == 0)
+                return;
+
+            foreach (var request in requests)
+            {
+                UpdateMarkerCorePoint(_botsController, request.Marker);
+            }
+
+            var filtered = requests.Where(r => BotSpawnChancePassed(r)).ToList();
+            if (filtered.Count > 0)
+            {
+                SpawnZoneGroup(_botsController, zone, filtered);
+                Plugin.Log.LogInfo($"[MLEL Bot] Trigger-activated zone {zone.id} spawned {filtered.Count} bots.");
+            }
+            else
+            {
+                Plugin.Log.LogInfo($"[MLEL Bot] Trigger-activated zone {zone.id} had no bots pass bot spawn chance.");
+            }
         }
 
         private void OnDestroy()

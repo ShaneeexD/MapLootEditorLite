@@ -86,6 +86,9 @@ namespace MapLootEditorLite.Client
             if (VanillaData.lightZones != null)
                 foreach (var m in VanillaData.lightZones)
                     yield return m;
+            if (VanillaData.triggerZones != null)
+                foreach (var m in VanillaData.triggerZones)
+                    yield return m;
         }
 
         public IEnumerable<MarkerBase> GetAllMarkersIncludingVanilla()
@@ -213,6 +216,9 @@ namespace MapLootEditorLite.Client
             if (Data.lightZones != null)
                 foreach (var m in Data.lightZones)
                     yield return m;
+            if (Data.triggerZones != null)
+                foreach (var m in Data.triggerZones)
+                    yield return m;
         }
 
         public MarkerBase FindById(string id)
@@ -322,6 +328,10 @@ namespace MapLootEditorLite.Client
                     Data.lightZones ??= new List<LightZone>();
                     Data.lightZones.Add(lz);
                     break;
+                case TriggerZone tz:
+                    Data.triggerZones ??= new List<TriggerZone>();
+                    Data.triggerZones.Add(tz);
+                    break;
             }
             IsDirty = true;
         }
@@ -383,6 +393,7 @@ namespace MapLootEditorLite.Client
                 case BotSpawnPoint bp: Data.botSpawnPoints.Remove(bp); break;
                 case BotSpawnZone bz: Data.botSpawnZones.Remove(bz); break;
                 case LightZone lz: Data.lightZones.Remove(lz); break;
+                case TriggerZone tz: Data.triggerZones.Remove(tz); break;
                 }
             }
             ClearSelection();
@@ -441,6 +452,10 @@ namespace MapLootEditorLite.Client
                     case LightZone lz:
                         copy = JsonConvert.DeserializeObject<LightZone>(json);
                         Data.lightZones.Add((LightZone)copy);
+                        break;
+                    case TriggerZone tz:
+                        copy = JsonConvert.DeserializeObject<TriggerZone>(json);
+                        Data.triggerZones.Add((TriggerZone)copy);
                         break;
                     default:
                         continue;
@@ -644,6 +659,22 @@ namespace MapLootEditorLite.Client
             return marker;
         }
 
+        public TriggerZone CreateTriggerZone(Vector3 position)
+        {
+            Data.triggerZones ??= new List<TriggerZone>();
+            var marker = new TriggerZone
+            {
+                name = "trigger_zone",
+                position = TransformData.FromVector3(position),
+                rotation = TransformData.FromVector3(Vector3.zero),
+                scale = new TransformData { x = 1f, y = 1f, z = 1f },
+                shape = ZoneShape.Sphere
+            };
+            Data.triggerZones.Add(marker);
+            IsDirty = true;
+            return marker;
+        }
+
         public void DeleteSelected()
         {
             if (Selected == null || Data == null || IsVanilla(Selected))
@@ -661,6 +692,7 @@ namespace MapLootEditorLite.Client
                 case BotSpawnPoint bp: Data.botSpawnPoints.Remove(bp); break;
                 case BotSpawnZone bz: Data.botSpawnZones.Remove(bz); break;
                 case LightZone lz: Data.lightZones.Remove(lz); break;
+                case TriggerZone tz: Data.triggerZones.Remove(tz); break;
             }
 
             Selected = null;

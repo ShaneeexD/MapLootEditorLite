@@ -655,6 +655,15 @@ namespace MapLootEditorLite.Client
             _previews.SpawnLightPreview(marker);
         }
 
+        public void CreateTriggerZone()
+        {
+            if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
+            var marker = _manager.CreateTriggerZone(GetLookPosition());
+            _manager.Selected = marker;
+            _renderer.Rebuild();
+        }
+
         public bool IsFreeCam => _freeCam;
 
         public void GoToMarker(MarkerBase marker)
