@@ -68,10 +68,24 @@ public static class InteractiveObjectTransformer
 
     private static bool ShouldSpawnObject(InteractiveObject obj)
     {
-        if (obj == null || !obj.QuestOnly || string.IsNullOrWhiteSpace(obj.QuestId))
+        if (obj == null)
             return true;
 
-        return QuestFilter.IsQuestActive(obj.QuestId);
+        return QuestConditionsMet(obj.QuestOnly, obj.QuestCompleted, obj.QuestId);
+    }
+
+    private static bool QuestConditionsMet(bool questOnly, bool questCompleted, string questId)
+    {
+        if (!questOnly && !questCompleted)
+            return true;
+
+        if (string.IsNullOrWhiteSpace(questId))
+            return true;
+
+        var active = questOnly && QuestFilter.IsQuestActive(questId);
+        var completed = questCompleted && QuestFilter.IsQuestCompleted(questId);
+
+        return active || completed;
     }
 
     private static void RegisterStaticLoot(object location, List<InteractiveObject> containers, string locationId)

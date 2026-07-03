@@ -128,9 +128,9 @@ namespace MapLootEditorLite.Client
             Plugin.Log.LogInfo($"[MLEL Runtime] Spawning {objects.Count} interactive objects for map {mapId}");
             foreach (var obj in objects)
             {
-                if (obj.questOnly && !IsQuestActive(obj.questId))
+                if (!QuestConditionsMet(obj.questOnly, obj.questCompleted, obj.questId))
                 {
-                    Plugin.Log.LogInfo($"[MLEL Runtime] Skipping quest-only interactive object '{obj.name}' (quest {obj.questId} not active).");
+                    Plugin.Log.LogInfo($"[MLEL Runtime] Skipping quest-gated interactive object '{obj.name}' (quest {obj.questId} not active/completed).");
                     continue;
                 }
 
@@ -295,8 +295,11 @@ namespace MapLootEditorLite.Client
             return Guid.NewGuid().ToString("N").Substring(0, 24);
         }
 
-        private bool IsQuestActive(string questId)
+        private bool QuestConditionsMet(bool questOnly, bool questCompleted, string questId)
         {
+            if (!questOnly && !questCompleted)
+                return true;
+
             if (string.IsNullOrWhiteSpace(questId))
                 return false;
 
@@ -308,9 +311,13 @@ namespace MapLootEditorLite.Client
             if (quest == null)
                 return false;
 
-            return quest.Status == EQuestStatus.AvailableForStart
+            var active = quest.Status == EQuestStatus.AvailableForStart
                 || quest.Status == EQuestStatus.Started
                 || quest.Status == EQuestStatus.AvailableForFinish;
+
+            var completed = quest.Status == EQuestStatus.Success;
+
+            return (questOnly && active) || (questCompleted && completed);
         }
 
         private IEnumerator InitializeContainerLootCoroutine(InteractiveObject obj, LootableContainer lootable, GameWorld gameWorld)
@@ -401,9 +408,9 @@ namespace MapLootEditorLite.Client
                 if (string.IsNullOrWhiteSpace(loot.template))
                     continue;
 
-                if (loot.questOnly && !IsQuestActive(loot.questId))
+                if (!QuestConditionsMet(loot.questOnly, loot.questCompleted, loot.questId))
                 {
-                    Plugin.Log.LogInfo($"[MLEL Runtime] Skipping quest-only item {loot.template} for container '{obj.name}' (quest {loot.questId} not active).");
+                    Plugin.Log.LogInfo($"[MLEL Runtime] Skipping quest-gated item {loot.template} for container '{obj.name}' (quest {loot.questId} not active/completed).");
                     continue;
                 }
 

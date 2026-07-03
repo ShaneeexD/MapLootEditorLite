@@ -6,6 +6,7 @@ using System.Linq;
 using Comfort.Common;
 using EFT;
 using Newtonsoft.Json;
+using EFT.Quests;
 using UnityEngine;
 
 namespace MapLootEditorLite.Client
@@ -113,8 +114,28 @@ namespace MapLootEditorLite.Client
             {
                 if (pack.maps.TryGetValue(mapId, out var map))
                 {
-                    objects.AddRange(map.objects ?? new List<StaticObject>());
-                    wttClones.AddRange((map.wttStaticObjects ?? new List<WTTStaticObject>()).Where(o => o.spawnType == "clone"));
+                    foreach (var obj in map.objects ?? new List<StaticObject>())
+                    {
+                        if (!QuestConditionsMet(obj.questOnly, obj.questCompleted, obj.questId))
+                        {
+                            Plugin.Log.LogInfo($"[MLEL Runtime] Skipping quest-gated static object '{obj.name}' (quest {obj.questId} not active/completed).");
+                            continue;
+                        }
+                        objects.Add(obj);
+                    }
+
+                    foreach (var obj in map.wttStaticObjects ?? new List<WTTStaticObject>())
+                    {
+                        if (obj.spawnType != "clone")
+                            continue;
+
+                        if (!QuestConditionsMet(obj.questOnly, obj.questCompleted, obj.questId))
+                        {
+                            Plugin.Log.LogInfo($"[MLEL Runtime] Skipping quest-gated WTT clone '{obj.name}' (quest {obj.questId} not active/completed).");
+                            continue;
+                        }
+                        wttClones.Add(obj);
+                    }
                 }
             }
 
@@ -288,6 +309,31 @@ namespace MapLootEditorLite.Client
                     Destroy(go);
             }
             _spawned.Clear();
+        }
+
+        private bool QuestConditionsMet(bool questOnly, bool questCompleted, string questId)
+        {
+            if (!questOnly && !questCompleted)
+                return true;
+
+            if (string.IsNullOrWhiteSpace(questId))
+                return false;
+
+            var player = Singleton<GameWorld>.Instance?.MainPlayer;
+            if (player?.Profile?.QuestsData == null)
+                return false;
+
+            var quest = player.Profile.QuestsData.FirstOrDefault(q => q.Id == questId);
+            if (quest == null)
+                return false;
+
+            var active = quest.Status == EQuestStatus.AvailableForStart
+                || quest.Status == EQuestStatus.Started
+                || quest.Status == EQuestStatus.AvailableForFinish;
+
+            var completed = quest.Status == EQuestStatus.Success;
+
+            return (questOnly && active) || (questCompleted && completed);
         }
 
         private void OnDestroy()

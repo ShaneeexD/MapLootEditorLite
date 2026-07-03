@@ -55,4 +55,44 @@ public static class QuestFilter
             return false;
         }
     }
+
+    public static bool IsQuestCompleted(string questId)
+    {
+        if (string.IsNullOrWhiteSpace(questId))
+            return false;
+
+        var sessionId = QuestFilterContext.CurrentSessionId;
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            ServerPlugin.Logger?.Warning($"[MLEL] Quest-completed check for '{questId}' skipped: no current session ID available.");
+            return false;
+        }
+
+        return IsQuestCompleted(sessionId, questId);
+    }
+
+    public static bool IsQuestCompleted(string sessionId, string questId)
+    {
+        if (_profileHelper == null)
+            return false;
+
+        try
+        {
+            var profile = _profileHelper.GetFullProfile(new MongoId(sessionId));
+            var pmcData = profile?.CharacterData?.PmcData;
+            if (pmcData?.Quests == null)
+                return false;
+
+            var quest = pmcData.Quests.FirstOrDefault(q => q.QId.ToString() == questId);
+            if (quest == null)
+                return false;
+
+            return quest.Status == QuestStatusEnum.Success;
+        }
+        catch (System.Exception ex)
+        {
+            ServerPlugin.Logger?.Error($"[MLEL] Failed to check quest completion for '{questId}': {ex.Message}");
+            return false;
+        }
+    }
 }

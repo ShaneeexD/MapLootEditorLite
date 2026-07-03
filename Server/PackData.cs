@@ -56,6 +56,9 @@ public record LootItem
     [JsonPropertyName("questOnly")]
     public bool QuestOnly { get; set; } = false;
 
+    [JsonPropertyName("questCompleted")]
+    public bool QuestCompleted { get; set; } = false;
+
     [JsonPropertyName("questId")]
     public string QuestId { get; set; } = string.Empty;
 }
@@ -95,6 +98,15 @@ public record LooseLootSpawn
 
     [JsonPropertyName("useGravity")]
     public bool UseGravity { get; set; } = false;
+
+    [JsonPropertyName("questOnly")]
+    public bool QuestOnly { get; set; } = false;
+
+    [JsonPropertyName("questCompleted")]
+    public bool QuestCompleted { get; set; } = false;
+
+    [JsonPropertyName("questId")]
+    public string QuestId { get; set; } = string.Empty;
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -147,6 +159,15 @@ public record LootZone
 
     [JsonPropertyName("useGravity")]
     public bool UseGravity { get; set; } = false;
+
+    [JsonPropertyName("questOnly")]
+    public bool QuestOnly { get; set; } = false;
+
+    [JsonPropertyName("questCompleted")]
+    public bool QuestCompleted { get; set; } = false;
+
+    [JsonPropertyName("questId")]
+    public string QuestId { get; set; } = string.Empty;
 }
 
 public record StaticObject
@@ -177,6 +198,15 @@ public record StaticObject
 
     [JsonPropertyName("sourceObjectPosition")]
     public TransformData SourceObjectPosition { get; set; } = new();
+
+    [JsonPropertyName("questOnly")]
+    public bool QuestOnly { get; set; } = false;
+
+    [JsonPropertyName("questCompleted")]
+    public bool QuestCompleted { get; set; } = false;
+
+    [JsonPropertyName("questId")]
+    public string QuestId { get; set; } = string.Empty;
 }
 
 public record TransformData
@@ -249,6 +279,12 @@ public record WTTStaticObject
 
     [JsonPropertyName("linkedQuestMustExist")]
     public bool? LinkedQuestMustExist { get; set; }
+
+    [JsonPropertyName("questOnly")]
+    public bool QuestOnly { get; set; } = false;
+
+    [JsonPropertyName("questCompleted")]
+    public bool QuestCompleted { get; set; } = false;
 
     [JsonPropertyName("requiredItemInInventory")]
     public string RequiredItemInInventory { get; set; } = string.Empty;
@@ -327,6 +363,9 @@ public record InteractiveObject
 
     [JsonPropertyName("questOnly")]
     public bool QuestOnly { get; set; } = false;
+
+    [JsonPropertyName("questCompleted")]
+    public bool QuestCompleted { get; set; } = false;
 
     [JsonPropertyName("questId")]
     public string QuestId { get; set; } = string.Empty;

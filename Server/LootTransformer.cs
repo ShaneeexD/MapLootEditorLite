@@ -82,6 +82,11 @@ public static class LootTransformer
                             continue;
                         }
 
+                        if (!QuestConditionsMet(spawn.QuestOnly, spawn.QuestCompleted, spawn.QuestId))
+                        {
+                            continue;
+                        }
+
                         if (!existingIds.Add(spawn.Id))
                         {
                             continue;
@@ -100,6 +105,11 @@ public static class LootTransformer
                     foreach (var zone in map.LootZones)
                     {
                         if (zone.Forced)
+                        {
+                            continue;
+                        }
+
+                        if (!QuestConditionsMet(zone.QuestOnly, zone.QuestCompleted, zone.QuestId))
                         {
                             continue;
                         }
@@ -252,10 +262,24 @@ public static class LootTransformer
 
     private static bool ShouldSpawnItem(LootItem item)
     {
-        if (item == null || !item.QuestOnly || string.IsNullOrWhiteSpace(item.QuestId))
+        if (item == null)
             return true;
 
-        return QuestFilter.IsQuestActive(item.QuestId);
+        return QuestConditionsMet(item.QuestOnly, item.QuestCompleted, item.QuestId);
+    }
+
+    private static bool QuestConditionsMet(bool questOnly, bool questCompleted, string questId)
+    {
+        if (!questOnly && !questCompleted)
+            return true;
+
+        if (string.IsNullOrWhiteSpace(questId))
+            return true;
+
+        var active = questOnly && QuestFilter.IsQuestActive(questId);
+        var completed = questCompleted && QuestFilter.IsQuestCompleted(questId);
+
+        return active || completed;
     }
 
     private static List<LooseLootItemDistribution> BuildItemDistribution(List<LootItem> sourceItems, List<SptLootItem> sptItems)

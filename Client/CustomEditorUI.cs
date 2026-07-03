@@ -1438,6 +1438,12 @@ namespace MapLootEditorLite.Client
         {
             BuildToggleField(_inspectorContent, "Respawnable", spawn.respawnable, (v) => { spawn.respawnable = v; manager.IsDirty = true; });
             BuildToggleField(_inspectorContent, "Use Gravity", spawn.useGravity, (v) => { spawn.useGravity = v; manager.IsDirty = true; });
+            BuildToggleField(_inspectorContent, "Quest only", spawn.questOnly, (v) => { spawn.questOnly = v; manager.IsDirty = true; RefreshInspector(); });
+            BuildToggleField(_inspectorContent, "Quest completed", spawn.questCompleted, (v) => { spawn.questCompleted = v; manager.IsDirty = true; RefreshInspector(); });
+            if (spawn.questOnly || spawn.questCompleted)
+            {
+                BuildStringField(_inspectorContent, "Quest ID", spawn.questId ?? "", (v) => { spawn.questId = v; manager.IsDirty = true; });
+            }
             BuildItemsList(spawn.items, false, (i) => previews.SpawnAtMarker(spawn, i));
         }
 
@@ -1462,6 +1468,12 @@ namespace MapLootEditorLite.Client
             BuildFloatField(_inspectorContent, "Radius", zone.radius, (v) => { zone.radius = v; manager.IsDirty = true; });
             BuildVector3Field(_inspectorContent, "Scale", zone.scale.ToVector3(), (v) => { zone.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
             BuildToggleField(_inspectorContent, "Use Gravity", zone.useGravity, (v) => { zone.useGravity = v; manager.IsDirty = true; });
+            BuildToggleField(_inspectorContent, "Quest only", zone.questOnly, (v) => { zone.questOnly = v; manager.IsDirty = true; RefreshInspector(); });
+            BuildToggleField(_inspectorContent, "Quest completed", zone.questCompleted, (v) => { zone.questCompleted = v; manager.IsDirty = true; RefreshInspector(); });
+            if (zone.questOnly || zone.questCompleted)
+            {
+                BuildStringField(_inspectorContent, "Quest ID", zone.questId ?? "", (v) => { zone.questId = v; manager.IsDirty = true; });
+            }
             BuildItemsList(zone.items, true, (i) => previews.SpawnAtZoneCenter(zone, i));
         }
 
@@ -1470,6 +1482,12 @@ namespace MapLootEditorLite.Client
             BuildStringField(_inspectorContent, "Prefab Path", obj.prefabPath ?? "", (v) => { obj.prefabPath = v; manager.IsDirty = true; });
             BuildVector3Field(_inspectorContent, "Scale", obj.scale.ToVector3(), (v) => { obj.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
             BuildSourceObjectControls(obj);
+            BuildToggleField(_inspectorContent, "Quest only", obj.questOnly, (v) => { obj.questOnly = v; manager.IsDirty = true; RefreshInspector(); });
+            BuildToggleField(_inspectorContent, "Quest completed", obj.questCompleted, (v) => { obj.questCompleted = v; manager.IsDirty = true; RefreshInspector(); });
+            if (obj.questOnly || obj.questCompleted)
+            {
+                BuildStringField(_inspectorContent, "Quest ID", obj.questId ?? "", (v) => { obj.questId = v; manager.IsDirty = true; });
+            }
             UIBuilder.CreateButton(_inspectorContent, "Preview Object", () => previews.SpawnStaticPreview(obj), 100, 24);
         }
 
@@ -1559,6 +1577,8 @@ namespace MapLootEditorLite.Client
 
             BuildVector3Field(_inspectorContent, "Scale", obj.scale.ToVector3(), (v) => { obj.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
 
+            BuildToggleField(_inspectorContent, "Quest only", obj.questOnly, (v) => { obj.questOnly = v; manager.IsDirty = true; RefreshInspector(); });
+            BuildToggleField(_inspectorContent, "Quest completed", obj.questCompleted, (v) => { obj.questCompleted = v; manager.IsDirty = true; RefreshInspector(); });
             BuildStringField(_inspectorContent, "Quest Id", obj.questId ?? "", (v) => { obj.questId = v; manager.IsDirty = true; });
             BuildStringField(_inspectorContent, "Required Statuses", string.Join(",", obj.requiredQuestStatuses ?? new System.Collections.Generic.List<string>()), (v) => { obj.requiredQuestStatuses = new System.Collections.Generic.List<string>(v.Split(',')); manager.IsDirty = true; });
             BuildStringField(_inspectorContent, "Excluded Statuses", string.Join(",", obj.excludedQuestStatuses ?? new System.Collections.Generic.List<string>()), (v) => { obj.excludedQuestStatuses = new System.Collections.Generic.List<string>(v.Split(',')); manager.IsDirty = true; });
@@ -1619,7 +1639,8 @@ namespace MapLootEditorLite.Client
                 });
                 BuildFloatField(_inspectorContent, "Spawn Chance", obj.spawnChance, (v) => { obj.spawnChance = v; manager.IsDirty = true; });
                 BuildToggleField(_inspectorContent, "Quest only", obj.questOnly, (v) => { obj.questOnly = v; manager.IsDirty = true; RefreshInspector(); });
-                if (obj.questOnly)
+                BuildToggleField(_inspectorContent, "Quest completed", obj.questCompleted, (v) => { obj.questCompleted = v; manager.IsDirty = true; RefreshInspector(); });
+                if (obj.questOnly || obj.questCompleted)
                 {
                     BuildStringField(_inspectorContent, "Quest ID", obj.questId ?? "", (v) => { obj.questId = v; manager.IsDirty = true; });
                 }
@@ -1760,14 +1781,23 @@ namespace MapLootEditorLite.Client
                     UIBuilder.CreateButton(row, "Prev", () => onPreview(idx), 36, 20, 10);
                 UIBuilder.CreateButton(row, "-", () => { items.RemoveAt(idx); manager.IsDirty = true; RefreshInspector(); }, 24, 20, 10);
 
-                var questRow = UIBuilder.CreatePanel("QuestRow", _inspectorContent, new Color(0, 0, 0, 0));
-                UIBuilder.AddHorizontalLayout(questRow, 2, 2, false, false);
-                UIBuilder.AddLayoutElement(questRow, null, 22, null, 22, null, 0);
-                UIBuilder.CreateToggle(questRow, "Quest only", item.questOnly, (v) => { item.questOnly = v; manager.IsDirty = true; RefreshInspector(); }, 18);
-                if (item.questOnly)
+                var questOnlyRow = UIBuilder.CreatePanel("QuestOnlyRow", _inspectorContent, new Color(0, 0, 0, 0));
+                UIBuilder.AddHorizontalLayout(questOnlyRow, 2, 2, false, false);
+                UIBuilder.AddLayoutElement(questOnlyRow, null, 22, null, 22, null, 0);
+                UIBuilder.CreateToggle(questOnlyRow, "Quest only", item.questOnly, (v) => { item.questOnly = v; manager.IsDirty = true; RefreshInspector(); }, 18);
+
+                var questCompletedRow = UIBuilder.CreatePanel("QuestCompletedRow", _inspectorContent, new Color(0, 0, 0, 0));
+                UIBuilder.AddHorizontalLayout(questCompletedRow, 2, 2, false, false);
+                UIBuilder.AddLayoutElement(questCompletedRow, null, 22, null, 22, null, 0);
+                UIBuilder.CreateToggle(questCompletedRow, "Quest completed", item.questCompleted, (v) => { item.questCompleted = v; manager.IsDirty = true; RefreshInspector(); }, 18);
+
+                if (item.questOnly || item.questCompleted)
                 {
-                    UIBuilder.CreateLabel(questRow, "Quest ID", 11, 48, 20);
-                    BuildInputFieldInline(questRow, item.questId ?? "", (v) => { item.questId = v; manager.IsDirty = true; }, 120, 20);
+                    var questIdRow = UIBuilder.CreatePanel("QuestIdRow", _inspectorContent, new Color(0, 0, 0, 0));
+                    UIBuilder.AddHorizontalLayout(questIdRow, 2, 2, false, false);
+                    UIBuilder.AddLayoutElement(questIdRow, null, 22, null, 22, null, 0);
+                    UIBuilder.CreateLabel(questIdRow, "Quest ID", 11, 48, 20);
+                    BuildInputFieldInline(questIdRow, item.questId ?? "", (v) => { item.questId = v; manager.IsDirty = true; }, 120, 20);
                 }
 
                 var name = GetItemName(item.template);

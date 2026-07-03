@@ -95,6 +95,7 @@ namespace MapLootEditorLite.Client
         public bool randomRotation = true;
         public float yOffset = 0f;
         public bool questOnly = false;
+        public bool questCompleted = false;
         public string questId = "";
     }
 
@@ -106,6 +107,9 @@ namespace MapLootEditorLite.Client
         public bool respawnable = false;
         public bool forced = false;
         public bool useGravity = false;
+        public bool questOnly = false;
+        public bool questCompleted = false;
+        public string questId = "";
 
         public override MarkerKind Kind => MarkerKind.LooseLoot;
     }
@@ -129,6 +133,9 @@ namespace MapLootEditorLite.Client
         public float spawnChance = 100f;
         public bool forced = false;
         public bool useGravity = false;
+        public bool questOnly = false;
+        public bool questCompleted = false;
+        public string questId = "";
 
         public override MarkerKind Kind => MarkerKind.LootZone;
     }
@@ -147,6 +154,9 @@ namespace MapLootEditorLite.Client
         // Fallback: copy an existing vanilla scene object instead of loading a bundle.
         public string sourceObjectName { get; set; } = "";
         public TransformData sourceObjectPosition { get; set; } = new TransformData();
+        public bool questOnly = false;
+        public bool questCompleted = false;
+        public string questId = "";
 
         public override MarkerKind Kind => MarkerKind.StaticObject;
     }
@@ -189,6 +199,8 @@ namespace MapLootEditorLite.Client
         public int requiredLevel = 0;
         public string requiredFaction = "";
         public string requiredBossSpawned = "";
+        public bool questOnly = false;
+        public bool questCompleted = false;
 
         public override MarkerKind Kind => MarkerKind.WTTStaticObject;
     }
@@ -209,6 +221,7 @@ namespace MapLootEditorLite.Client
         public List<LootItem> items = new List<LootItem>();
         public float spawnChance = 100f;
         public bool questOnly = false;
+        public bool questCompleted = false;
         public string questId = "";
 
         public override MarkerKind Kind => MarkerKind.InteractiveObject;
