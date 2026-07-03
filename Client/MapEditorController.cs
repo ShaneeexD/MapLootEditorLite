@@ -15,6 +15,8 @@ namespace MapLootEditorLite.Client
 {
     public class MapEditorController : MonoBehaviour
     {
+        public static MapEditorController Instance { get; private set; }
+
         private MarkerManager _manager;
         private MarkerRenderer _renderer;
         private CustomEditorUI _ui;
@@ -67,6 +69,7 @@ namespace MapLootEditorLite.Client
 
         private void Awake()
         {
+            Instance = this;
             _manager = new MarkerManager();
             _visualRoot = new GameObject("MLE_VisualRoot");
             _visualRoot.transform.SetParent(transform, false);
@@ -261,8 +264,18 @@ namespace MapLootEditorLite.Client
 
         private void OnDestroy()
         {
+            Instance = null;
             _previews?.ClearAll(true);
             _renderer?.Clear();
+        }
+
+        public void ResetState()
+        {
+            _currentGameWorld = null;
+            _currentMapId = null;
+            _previews?.ClearAll(true);
+            _renderer?.Clear();
+            _visualsCleared = true;
         }
 
         private void DetectRaid()
@@ -277,6 +290,7 @@ namespace MapLootEditorLite.Client
                     _visualsCleared = true;
                 }
                 _currentGameWorld = null;
+                _currentMapId = null;
                 return;
             }
 

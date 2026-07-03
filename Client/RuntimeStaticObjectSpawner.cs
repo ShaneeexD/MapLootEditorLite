@@ -12,31 +12,48 @@ namespace MapLootEditorLite.Client
 {
     public class RuntimeStaticObjectSpawner : MonoBehaviour
     {
+        public static RuntimeStaticObjectSpawner Instance { get; private set; }
+
         private List<PackData> _packs = new List<PackData>();
         private GameWorld _currentWorld;
         private string _currentMapId;
         private List<GameObject> _spawned = new List<GameObject>();
+
+        private void Awake()
+        {
+            Instance = this;
+        }
 
         private void Start()
         {
             LoadPacks();
         }
 
+        public void ResetState()
+        {
+            ClearSpawned();
+            _currentWorld = null;
+            _currentMapId = null;
+        }
+
         private void Update()
         {
             var world = Singleton<GameWorld>.Instance;
-            if (world == null)
+            var worldChanged = _currentWorld != world;
+
+            if (world == null || worldChanged)
             {
                 if (_currentWorld != null)
                 {
+                    Plugin.Log.LogInfo("[MLEL Runtime] GameWorld changed or ended, clearing static objects.");
                     ClearSpawned();
                     _currentWorld = null;
                     _currentMapId = null;
                 }
-                return;
             }
 
-            _currentWorld = world;
+            if (world == null)
+                return;
 
             var mapId = world.LocationId;
             if (string.IsNullOrEmpty(mapId) && world.MainPlayer != null)
@@ -44,6 +61,7 @@ namespace MapLootEditorLite.Client
 
             if (!string.IsNullOrEmpty(mapId) && mapId != _currentMapId)
             {
+                _currentWorld = world;
                 _currentMapId = mapId;
                 ClearSpawned();
                 Plugin.Log.LogInfo($"[MLEL Runtime] Map detected: {mapId}, spawning static objects");
@@ -274,6 +292,7 @@ namespace MapLootEditorLite.Client
 
         private void OnDestroy()
         {
+            Instance = null;
             ClearSpawned();
         }
     }

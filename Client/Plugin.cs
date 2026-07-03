@@ -4,6 +4,7 @@ using System.Linq;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
+using HarmonyLib;
 using UnityEngine;
 
 namespace MapLootEditorLite.Client
@@ -80,6 +81,10 @@ namespace MapLootEditorLite.Client
             Log.LogInfo("Runtime static object spawner attached");
             gameObject.AddComponent<RuntimeInteractiveObjectSpawner>();
             Log.LogInfo("Runtime interactive object spawner attached");
+
+            var raidResetHarmony = new Harmony("com.maplooteditorlite.raidreset");
+            raidResetHarmony.PatchAll();
+            Log.LogInfo("Raid reset patch applied");
 
             StartCoroutine(ItemNameResolver.LoadApiNames());
         }
