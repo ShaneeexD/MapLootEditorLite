@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using Comfort.Common;
 using EFT;
@@ -385,6 +386,11 @@ namespace MapLootEditorLite.Client
             Plugin.Log.LogInfo($"[MLEL Bot] Forcing spawn for {_spawnRequests.Count} custom bot requests.");
             foreach (var request in _spawnRequests)
             {
+                UpdateMarkerCorePoint(controller, request.Marker);
+            }
+
+            foreach (var request in _spawnRequests)
+            {
                 SpawnBotAt(controller, request);
             }
         }
@@ -403,9 +409,10 @@ namespace MapLootEditorLite.Client
                 var side = ResolveSide(request);
                 var difficulty = BotDifficulty.normal;
                 var point = request.Marker.SpawnPoint;
-                var data = await BotCreationDataClass.Create(new BotProfileDataClass(side, wildSpawnType.Value, difficulty, 0f, null, false), controller.BotSpawner.BotCreator, 1, controller.BotSpawner);
+                var spawnParams = GetSpawnParams(request);
+                var data = await BotCreationDataClass.Create(new BotProfileDataClass(side, wildSpawnType.Value, difficulty, 0f, spawnParams, false), controller.BotSpawner.BotCreator, 1, controller.BotSpawner);
                 controller.BotSpawner.TryToSpawnInZoneAndDelay(request.Zone, data, true, true, new List<ISpawnPoint> { point }, true);
-                Plugin.Log.LogInfo($"[MLEL Bot] Submitted forced spawn at {point.Position} ({wildSpawnType.Value}, {side}, zone={request.Zone.name}).");
+                Plugin.Log.LogInfo($"[MLEL Bot] Submitted forced spawn at {point.Position} ({wildSpawnType.Value}, {side}, zone={request.Zone.name}, corePoint={point.CorePointId}).");
             }
             catch (Exception ex)
             {
@@ -413,9 +420,87 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        private BotSpawnParams GetSpawnParams(SpawnRequest request)
+        {
+            return new BotSpawnParams();
+        }
+
+        private int GetCorePointId(BotsController controller, Vector3 position)
+        {
+            try
+            {
+                var coversData = controller.BotSpawner?.BotGame?.BotsController?.CoversData;
+                if (coversData == null)
+                    return 0;
+                var closest = coversData.GetClosest(position);
+                return closest?.CorePointInGame?.Id ?? 0;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[MLEL Bot] Failed to get core point: {ex.Message}");
+                return 0;
+            }
+        }
+
+        private void UpdateMarkerCorePoint(BotsController controller, SpawnPointMarker marker)
+        {
+            try
+            {
+                var corePointId = GetCorePointId(controller, marker.SpawnPoint.Position);
+                if (corePointId == 0)
+                {
+                    Plugin.Log.LogWarning($"[MLEL Bot] Could not resolve core point for {marker.SpawnPoint.Id}, using 0.");
+                    return;
+                }
+
+                var spawnPointField = typeof(SpawnPointMarker).GetField("_spawnPoint", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (spawnPointField == null)
+                {
+                    Plugin.Log.LogWarning("[MLEL Bot] Could not find _spawnPoint field on SpawnPointMarker.");
+                    return;
+                }
+
+                var spawnPoint = spawnPointField.GetValue(marker);
+                if (spawnPoint == null)
+                {
+                    Plugin.Log.LogWarning("[MLEL Bot] _spawnPoint is null on marker.");
+                    return;
+                }
+
+                var spawnPointType = spawnPoint.GetType();
+                var newSpawnPoint = Activator.CreateInstance(spawnPointType);
+                foreach (var prop in spawnPointType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    if (prop.Name == "CorePointId")
+                        prop.SetValue(newSpawnPoint, corePointId);
+                    else if (prop.CanRead && prop.CanWrite)
+                        prop.SetValue(newSpawnPoint, prop.GetValue(spawnPoint));
+                }
+                foreach (var field in spawnPointType.GetFields(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    if (field.Name == "CorePointId")
+                        field.SetValue(newSpawnPoint, corePointId);
+                    else
+                        field.SetValue(newSpawnPoint, field.GetValue(spawnPoint));
+                }
+                spawnPointField.SetValue(marker, newSpawnPoint);
+                Plugin.Log.LogInfo($"[MLEL Bot] Updated core point for {marker.SpawnPoint.Id} to {corePointId}.");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[MLEL Bot] Failed to update marker core point: {ex.Message}");
+            }
+        }
+
         private WildSpawnType? ResolveWildSpawnType(SpawnRequest request)
         {
             var wildSpawnType = request.Point?.wildSpawnType ?? request.ZoneData?.wildSpawnType;
+            if (string.IsNullOrWhiteSpace(wildSpawnType))
+            {
+                var preset = request.Point?.preset ?? request.ZoneData?.preset ?? BotSpawnPreset.Scav;
+                wildSpawnType = BotSpawnPresetMapping.GetWildSpawnType(preset);
+                Plugin.Log.LogInfo($"[MLEL Bot] wildSpawnType empty, inferred '{wildSpawnType}' from preset {preset}.");
+            }
             if (string.IsNullOrWhiteSpace(wildSpawnType))
                 return WildSpawnType.assault;
             if (Enum.TryParse<WildSpawnType>(wildSpawnType, true, out var result))
@@ -427,6 +512,11 @@ namespace MapLootEditorLite.Client
         private EPlayerSide ResolveSide(SpawnRequest request)
         {
             var wildSpawnType = request.Point?.wildSpawnType ?? request.ZoneData?.wildSpawnType;
+            if (string.IsNullOrWhiteSpace(wildSpawnType))
+            {
+                var preset = request.Point?.preset ?? request.ZoneData?.preset ?? BotSpawnPreset.Scav;
+                wildSpawnType = BotSpawnPresetMapping.GetWildSpawnType(preset);
+            }
             if ("pmcBEAR".Equals(wildSpawnType, StringComparison.OrdinalIgnoreCase))
                 return EPlayerSide.Bear;
             if ("pmcUSEC".Equals(wildSpawnType, StringComparison.OrdinalIgnoreCase))
