@@ -40,6 +40,15 @@ public record MapData
 
     [JsonPropertyName("extractZones")]
     public List<ExtractZone> ExtractZones { get; set; } = [];
+
+    [JsonPropertyName("botSpawnPoints")]
+    public List<BotSpawnPoint> BotSpawnPoints { get; set; } = [];
+
+    [JsonPropertyName("botSpawnZones")]
+    public List<BotSpawnZone> BotSpawnZones { get; set; } = [];
+
+    [JsonPropertyName("lightZones")]
+    public List<LightZone> LightZones { get; set; } = [];
 }
 
 public record ExtractZoneRequirement
@@ -109,6 +118,177 @@ public record ExtractZone
 
     [JsonPropertyName("requirements")]
     public List<ExtractZoneRequirement> Requirements { get; set; } = [];
+}
+
+public record BotSpawnPoint
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("group")]
+    public string Group { get; set; } = string.Empty;
+
+    [JsonPropertyName("position")]
+    public TransformData Position { get; set; } = new();
+
+    [JsonPropertyName("rotation")]
+    public TransformData Rotation { get; set; } = new();
+
+    [JsonPropertyName("radius")]
+    public double Radius { get; set; } = 1;
+
+    [JsonPropertyName("side")]
+    public BotSpawnSide Side { get; set; } = BotSpawnSide.Savage;
+
+    [JsonPropertyName("category")]
+    public BotSpawnCategory Category { get; set; } = BotSpawnCategory.Bot;
+
+    [JsonPropertyName("preset")]
+    public BotSpawnPreset Preset { get; set; } = BotSpawnPreset.Scav;
+
+    [JsonPropertyName("wildSpawnType")]
+    public string WildSpawnType { get; set; } = string.Empty;
+
+    [JsonPropertyName("spawnChance")]
+    public double SpawnChance { get; set; } = 100;
+
+    [JsonPropertyName("delayToCanSpawnSec")]
+    public double DelayToCanSpawnSec { get; set; } = 4;
+
+    [JsonPropertyName("botZoneName")]
+    public string BotZoneName { get; set; } = string.Empty;
+
+    [JsonPropertyName("questOnly")]
+    public bool QuestOnly { get; set; } = false;
+
+    [JsonPropertyName("questCompleted")]
+    public bool QuestCompleted { get; set; } = false;
+
+    [JsonPropertyName("questId")]
+    public string QuestId { get; set; } = string.Empty;
+}
+
+public record BotSpawnZone
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("group")]
+    public string Group { get; set; } = string.Empty;
+
+    [JsonPropertyName("position")]
+    public TransformData Position { get; set; } = new();
+
+    [JsonPropertyName("rotation")]
+    public TransformData Rotation { get; set; } = new();
+
+    [JsonPropertyName("radius")]
+    public double Radius { get; set; } = 5;
+
+    [JsonPropertyName("scale")]
+    public TransformData Scale { get; set; } = new() { X = 1, Y = 1, Z = 1 };
+
+    [JsonPropertyName("shape")]
+    public ZoneShape Shape { get; set; } = ZoneShape.Sphere;
+
+    [JsonPropertyName("side")]
+    public BotSpawnSide Side { get; set; } = BotSpawnSide.Savage;
+
+    [JsonPropertyName("category")]
+    public BotSpawnCategory Category { get; set; } = BotSpawnCategory.Bot;
+
+    [JsonPropertyName("preset")]
+    public BotSpawnPreset Preset { get; set; } = BotSpawnPreset.Scav;
+
+    [JsonPropertyName("wildSpawnType")]
+    public string WildSpawnType { get; set; } = string.Empty;
+
+    [JsonPropertyName("spawnCount")]
+    public int SpawnCount { get; set; } = 3;
+
+    [JsonPropertyName("spawnChance")]
+    public double SpawnChance { get; set; } = 100;
+
+    [JsonPropertyName("delayToCanSpawnSec")]
+    public double DelayToCanSpawnSec { get; set; } = 4;
+
+    [JsonPropertyName("botZoneName")]
+    public string BotZoneName { get; set; } = string.Empty;
+
+    [JsonPropertyName("questOnly")]
+    public bool QuestOnly { get; set; } = false;
+
+    [JsonPropertyName("questCompleted")]
+    public bool QuestCompleted { get; set; } = false;
+
+    [JsonPropertyName("questId")]
+    public string QuestId { get; set; } = string.Empty;
+}
+
+public record LightColorData
+{
+    [JsonPropertyName("r")]
+    public double R { get; set; } = 1;
+
+    [JsonPropertyName("g")]
+    public double G { get; set; } = 1;
+
+    [JsonPropertyName("b")]
+    public double B { get; set; } = 1;
+
+    [JsonPropertyName("a")]
+    public double A { get; set; } = 1;
+}
+
+public record LightZone
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("group")]
+    public string Group { get; set; } = string.Empty;
+
+    [JsonPropertyName("position")]
+    public TransformData Position { get; set; } = new();
+
+    [JsonPropertyName("rotation")]
+    public TransformData Rotation { get; set; } = new();
+
+    [JsonPropertyName("color")]
+    public LightColorData Color { get; set; } = new() { R = 1, G = 1, B = 1, A = 1 };
+
+    [JsonPropertyName("intensity")]
+    public double Intensity { get; set; } = 1;
+
+    [JsonPropertyName("range")]
+    public double Range { get; set; } = 10;
+
+    [JsonPropertyName("spotAngle")]
+    public double SpotAngle { get; set; } = 30;
+
+    [JsonPropertyName("lightType")]
+    public string LightType { get; set; } = "Point";
+
+    [JsonPropertyName("spawnChance")]
+    public double SpawnChance { get; set; } = 100;
+
+    [JsonPropertyName("questOnly")]
+    public bool QuestOnly { get; set; } = false;
+
+    [JsonPropertyName("questCompleted")]
+    public bool QuestCompleted { get; set; } = false;
+
+    [JsonPropertyName("questId")]
+    public string QuestId { get; set; } = string.Empty;
 }
 
 public record LootItem
@@ -376,6 +556,51 @@ public enum InteractiveObjectType
 {
     Door,
     Container
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum BotSpawnSide
+{
+    Savage,
+    Bear,
+    Usec,
+    Pmc,
+    All
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum BotSpawnCategory
+{
+    Bot,
+    Boss,
+    BotPmc,
+    All
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum BotSpawnPreset
+{
+    Any,
+    Scav,
+    SniperScav,
+    Raider,
+    Rogue,
+    PMC,
+    Bear,
+    Usec,
+    Boss,
+    Killa,
+    Tagilla,
+    Gluhar,
+    Sanitar,
+    Kojaniy,
+    Knight,
+    Zryachiy,
+    Boar,
+    Kolontay,
+    Partisan,
+    Cultist,
+    Infected
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]

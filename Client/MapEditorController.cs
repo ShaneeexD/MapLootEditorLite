@@ -627,6 +627,33 @@ namespace MapLootEditorLite.Client
             _renderer.Rebuild();
         }
 
+        public void CreateBotSpawnPoint()
+        {
+            if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
+            var marker = _manager.CreateBotSpawnPoint(GetLookPosition());
+            _manager.Selected = marker;
+            _renderer.Rebuild();
+        }
+
+        public void CreateBotSpawnZone()
+        {
+            if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
+            var marker = _manager.CreateBotSpawnZone(GetLookPosition());
+            _manager.Selected = marker;
+            _renderer.Rebuild();
+        }
+
+        public void CreateLightZone()
+        {
+            if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
+            var marker = _manager.CreateLightZone(GetLookPosition());
+            _manager.Selected = marker;
+            _renderer.Rebuild();
+        }
+
         public bool IsFreeCam => _freeCam;
 
         public void GoToMarker(MarkerBase marker)
@@ -1028,6 +1055,8 @@ namespace MapLootEditorLite.Client
                                 io.scale = TransformData.FromVector3(startScale + centerScaleDelta);
                             else if (m is ExtractZone mez)
                                 mez.scale = TransformData.FromVector3(startScale + centerScaleDelta);
+                            else if (m is BotSpawnZone mbz)
+                                mbz.scale = TransformData.FromVector3(startScale + centerScaleDelta);
                         }
                         _renderer.Rebuild();
                     }
@@ -1068,6 +1097,11 @@ namespace MapLootEditorLite.Client
                         else if (_manager.Selected is ExtractZone ez)
                         {
                             ez.scale = TransformData.FromVector3(newScale);
+                            _renderer.Rebuild();
+                        }
+                        else if (_manager.Selected is BotSpawnZone bz)
+                        {
+                            bz.scale = TransformData.FromVector3(newScale);
                             _renderer.Rebuild();
                         }
                     }
@@ -1116,6 +1150,8 @@ namespace MapLootEditorLite.Client
                 _gizmoDragStartMarkerScale = io.scale.ToVector3();
             else if (_manager.Selected is ExtractZone ez)
                 _gizmoDragStartMarkerScale = ez.scale?.ToVector3() ?? Vector3.one;
+            else if (_manager.Selected is BotSpawnZone bz)
+                _gizmoDragStartMarkerScale = bz.scale?.ToVector3() ?? Vector3.one;
 
             _gizmoDragStartCenter = _manager.SelectedIds.Count > 1 ? _manager.SelectionCenter : _gizmoDragStartMarkerPos;
             _gizmoDragStartCenterRot = _manager.SelectedIds.Count > 1 ? Quaternion.identity : _manager.Selected.rotation.ToQuaternion();
@@ -1142,6 +1178,8 @@ namespace MapLootEditorLite.Client
                     _gizmoDragStartScales[id] = mio.scale.ToVector3();
                 else if (m is ExtractZone mez)
                     _gizmoDragStartScales[id] = mez.scale?.ToVector3() ?? Vector3.one;
+                else if (m is BotSpawnZone mbz)
+                    _gizmoDragStartScales[id] = mbz.scale?.ToVector3() ?? Vector3.one;
                 else
                     _gizmoDragStartScales[id] = Vector3.one;
             }

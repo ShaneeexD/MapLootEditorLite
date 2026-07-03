@@ -22,6 +22,7 @@ namespace MapLootEditorLite.Client
         private readonly CoroutineRunner _runner;
         private readonly List<GameObject> _previews = new List<GameObject>();
         private readonly List<GameObject> _staticPreviews = new List<GameObject>();
+        private readonly List<GameObject> _effectPreviews = new List<GameObject>();
         private readonly Dictionary<string, GameObject> _staticSources = new Dictionary<string, GameObject>();
 
         public LootPreviewSpawner(GameObject root)
@@ -68,6 +69,148 @@ namespace MapLootEditorLite.Client
                 var rotation = GetZoneItemRotation(marker.items, i);
                 SpawnPreviewInternal(tpl, pos, rotation, markerPos, markerRot, item?.randomRotation != true, marker.name, marker.id, false);
             }
+        }
+
+        public void SpawnLightPreview(LightZone marker)
+        {
+            if (marker == null)
+                return;
+
+            ClearByMarkerId(marker.id);
+            var pos = marker.position.ToVector3();
+            var go = new GameObject($"LightPreview_{marker.name}");
+            go.transform.SetParent(_root.transform, false);
+            go.transform.position = pos;
+            go.transform.rotation = marker.rotation.ToQuaternion();
+
+            var light = go.AddComponent<Light>();
+            light.type = ParseLightType(marker.lightType);
+            light.color = marker.color.ToColor();
+            light.intensity = marker.intensity;
+            light.range = marker.range;
+            if (light.type == LightType.Spot)
+                light.spotAngle = marker.spotAngle;
+
+            var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            sphere.name = "LightPreviewVisual";
+            sphere.transform.SetParent(go.transform, false);
+            sphere.transform.localScale = Vector3.one * 0.25f;
+            UnityEngine.Object.Destroy(sphere.GetComponent<Collider>());
+            var renderer = sphere.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                var mat = new Material(Shader.Find("Standard") ?? Shader.Find("Sprites/Default"));
+                mat.color = light.color;
+                mat.EnableKeyword("_EMISSION");
+                mat.SetColor("_EmissionColor", light.color * 2f);
+                renderer.material = mat;
+            }
+
+            var meta = go.AddComponent<PreviewEffectMarker>();
+            meta.sourceMarkerId = marker.id;
+            meta.markerName = marker.name;
+
+            _effectPreviews.Add(go);
+            Plugin.Log.LogInfo($"Spawned light preview for {marker.name}");
+        }
+
+        public void SpawnBotSpawnPreview(BotSpawnPoint marker)
+        {
+            if (marker == null)
+                return;
+
+            ClearByMarkerId(marker.id);
+            var go = CreateBotPreviewObject(marker.position.ToVector3(), marker.rotation.ToQuaternion(), marker.name, marker.id, marker.preset.ToString(), marker.side.ToString(), marker.category.ToString());
+            _effectPreviews.Add(go);
+        }
+
+        public void SpawnBotSpawnZonePreview(BotSpawnZone marker)
+        {
+            if (marker == null)
+                return;
+
+            ClearByMarkerId(marker.id);
+            var center = marker.position.ToVector3();
+            var markerRot = marker.rotation.ToQuaternion();
+            var scale = marker.scale ?? new TransformData { x = 1f, y = 1f, z = 1f };
+            var count = Mathf.Max(1, marker.spawnCount);
+            var positions = new List<Vector3>();
+
+            for (int i = 0; i < count; i++)
+            {
+                var point = GetRandomPointInZone(center, marker.shape, marker.radius, scale, markerRot);
+                positions.Add(point);
+                var go = CreateBotPreviewObject(point, markerRot, marker.name, marker.id, marker.preset.ToString(), marker.side.ToString(), marker.category.ToString(), i);
+                _effectPreviews.Add(go);
+            }
+        }
+
+        private GameObject CreateBotPreviewObject(Vector3 position, Quaternion rotation, string markerName, string markerId, string preset, string side, string category, int index = -1)
+        {
+            var go = new GameObject($"BotPreview_{markerName}" + (index >= 0 ? $"_{index}" : ""));
+            go.transform.SetParent(_root.transform, false);
+            go.transform.position = position;
+            go.transform.rotation = rotation;
+
+            var capsule = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            capsule.name = "BotPreviewVisual";
+            capsule.transform.SetParent(go.transform, false);
+            capsule.transform.localScale = new Vector3(0.4f, 1f, 0.4f);
+            capsule.transform.localPosition = new Vector3(0f, 0.5f, 0f);
+            UnityEngine.Object.Destroy(capsule.GetComponent<Collider>());
+            var renderer = capsule.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                var mat = new Material(Shader.Find("Standard") ?? Shader.Find("Sprites/Default"));
+                mat.color = GetBotPreviewColor(side, category);
+                renderer.material = mat;
+            }
+
+            var meta = go.AddComponent<PreviewEffectMarker>();
+            meta.sourceMarkerId = markerId;
+            meta.markerName = markerName;
+            meta.label = $"{preset}\n{side} {category}";
+
+            return go;
+        }
+
+        private static Color GetBotPreviewColor(string side, string category)
+        {
+            if (side == "Usec" || side == "Bear" || side == "Pmc")
+                return new Color(0.2f, 0.4f, 1f, 0.8f);
+            if (category == "Boss")
+                return new Color(1f, 0.2f, 0.2f, 0.8f);
+            if (category == "BotPmc")
+                return new Color(1f, 0.8f, 0.2f, 0.8f);
+            return new Color(0.4f, 0.8f, 0.2f, 0.8f);
+        }
+
+        private static Vector3 GetRandomPointInZone(Vector3 center, ZoneShape shape, float radius, TransformData scale, Quaternion rotation)
+        {
+            switch (shape)
+            {
+                case ZoneShape.Box:
+                    return center + rotation * new Vector3(
+                        UnityEngine.Random.Range(-0.5f, 0.5f) * scale.x,
+                        0f,
+                        UnityEngine.Random.Range(-0.5f, 0.5f) * scale.z);
+                case ZoneShape.Cylinder:
+                case ZoneShape.Capsule:
+                    var angle = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
+                    var r = radius * Mathf.Sqrt(UnityEngine.Random.Range(0f, 1f)) * scale.x;
+                    return center + rotation * new Vector3(r * Mathf.Cos(angle), 0f, r * Mathf.Sin(angle));
+                default:
+                    var point = center + rotation * UnityEngine.Random.insideUnitSphere * radius * scale.x;
+                    point.y = center.y;
+                    return point;
+            }
+        }
+
+        private static LightType ParseLightType(string type)
+        {
+            if (Enum.TryParse<LightType>(type, true, out var result))
+                return result;
+            return LightType.Point;
         }
 
         public static Vector3 GetRandomPointInZone(LootZone zone)
@@ -339,6 +482,21 @@ namespace MapLootEditorLite.Client
                 var rect = new Rect(screenPos.x - 60f, Screen.height - screenPos.y - 45f, 120f, 30f);
                 GUI.Label(rect, label, style);
             }
+
+            foreach (var preview in _effectPreviews)
+            {
+                if (preview == null)
+                    continue;
+
+                var meta = preview.GetComponent<PreviewEffectMarker>();
+                var label = meta != null ? $"{meta.markerName}\n{meta.label}" : "effect";
+                var screenPos = camera.WorldToScreenPoint(preview.transform.position);
+                if (screenPos.z <= 0)
+                    continue;
+
+                var rect = new Rect(screenPos.x - 60f, Screen.height - screenPos.y - 45f, 120f, 30f);
+                GUI.Label(rect, label, style);
+            }
         }
 
         public void UpdateForMarker(MarkerBase marker)
@@ -413,6 +571,13 @@ namespace MapLootEditorLite.Client
             }
             _staticPreviews.Clear();
 
+            foreach (var preview in _effectPreviews)
+            {
+                if (preview != null)
+                    UnityEngine.Object.Destroy(preview);
+            }
+            _effectPreviews.Clear();
+
             if (clearStaticSources)
                 _staticSources.Clear();
         }
@@ -446,6 +611,20 @@ namespace MapLootEditorLite.Client
                 if (meta != null && meta.sourceMarkerId == markerId)
                 {
                     _staticPreviews.RemoveAt(i);
+                    UnityEngine.Object.Destroy(preview);
+                }
+            }
+
+            for (int i = _effectPreviews.Count - 1; i >= 0; i--)
+            {
+                var preview = _effectPreviews[i];
+                if (preview == null)
+                    continue;
+
+                var meta = preview.GetComponent<PreviewEffectMarker>();
+                if (meta != null && meta.sourceMarkerId == markerId)
+                {
+                    _effectPreviews.RemoveAt(i);
                     UnityEngine.Object.Destroy(preview);
                 }
             }
@@ -877,6 +1056,13 @@ namespace MapLootEditorLite.Client
         public string sourceMarkerId;
         public string prefabPath;
         public bool isFallback;
+    }
+
+    public class PreviewEffectMarker : MonoBehaviour
+    {
+        public string sourceMarkerId;
+        public string markerName;
+        public string label;
     }
 
     public class CoroutineRunner : MonoBehaviour

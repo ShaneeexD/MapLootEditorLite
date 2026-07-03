@@ -356,7 +356,10 @@ namespace MapLootEditorLite.Client
                     new MenuItem("Loot Spawn", () => controller.CreateLootSpawn()),
                     new MenuItem("Loot Zone", () => controller.CreateLootZone()),
                     new MenuItem("Static Object", () => controller.CreateStaticObject()),
-                    new MenuItem("Extract Zone", () => controller.CreateExtractZone())
+                    new MenuItem("Extract Zone", () => controller.CreateExtractZone()),
+                    new MenuItem("Bot Spawn Point", () => controller.CreateBotSpawnPoint()),
+                    new MenuItem("Bot Spawn Zone", () => controller.CreateBotSpawnZone()),
+                    new MenuItem("Light Zone", () => controller.CreateLightZone())
                 }),
                 new MenuItem("WTT", subItems: new List<MenuItem>
                 {
@@ -1322,6 +1325,15 @@ namespace MapLootEditorLite.Client
                 case ExtractZone zone:
                     BuildExtractZone(zone);
                     break;
+                case BotSpawnPoint point:
+                    BuildBotSpawnPoint(point);
+                    break;
+                case BotSpawnZone zone:
+                    BuildBotSpawnZone(zone);
+                    break;
+                case LightZone zone:
+                    BuildLightZone(zone);
+                    break;
             }
 
             var previewRow = UIBuilder.CreatePanel("PreviewRow", _inspectorContent, new Color(0, 0, 0, 0));
@@ -1734,6 +1746,112 @@ namespace MapLootEditorLite.Client
             }
 
             UIBuilder.CreateButton(_inspectorContent, "Add Requirement", () => { zone.requirements.Add(new ExtractZoneRequirement()); manager.IsDirty = true; RefreshInspector(); }, 100, 22);
+        }
+
+        private void BuildBotSpawnPoint(BotSpawnPoint point)
+        {
+            var presetNames = BotSpawnPresetMapping.PresetNames.OrderBy(kvp => (int)kvp.Key).Select(kvp => kvp.Value).ToArray();
+            var currentName = BotSpawnPresetMapping.PresetNames.ContainsKey(point.preset) ? BotSpawnPresetMapping.PresetNames[point.preset] : point.preset.ToString();
+            BuildDropdownField(_inspectorContent, "Bot Type", currentName, presetNames, (v) =>
+            {
+                var selected = BotSpawnPresetMapping.PresetNames.FirstOrDefault(kvp => kvp.Value == v).Key;
+                point.preset = selected;
+                BotSpawnPresetMapping.ApplyPreset(selected, point);
+                manager.IsDirty = true;
+                RefreshInspector();
+            });
+            BuildReadOnlyLabel(_inspectorContent, "Side", point.side.ToString());
+            BuildReadOnlyLabel(_inspectorContent, "Category", point.category.ToString());
+            BuildFloatField(_inspectorContent, "Spawn Chance", point.spawnChance, (v) => { point.spawnChance = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Delay", point.delayToCanSpawnSec, (v) => { point.delayToCanSpawnSec = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Radius", point.radius, (v) => { point.radius = v; manager.IsDirty = true; });
+            BuildStringField(_inspectorContent, "Bot Zone Name", point.botZoneName ?? "", (v) => { point.botZoneName = v; manager.IsDirty = true; });
+
+            BuildToggleField(_inspectorContent, "Quest only", point.questOnly, (v) => { point.questOnly = v; manager.IsDirty = true; RefreshInspector(); });
+            BuildToggleField(_inspectorContent, "Quest completed", point.questCompleted, (v) => { point.questCompleted = v; manager.IsDirty = true; RefreshInspector(); });
+            if (point.questOnly || point.questCompleted)
+                BuildStringField(_inspectorContent, "Quest ID", point.questId ?? "", (v) => { point.questId = v; manager.IsDirty = true; });
+
+            var previewRow = UIBuilder.CreatePanel("PreviewRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(previewRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(previewRow, null, 22, null, 22, null, 0);
+            UIBuilder.CreateButton(previewRow, "Preview Spawn", () => previews.SpawnBotSpawnPreview(point), 100, 22);
+        }
+
+        private void BuildBotSpawnZone(BotSpawnZone zone)
+        {
+            if (zone.scale == null)
+                zone.scale = new TransformData { x = 1f, y = 1f, z = 1f };
+
+            var presetNames = BotSpawnPresetMapping.PresetNames.OrderBy(kvp => (int)kvp.Key).Select(kvp => kvp.Value).ToArray();
+            var currentName = BotSpawnPresetMapping.PresetNames.ContainsKey(zone.preset) ? BotSpawnPresetMapping.PresetNames[zone.preset] : zone.preset.ToString();
+            BuildDropdownField(_inspectorContent, "Bot Type", currentName, presetNames, (v) =>
+            {
+                var selected = BotSpawnPresetMapping.PresetNames.FirstOrDefault(kvp => kvp.Value == v).Key;
+                zone.preset = selected;
+                BotSpawnPresetMapping.ApplyPreset(selected, zone);
+                manager.IsDirty = true;
+                RefreshInspector();
+            });
+            BuildReadOnlyLabel(_inspectorContent, "Side", zone.side.ToString());
+            BuildReadOnlyLabel(_inspectorContent, "Category", zone.category.ToString());
+            BuildIntField(_inspectorContent, "Spawn Count", zone.spawnCount, (v) => { zone.spawnCount = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Spawn Chance", zone.spawnChance, (v) => { zone.spawnChance = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Delay", zone.delayToCanSpawnSec, (v) => { zone.delayToCanSpawnSec = v; manager.IsDirty = true; });
+
+            var shapeRow = UIBuilder.CreatePanel("ShapeRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(shapeRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(shapeRow, null, 20, null, 20, null, 0);
+            UIBuilder.CreateLabel(shapeRow, "Shape", 11, 44, 20);
+            var shapes = new[] { "Sphere", "Box", "Cylinder", "Capsule" };
+            for (int i = 0; i < shapes.Length; i++)
+            {
+                int idx = i;
+                var btn = UIBuilder.CreateButton(shapeRow, shapes[idx], () => { zone.shape = (ZoneShape)idx; manager.IsDirty = true; RefreshInspector(); }, 52, 20, 10);
+                if ((int)zone.shape == idx)
+                    btn.GetComponent<Image>().color = new Color(0.25f, 0.45f, 0.75f, 1f);
+            }
+
+            BuildFloatField(_inspectorContent, "Radius", zone.radius, (v) => { zone.radius = v; manager.IsDirty = true; });
+            BuildVector3Field(_inspectorContent, "Scale", zone.scale.ToVector3(), (v) => { zone.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
+            BuildStringField(_inspectorContent, "Bot Zone Name", zone.botZoneName ?? "", (v) => { zone.botZoneName = v; manager.IsDirty = true; });
+
+            BuildToggleField(_inspectorContent, "Quest only", zone.questOnly, (v) => { zone.questOnly = v; manager.IsDirty = true; RefreshInspector(); });
+            BuildToggleField(_inspectorContent, "Quest completed", zone.questCompleted, (v) => { zone.questCompleted = v; manager.IsDirty = true; RefreshInspector(); });
+            if (zone.questOnly || zone.questCompleted)
+                BuildStringField(_inspectorContent, "Quest ID", zone.questId ?? "", (v) => { zone.questId = v; manager.IsDirty = true; });
+
+            var previewRow = UIBuilder.CreatePanel("PreviewRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(previewRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(previewRow, null, 22, null, 22, null, 0);
+            UIBuilder.CreateButton(previewRow, "Preview Spawns", () => previews.SpawnBotSpawnZonePreview(zone), 110, 22);
+        }
+
+        private void BuildLightZone(LightZone zone)
+        {
+            if (zone.color == null)
+                zone.color = new LightColorData { r = 1f, g = 1f, b = 1f, a = 1f };
+
+            BuildFloatField(_inspectorContent, "Color R", zone.color.r, (v) => { zone.color.r = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Color G", zone.color.g, (v) => { zone.color.g = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Color B", zone.color.b, (v) => { zone.color.b = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Color A", zone.color.a, (v) => { zone.color.a = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Intensity", zone.intensity, (v) => { zone.intensity = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Range", zone.range, (v) => { zone.range = v; manager.IsDirty = true; });
+            BuildDropdownField(_inspectorContent, "Type", zone.lightType ?? "Point", new[] { "Point", "Spot", "Directional" }, (v) => { zone.lightType = v; manager.IsDirty = true; });
+            if ((zone.lightType ?? "Point") == "Spot")
+                BuildFloatField(_inspectorContent, "Spot Angle", zone.spotAngle, (v) => { zone.spotAngle = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Spawn Chance", zone.spawnChance, (v) => { zone.spawnChance = v; manager.IsDirty = true; });
+
+            BuildToggleField(_inspectorContent, "Quest only", zone.questOnly, (v) => { zone.questOnly = v; manager.IsDirty = true; RefreshInspector(); });
+            BuildToggleField(_inspectorContent, "Quest completed", zone.questCompleted, (v) => { zone.questCompleted = v; manager.IsDirty = true; RefreshInspector(); });
+            if (zone.questOnly || zone.questCompleted)
+                BuildStringField(_inspectorContent, "Quest ID", zone.questId ?? "", (v) => { zone.questId = v; manager.IsDirty = true; });
+
+            var previewRow = UIBuilder.CreatePanel("PreviewRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(previewRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(previewRow, null, 22, null, 22, null, 0);
+            UIBuilder.CreateButton(previewRow, "Preview Light", () => previews.SpawnLightPreview(zone), 100, 22);
         }
 
         public static readonly (string id, string name)[] LootContainerTemplates = new (string, string)[]

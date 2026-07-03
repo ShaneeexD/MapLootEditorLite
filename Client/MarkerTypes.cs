@@ -14,7 +14,10 @@ namespace MapLootEditorLite.Client
         WTTQuestZone,
         WTTStaticObject,
         InteractiveObject,
-        ExtractZone
+        ExtractZone,
+        BotSpawnPoint,
+        BotSpawnZone,
+        LightZone
     }
 
     public enum ExtractZoneRequirementType
@@ -34,11 +37,175 @@ namespace MapLootEditorLite.Client
     }
 
     [JsonConverter(typeof(StringEnumConverter))]
+    public enum BotSpawnSide
+    {
+        Savage,
+        Bear,
+        Usec,
+        Pmc,
+        All
+    }
+
+    [JsonConverter(typeof(StringEnumConverter))]
+    public enum BotSpawnCategory
+    {
+        Bot,
+        Boss,
+        BotPmc,
+        All
+    }
+
+    [JsonConverter(typeof(StringEnumConverter))]
+    public enum BotSpawnPreset
+    {
+        Any,
+        Scav,
+        SniperScav,
+        Raider,
+        Rogue,
+        PMC,
+        Bear,
+        Usec,
+        Boss,
+        Killa,
+        Tagilla,
+        Gluhar,
+        Sanitar,
+        Kojaniy,
+        Knight,
+        Zryachiy,
+        Boar,
+        Kolontay,
+        Partisan,
+        Cultist,
+        Infected
+    }
+
+    [JsonConverter(typeof(StringEnumConverter))]
     public enum ContainerLootMode
     {
         Default,
         Hybrid,
         Custom
+    }
+
+    public static class BotSpawnPresetMapping
+    {
+        public static readonly Dictionary<BotSpawnPreset, string> PresetNames = new Dictionary<BotSpawnPreset, string>
+        {
+            { BotSpawnPreset.Any, "Any / Default" },
+            { BotSpawnPreset.Scav, "Scav" },
+            { BotSpawnPreset.SniperScav, "Sniper Scav" },
+            { BotSpawnPreset.Raider, "Raider" },
+            { BotSpawnPreset.Rogue, "Rogue" },
+            { BotSpawnPreset.PMC, "PMC" },
+            { BotSpawnPreset.Bear, "BEAR" },
+            { BotSpawnPreset.Usec, "USEC" },
+            { BotSpawnPreset.Boss, "Boss (generic)" },
+            { BotSpawnPreset.Killa, "Killa" },
+            { BotSpawnPreset.Tagilla, "Tagilla" },
+            { BotSpawnPreset.Gluhar, "Gluhar" },
+            { BotSpawnPreset.Sanitar, "Sanitar" },
+            { BotSpawnPreset.Kojaniy, "Kojaniy (Shturman)" },
+            { BotSpawnPreset.Knight, "Knight (Goons)" },
+            { BotSpawnPreset.Zryachiy, "Zryachiy" },
+            { BotSpawnPreset.Boar, "Boar (Kaban)" },
+            { BotSpawnPreset.Kolontay, "Kolontay" },
+            { BotSpawnPreset.Partisan, "Partisan" },
+            { BotSpawnPreset.Cultist, "Cultist" },
+            { BotSpawnPreset.Infected, "Infected" }
+        };
+
+        public static void ApplyPreset(BotSpawnPreset preset, BotSpawnPoint point)
+        {
+            point.wildSpawnType = GetWildSpawnType(preset);
+            ApplyPreset(preset, ref point.side, ref point.category);
+        }
+
+        public static void ApplyPreset(BotSpawnPreset preset, BotSpawnZone zone)
+        {
+            zone.wildSpawnType = GetWildSpawnType(preset);
+            ApplyPreset(preset, ref zone.side, ref zone.category);
+        }
+
+        private static void ApplyPreset(BotSpawnPreset preset, ref BotSpawnSide side, ref BotSpawnCategory category)
+        {
+            switch (preset)
+            {
+                case BotSpawnPreset.PMC:
+                case BotSpawnPreset.Bear:
+                case BotSpawnPreset.Usec:
+                    side = BotSpawnSide.Pmc;
+                    category = BotSpawnCategory.BotPmc;
+                    break;
+                case BotSpawnPreset.Boss:
+                case BotSpawnPreset.Killa:
+                case BotSpawnPreset.Tagilla:
+                case BotSpawnPreset.Gluhar:
+                case BotSpawnPreset.Sanitar:
+                case BotSpawnPreset.Kojaniy:
+                case BotSpawnPreset.Knight:
+                case BotSpawnPreset.Zryachiy:
+                case BotSpawnPreset.Boar:
+                case BotSpawnPreset.Kolontay:
+                case BotSpawnPreset.Partisan:
+                    side = BotSpawnSide.Savage;
+                    category = BotSpawnCategory.Boss;
+                    break;
+                case BotSpawnPreset.Cultist:
+                case BotSpawnPreset.Infected:
+                case BotSpawnPreset.SniperScav:
+                case BotSpawnPreset.Raider:
+                case BotSpawnPreset.Rogue:
+                case BotSpawnPreset.Scav:
+                    side = BotSpawnSide.Savage;
+                    category = BotSpawnCategory.Bot;
+                    break;
+                default:
+                    side = BotSpawnSide.All;
+                    category = BotSpawnCategory.All;
+                    break;
+            }
+        }
+
+        public static string GetWildSpawnType(BotSpawnPreset preset)
+        {
+            switch (preset)
+            {
+                case BotSpawnPreset.Scav: return "assault";
+                case BotSpawnPreset.SniperScav: return "marksman";
+                case BotSpawnPreset.Raider:
+                case BotSpawnPreset.Rogue: return "exUsec";
+                case BotSpawnPreset.PMC: return "pmcBot";
+                case BotSpawnPreset.Bear: return "pmcBEAR";
+                case BotSpawnPreset.Usec: return "pmcUSEC";
+                case BotSpawnPreset.Killa: return "bossKilla";
+                case BotSpawnPreset.Tagilla: return "bossTagilla";
+                case BotSpawnPreset.Gluhar: return "bossGluhar";
+                case BotSpawnPreset.Sanitar: return "bossSanitar";
+                case BotSpawnPreset.Kojaniy: return "bossKojaniy";
+                case BotSpawnPreset.Knight: return "bossKnight";
+                case BotSpawnPreset.Zryachiy: return "bossZryachiy";
+                case BotSpawnPreset.Boar: return "bossBoar";
+                case BotSpawnPreset.Kolontay: return "bossKolontay";
+                case BotSpawnPreset.Partisan: return "bossPartisan";
+                case BotSpawnPreset.Cultist: return "sectantWarrior";
+                case BotSpawnPreset.Infected: return "infectedAssault";
+                default: return "";
+            }
+        }
+
+        public static BotSpawnPreset ParsePreset(string wildSpawnType)
+        {
+            if (string.IsNullOrEmpty(wildSpawnType))
+                return BotSpawnPreset.Any;
+            foreach (var kvp in PresetNames)
+            {
+                if (GetWildSpawnType(kvp.Key).Equals(wildSpawnType, StringComparison.OrdinalIgnoreCase))
+                    return kvp.Key;
+            }
+            return BotSpawnPreset.Any;
+        }
     }
 
     public class MapData
@@ -51,6 +218,9 @@ namespace MapLootEditorLite.Client
         public List<WTTStaticObject> wttStaticObjects = new List<WTTStaticObject>();
         public List<InteractiveObject> interactiveObjects = new List<InteractiveObject>();
         public List<ExtractZone> extractZones = new List<ExtractZone>();
+        public List<BotSpawnPoint> botSpawnPoints = new List<BotSpawnPoint>();
+        public List<BotSpawnZone> botSpawnZones = new List<BotSpawnZone>();
+        public List<LightZone> lightZones = new List<LightZone>();
     }
 
     public class PackData
@@ -263,5 +433,75 @@ namespace MapLootEditorLite.Client
         public List<ExtractZoneRequirement> requirements = new List<ExtractZoneRequirement>();
 
         public override MarkerKind Kind => MarkerKind.ExtractZone;
+    }
+
+    public class BotSpawnPoint : MarkerBase
+    {
+        public float radius = 1f;
+        public BotSpawnSide side = BotSpawnSide.Savage;
+        public BotSpawnCategory category = BotSpawnCategory.Bot;
+        public BotSpawnPreset preset = BotSpawnPreset.Scav;
+        public string wildSpawnType = "";
+        public float spawnChance = 100f;
+        public float delayToCanSpawnSec = 4f;
+        public string botZoneName = "";
+        public bool questOnly = false;
+        public bool questCompleted = false;
+        public string questId = "";
+
+        public override MarkerKind Kind => MarkerKind.BotSpawnPoint;
+    }
+
+    public class BotSpawnZone : MarkerBase
+    {
+        public float radius = 5f;
+        public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
+        public ZoneShape shape = ZoneShape.Sphere;
+        public BotSpawnSide side = BotSpawnSide.Savage;
+        public BotSpawnCategory category = BotSpawnCategory.Bot;
+        public BotSpawnPreset preset = BotSpawnPreset.Scav;
+        public string wildSpawnType = "";
+        public int spawnCount = 3;
+        public float spawnChance = 100f;
+        public float delayToCanSpawnSec = 4f;
+        public string botZoneName = "";
+        public bool questOnly = false;
+        public bool questCompleted = false;
+        public string questId = "";
+
+        public override MarkerKind Kind => MarkerKind.BotSpawnZone;
+    }
+
+    public class LightColorData
+    {
+        public float r = 1f;
+        public float g = 1f;
+        public float b = 1f;
+        public float a = 1f;
+
+        public static LightColorData FromColor(Color c)
+        {
+            return new LightColorData { r = c.r, g = c.g, b = c.b, a = c.a };
+        }
+
+        public Color ToColor()
+        {
+            return new Color(r, g, b, a);
+        }
+    }
+
+    public class LightZone : MarkerBase
+    {
+        public LightColorData color = new LightColorData { r = 1f, g = 1f, b = 1f, a = 1f };
+        public float intensity = 1f;
+        public float range = 10f;
+        public float spotAngle = 30f;
+        public string lightType = "Point";
+        public float spawnChance = 100f;
+        public bool questOnly = false;
+        public bool questCompleted = false;
+        public string questId = "";
+
+        public override MarkerKind Kind => MarkerKind.LightZone;
     }
 }

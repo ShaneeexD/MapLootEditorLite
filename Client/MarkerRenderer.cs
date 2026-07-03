@@ -27,6 +27,12 @@ namespace MapLootEditorLite.Client
         private readonly Color _interactiveWireColor = new Color(1f, 0.5f, 0f, 1.0f);
         private readonly Color _extractZoneColor = new Color(0.2f, 1f, 0.4f, 0.25f);
         private readonly Color _extractZoneWireColor = new Color(0.2f, 1f, 0.4f, 1.0f);
+        private readonly Color _botSpawnPointColor = new Color(1f, 0.2f, 0.2f, 0.6f);
+        private readonly Color _botSpawnPointWireColor = new Color(1f, 0.2f, 0.2f, 1.0f);
+        private readonly Color _botSpawnZoneColor = new Color(1f, 0.2f, 0.2f, 0.15f);
+        private readonly Color _botSpawnZoneWireColor = new Color(1f, 0.2f, 0.2f, 1.0f);
+        private readonly Color _lightZoneColor = new Color(1f, 1f, 0.2f, 0.6f);
+        private readonly Color _lightZoneWireColor = new Color(1f, 1f, 0.2f, 1.0f);
         private readonly Color _selectedColor = new Color(0.2f, 0.6f, 1f, 0.25f);
         private readonly Color _selectedWireColor = new Color(0.2f, 0.6f, 1f, 1.0f);
         private readonly Color _vanillaColor = new Color(0.8f, 0.8f, 0.8f, 0.35f);
@@ -149,6 +155,15 @@ namespace MapLootEditorLite.Client
                     }
                 }
 
+                if (marker is BotSpawnZone currentBz && _visuals.TryGetValue(marker.id, out GameObject existingBzVisual))
+                {
+                    if (_zoneShapeCache.TryGetValue(marker.id, out ZoneShape cachedBzShape) && cachedBzShape != currentBz.shape)
+                    {
+                        UnityEngine.Object.Destroy(existingBzVisual);
+                        _visuals.Remove(marker.id);
+                    }
+                }
+
                 if (!_visuals.TryGetValue(marker.id, out GameObject visual))
                 {
                     visual = CreateVisual(marker);
@@ -191,6 +206,15 @@ namespace MapLootEditorLite.Client
                     else if (marker is ExtractZone extractZone)
                     {
                         ApplyZoneScale(visual, extractZone);
+                    }
+                    else if (marker is BotSpawnZone bz)
+                    {
+                        ApplyZoneScale(visual, bz);
+                        _zoneShapeCache[marker.id] = bz.shape;
+                    }
+                    else if (marker is LightZone lz)
+                    {
+                        ApplyLightZoneVisual(visual, lz);
                     }
 
                     bool isSelected = _manager.IsSelected(marker);
@@ -301,6 +325,15 @@ namespace MapLootEditorLite.Client
                     break;
                 case ExtractZone ez:
                     visual = CreateExtractZoneVisual(ez);
+                    break;
+                case BotSpawnPoint bp:
+                    visual = CreateBotSpawnPointVisual();
+                    break;
+                case BotSpawnZone bz:
+                    visual = CreateBotSpawnZoneVisual(bz);
+                    break;
+                case LightZone lz:
+                    visual = CreateLightZoneVisual(lz);
                     break;
                 default:
                     return null;
@@ -490,8 +523,18 @@ namespace MapLootEditorLite.Client
 
         private GameObject CreateExtractZoneVisual(ExtractZone ez)
         {
+            return CreateZoneVisualWithColor(ez.shape, _extractZoneWireColor);
+        }
+
+        private GameObject CreateBotSpawnZoneVisual(BotSpawnZone bz)
+        {
+            return CreateZoneVisualWithColor(bz.shape, _botSpawnZoneWireColor);
+        }
+
+        private GameObject CreateZoneVisualWithColor(ZoneShape shape, Color wireColor)
+        {
             GameObject visual;
-            switch (ez.shape)
+            switch (shape)
             {
                 case ZoneShape.Box:
                     visual = CreateBoxVisual();
@@ -513,11 +556,67 @@ namespace MapLootEditorLite.Client
                 var lr = wire.GetComponent<LineRenderer>();
                 if (lr != null)
                 {
-                    lr.startColor = _extractZoneWireColor;
-                    lr.endColor = _extractZoneWireColor;
+                    lr.startColor = wireColor;
+                    lr.endColor = wireColor;
                 }
             }
             return visual;
+        }
+
+        private GameObject CreateBotSpawnPointVisual()
+        {
+            var go = CreatePrimitiveVisual(PrimitiveType.Capsule, 0.3f);
+            var wire = new GameObject("wire_sphere");
+            wire.transform.SetParent(go.transform, false);
+            wire.transform.localScale = Vector3.one;
+            wire.transform.localPosition = Vector3.zero;
+
+            var lr = wire.AddComponent<LineRenderer>();
+            lr.useWorldSpace = false;
+            lr.startWidth = 0.04f;
+            lr.endWidth = 0.04f;
+            lr.positionCount = 0;
+            lr.material = GetWireMaterial();
+            lr.startColor = _botSpawnPointWireColor;
+            lr.endColor = _botSpawnPointWireColor;
+
+            DrawWireSphere(lr, 0.5f);
+            return go;
+        }
+
+        private GameObject CreateLightZoneVisual(LightZone lz)
+        {
+            var go = CreatePrimitiveVisual(PrimitiveType.Sphere, 0.5f);
+            var wire = new GameObject("wire_sphere");
+            wire.transform.SetParent(go.transform, false);
+            wire.transform.localScale = Vector3.one;
+            wire.transform.localPosition = Vector3.zero;
+
+            var lr = wire.AddComponent<LineRenderer>();
+            lr.useWorldSpace = false;
+            lr.startWidth = 0.04f;
+            lr.endWidth = 0.04f;
+            lr.positionCount = 0;
+            lr.material = GetWireMaterial();
+            lr.startColor = _lightZoneWireColor;
+            lr.endColor = _lightZoneWireColor;
+
+            DrawWireSphere(lr, 0.5f);
+            return go;
+        }
+
+        private void ApplyLightZoneVisual(GameObject visual, LightZone lz)
+        {
+            visual.transform.localScale = Vector3.one * Mathf.Max(0.1f, lz.range * 0.1f);
+            var renderer = visual.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                var c = lz.color.ToColor();
+                c.a = 0.6f;
+                renderer.material.color = c;
+                renderer.material.EnableKeyword("_EMISSION");
+                renderer.material.SetColor("_EmissionColor", c * 2f);
+            }
         }
 
         private Material GetWireMaterial()
@@ -637,6 +736,26 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        private void ApplyZoneScale(GameObject visual, BotSpawnZone zone)
+        {
+            var scale = zone.scale ?? new TransformData { x = 1f, y = 1f, z = 1f };
+            switch (zone.shape)
+            {
+                case ZoneShape.Box:
+                    visual.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
+                    break;
+                case ZoneShape.Cylinder:
+                    visual.transform.localScale = new Vector3(zone.radius * 2f * scale.x, scale.y, zone.radius * 2f * scale.x);
+                    break;
+                case ZoneShape.Capsule:
+                    visual.transform.localScale = new Vector3(zone.radius * 2f * scale.x, scale.y, zone.radius * 2f * scale.x);
+                    break;
+                default:
+                    visual.transform.localScale = Vector3.one * zone.radius * 2f * scale.x;
+                    break;
+            }
+        }
+
         private void ApplyColor(GameObject visual, MarkerBase marker, bool selected)
         {
             var renderer = visual.GetComponent<Renderer>();
@@ -684,6 +803,18 @@ namespace MapLootEditorLite.Client
             {
                 color = _extractZoneColor;
             }
+            else if (marker is BotSpawnPoint)
+            {
+                color = _botSpawnPointColor;
+            }
+            else if (marker is BotSpawnZone)
+            {
+                color = _botSpawnZoneColor;
+            }
+            else if (marker is LightZone)
+            {
+                color = _lightZoneColor;
+            }
             else
             {
                 color = _objectColor;
@@ -712,6 +843,12 @@ namespace MapLootEditorLite.Client
                         wireColor = _interactiveWireColor;
                     else if (marker is ExtractZone)
                         wireColor = _extractZoneWireColor;
+                    else if (marker is BotSpawnPoint)
+                        wireColor = _botSpawnPointWireColor;
+                    else if (marker is BotSpawnZone)
+                        wireColor = _botSpawnZoneWireColor;
+                    else if (marker is LightZone)
+                        wireColor = _lightZoneWireColor;
                     else
                         wireColor = _zoneWireColor;
 

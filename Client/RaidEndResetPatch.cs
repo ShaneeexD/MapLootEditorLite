@@ -12,6 +12,9 @@ namespace MapLootEditorLite.Client
             Plugin.Log.LogInfo("[MLEL Runtime] GameWorld.OnDestroy detected, resetting raid state.");
             RuntimeStaticObjectSpawner.Instance?.ResetState();
             RuntimeInteractiveObjectSpawner.Instance?.ResetState();
+            RuntimeExtractZoneSpawner.Instance?.ResetState();
+            RuntimeBotSpawnSpawner.Instance?.ResetState();
+            RuntimeLightZoneSpawner.Instance?.ResetState();
             MapEditorController.Instance?.ResetState();
         }
     }

@@ -77,6 +77,15 @@ namespace MapLootEditorLite.Client
             if (VanillaData.extractZones != null)
                 foreach (var m in VanillaData.extractZones)
                     yield return m;
+            if (VanillaData.botSpawnPoints != null)
+                foreach (var m in VanillaData.botSpawnPoints)
+                    yield return m;
+            if (VanillaData.botSpawnZones != null)
+                foreach (var m in VanillaData.botSpawnZones)
+                    yield return m;
+            if (VanillaData.lightZones != null)
+                foreach (var m in VanillaData.lightZones)
+                    yield return m;
         }
 
         public IEnumerable<MarkerBase> GetAllMarkersIncludingVanilla()
@@ -195,6 +204,15 @@ namespace MapLootEditorLite.Client
             if (Data.extractZones != null)
                 foreach (var m in Data.extractZones)
                     yield return m;
+            if (Data.botSpawnPoints != null)
+                foreach (var m in Data.botSpawnPoints)
+                    yield return m;
+            if (Data.botSpawnZones != null)
+                foreach (var m in Data.botSpawnZones)
+                    yield return m;
+            if (Data.lightZones != null)
+                foreach (var m in Data.lightZones)
+                    yield return m;
         }
 
         public MarkerBase FindById(string id)
@@ -292,6 +310,18 @@ namespace MapLootEditorLite.Client
                     Data.extractZones ??= new List<ExtractZone>();
                     Data.extractZones.Add(ez);
                     break;
+                case BotSpawnPoint bp:
+                    Data.botSpawnPoints ??= new List<BotSpawnPoint>();
+                    Data.botSpawnPoints.Add(bp);
+                    break;
+                case BotSpawnZone bz:
+                    Data.botSpawnZones ??= new List<BotSpawnZone>();
+                    Data.botSpawnZones.Add(bz);
+                    break;
+                case LightZone lz:
+                    Data.lightZones ??= new List<LightZone>();
+                    Data.lightZones.Add(lz);
+                    break;
             }
             IsDirty = true;
         }
@@ -350,6 +380,9 @@ namespace MapLootEditorLite.Client
                     case WTTStaticObject w: Data.wttStaticObjects.Remove(w); break;
                     case InteractiveObject io: Data.interactiveObjects.Remove(io); break;
                 case ExtractZone ez: Data.extractZones.Remove(ez); break;
+                case BotSpawnPoint bp: Data.botSpawnPoints.Remove(bp); break;
+                case BotSpawnZone bz: Data.botSpawnZones.Remove(bz); break;
+                case LightZone lz: Data.lightZones.Remove(lz); break;
                 }
             }
             ClearSelection();
@@ -396,6 +429,18 @@ namespace MapLootEditorLite.Client
                     case ExtractZone ez:
                         copy = JsonConvert.DeserializeObject<ExtractZone>(json);
                         Data.extractZones.Add((ExtractZone)copy);
+                        break;
+                    case BotSpawnPoint bp:
+                        copy = JsonConvert.DeserializeObject<BotSpawnPoint>(json);
+                        Data.botSpawnPoints.Add((BotSpawnPoint)copy);
+                        break;
+                    case BotSpawnZone bz:
+                        copy = JsonConvert.DeserializeObject<BotSpawnZone>(json);
+                        Data.botSpawnZones.Add((BotSpawnZone)copy);
+                        break;
+                    case LightZone lz:
+                        copy = JsonConvert.DeserializeObject<LightZone>(json);
+                        Data.lightZones.Add((LightZone)copy);
                         break;
                     default:
                         continue;
@@ -534,6 +579,71 @@ namespace MapLootEditorLite.Client
             return marker;
         }
 
+        public BotSpawnPoint CreateBotSpawnPoint(Vector3 position)
+        {
+            Data.botSpawnPoints ??= new List<BotSpawnPoint>();
+            var marker = new BotSpawnPoint
+            {
+                name = "bot_spawn_point",
+                position = TransformData.FromVector3(position),
+                rotation = TransformData.FromVector3(Vector3.zero),
+                radius = 1f,
+                side = BotSpawnSide.Savage,
+                category = BotSpawnCategory.Bot,
+                preset = BotSpawnPreset.Scav,
+                wildSpawnType = "assault",
+                spawnChance = 100f,
+                delayToCanSpawnSec = 4f
+            };
+            Data.botSpawnPoints.Add(marker);
+            IsDirty = true;
+            return marker;
+        }
+
+        public BotSpawnZone CreateBotSpawnZone(Vector3 position)
+        {
+            Data.botSpawnZones ??= new List<BotSpawnZone>();
+            var marker = new BotSpawnZone
+            {
+                name = "bot_spawn_zone",
+                position = TransformData.FromVector3(position),
+                rotation = TransformData.FromVector3(Vector3.zero),
+                scale = new TransformData { x = 1f, y = 1f, z = 1f },
+                radius = 5f,
+                shape = ZoneShape.Sphere,
+                side = BotSpawnSide.Savage,
+                category = BotSpawnCategory.Bot,
+                preset = BotSpawnPreset.Scav,
+                wildSpawnType = "assault",
+                spawnCount = 3,
+                spawnChance = 100f,
+                delayToCanSpawnSec = 4f
+            };
+            Data.botSpawnZones.Add(marker);
+            IsDirty = true;
+            return marker;
+        }
+
+        public LightZone CreateLightZone(Vector3 position)
+        {
+            Data.lightZones ??= new List<LightZone>();
+            var marker = new LightZone
+            {
+                name = "light_zone",
+                position = TransformData.FromVector3(position),
+                rotation = TransformData.FromVector3(Vector3.zero),
+                color = new LightColorData { r = 1f, g = 1f, b = 1f, a = 1f },
+                intensity = 1f,
+                range = 10f,
+                spotAngle = 30f,
+                lightType = "Point",
+                spawnChance = 100f
+            };
+            Data.lightZones.Add(marker);
+            IsDirty = true;
+            return marker;
+        }
+
         public void DeleteSelected()
         {
             if (Selected == null || Data == null || IsVanilla(Selected))
@@ -548,6 +658,9 @@ namespace MapLootEditorLite.Client
                 case WTTStaticObject w: Data.wttStaticObjects.Remove(w); break;
                 case InteractiveObject io: Data.interactiveObjects.Remove(io); break;
                 case ExtractZone ez: Data.extractZones.Remove(ez); break;
+                case BotSpawnPoint bp: Data.botSpawnPoints.Remove(bp); break;
+                case BotSpawnZone bz: Data.botSpawnZones.Remove(bz); break;
+                case LightZone lz: Data.lightZones.Remove(lz); break;
             }
 
             Selected = null;
@@ -591,6 +704,18 @@ namespace MapLootEditorLite.Client
                 case ExtractZone ez:
                     copy = JsonConvert.DeserializeObject<ExtractZone>(json);
                     Data.extractZones.Add((ExtractZone)copy);
+                    break;
+                case BotSpawnPoint bp:
+                    copy = JsonConvert.DeserializeObject<BotSpawnPoint>(json);
+                    Data.botSpawnPoints.Add((BotSpawnPoint)copy);
+                    break;
+                case BotSpawnZone bz:
+                    copy = JsonConvert.DeserializeObject<BotSpawnZone>(json);
+                    Data.botSpawnZones.Add((BotSpawnZone)copy);
+                    break;
+                case LightZone lz:
+                    copy = JsonConvert.DeserializeObject<LightZone>(json);
+                    Data.lightZones.Add((LightZone)copy);
                     break;
                 default:
                     return null;
