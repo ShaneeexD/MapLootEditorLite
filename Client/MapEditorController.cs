@@ -652,6 +652,7 @@ namespace MapLootEditorLite.Client
             var marker = _manager.CreateLightZone(GetLookPosition());
             _manager.Selected = marker;
             _renderer.Rebuild();
+            _previews.SpawnLightPreview(marker);
         }
 
         public bool IsFreeCam => _freeCam;

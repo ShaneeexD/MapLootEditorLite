@@ -1852,6 +1852,8 @@ namespace MapLootEditorLite.Client
             UIBuilder.AddHorizontalLayout(previewRow, 2, 2, false, false);
             UIBuilder.AddLayoutElement(previewRow, null, 22, null, 22, null, 0);
             UIBuilder.CreateButton(previewRow, "Preview Light", () => previews.SpawnLightPreview(zone), 100, 22);
+
+            previews.SpawnLightPreview(zone);
         }
 
         public static readonly (string id, string name)[] LootContainerTemplates = new (string, string)[]

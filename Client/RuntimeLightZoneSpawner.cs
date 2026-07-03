@@ -177,11 +177,13 @@ namespace MapLootEditorLite.Client
 
             var light = go.AddComponent<Light>();
             light.type = ParseLightType(zone.lightType);
-            light.color = zone.color.ToColor();
+            light.color = zone.color.ToColor().linear;
             light.intensity = zone.intensity;
             light.range = zone.range;
             if (light.type == LightType.Spot)
                 light.spotAngle = zone.spotAngle;
+
+            Plugin.Log.LogInfo($"[MLEL Light] Created light '{zone.name}' color={zone.color.r:F2},{zone.color.g:F2},{zone.color.b:F2},{zone.color.a:F2} linear={light.color.r:F2},{light.color.g:F2},{light.color.b:F2}.");
 
             return go;
         }

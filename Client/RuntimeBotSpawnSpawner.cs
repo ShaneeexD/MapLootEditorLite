@@ -389,9 +389,51 @@ namespace MapLootEditorLite.Client
                 UpdateMarkerCorePoint(controller, request.Marker);
             }
 
-            foreach (var request in _spawnRequests)
+            var zoneGroups = _spawnRequests
+                .Where(r => r.ZoneData != null)
+                .GroupBy(r => r.ZoneData)
+                .ToList();
+
+            foreach (var group in zoneGroups)
+            {
+                SpawnZoneGroup(controller, group.Key, group.ToList());
+            }
+
+            foreach (var request in _spawnRequests.Where(r => r.ZoneData == null))
             {
                 SpawnBotAt(controller, request);
+            }
+        }
+
+        private async void SpawnZoneGroup(BotsController controller, BotSpawnZone zoneData, List<SpawnRequest> requests)
+        {
+            try
+            {
+                if (requests.Count == 0)
+                    return;
+
+                var request = requests[0];
+                var wildSpawnType = ResolveWildSpawnType(request);
+                if (!wildSpawnType.HasValue)
+                {
+                    Plugin.Log.LogWarning("[MLEL Bot] Skipping zone group spawn with unknown wild spawn type.");
+                    return;
+                }
+
+                var side = ResolveSide(request);
+                var difficulty = BotDifficulty.normal;
+                var count = requests.Count;
+                var spawnParams = new BotSpawnParams();
+                spawnParams.ShallBeGroup = new ShallBeGroupParams(true, true, count);
+
+                var data = await BotCreationDataClass.Create(new BotProfileDataClass(side, wildSpawnType.Value, difficulty, 0f, spawnParams, false), controller.BotSpawner.BotCreator, count, controller.BotSpawner);
+                var points = requests.Select(r => r.Marker.SpawnPoint).ToList();
+                controller.BotSpawner.TryToSpawnInZoneAndDelay(request.Zone, data, true, true, points, true);
+                Plugin.Log.LogInfo($"[MLEL Bot] Submitted group spawn of {count} {wildSpawnType.Value} in zone {request.Zone.name} (corePoint={points[0].CorePointId}).");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[MLEL Bot] Failed to spawn zone group: {ex.Message}");
             }
         }
 
@@ -409,8 +451,7 @@ namespace MapLootEditorLite.Client
                 var side = ResolveSide(request);
                 var difficulty = BotDifficulty.normal;
                 var point = request.Marker.SpawnPoint;
-                var spawnParams = GetSpawnParams(request);
-                var data = await BotCreationDataClass.Create(new BotProfileDataClass(side, wildSpawnType.Value, difficulty, 0f, spawnParams, false), controller.BotSpawner.BotCreator, 1, controller.BotSpawner);
+                var data = await BotCreationDataClass.Create(new BotProfileDataClass(side, wildSpawnType.Value, difficulty, 0f, new BotSpawnParams(), false), controller.BotSpawner.BotCreator, 1, controller.BotSpawner);
                 controller.BotSpawner.TryToSpawnInZoneAndDelay(request.Zone, data, true, true, new List<ISpawnPoint> { point }, true);
                 Plugin.Log.LogInfo($"[MLEL Bot] Submitted forced spawn at {point.Position} ({wildSpawnType.Value}, {side}, zone={request.Zone.name}, corePoint={point.CorePointId}).");
             }
@@ -418,11 +459,6 @@ namespace MapLootEditorLite.Client
             {
                 Plugin.Log.LogError($"[MLEL Bot] Failed to force spawn bot: {ex.Message}");
             }
-        }
-
-        private BotSpawnParams GetSpawnParams(SpawnRequest request)
-        {
-            return new BotSpawnParams();
         }
 
         private int GetCorePointId(BotsController controller, Vector3 position)

@@ -85,7 +85,7 @@ namespace MapLootEditorLite.Client
 
             var light = go.AddComponent<Light>();
             light.type = ParseLightType(marker.lightType);
-            light.color = marker.color.ToColor();
+            light.color = marker.color.ToColor().linear;
             light.intensity = marker.intensity;
             light.range = marker.range;
             if (light.type == LightType.Spot)
@@ -106,12 +106,70 @@ namespace MapLootEditorLite.Client
                 renderer.material = mat;
             }
 
+            var dir = new GameObject("LightPreviewDirection");
+            dir.transform.SetParent(go.transform, false);
+            var dirLr = dir.AddComponent<LineRenderer>();
+            dirLr.useWorldSpace = false;
+            dirLr.material = new Material(Shader.Find("Sprites/Default") ?? Shader.Find("Standard"));
+            dirLr.startWidth = 0.04f;
+            dirLr.endWidth = 0.04f;
+            DrawLightDirection(dirLr, marker);
+
             var meta = go.AddComponent<PreviewEffectMarker>();
             meta.sourceMarkerId = marker.id;
             meta.markerName = marker.name;
 
             _effectPreviews.Add(go);
             Plugin.Log.LogInfo($"Spawned light preview for {marker.name}");
+        }
+
+        private void DrawLightDirection(LineRenderer lr, LightZone lz)
+        {
+            var type = lz.lightType ?? "Point";
+            var color = lz.color.ToColor();
+            color.a = 1f;
+            var positions = new List<Vector3>();
+
+            if (type == "Spot")
+            {
+                var length = Mathf.Clamp(lz.range * 0.2f, 0.5f, 4f);
+                var radius = length * Mathf.Tan(lz.spotAngle * 0.5f * Mathf.Deg2Rad);
+                var apex = Vector3.zero;
+                var center = Vector3.forward * length;
+                positions.Add(apex);
+                positions.Add(center);
+                const int segments = 24;
+                for (int i = 0; i <= segments; i++)
+                {
+                    var angle = i * Mathf.PI * 2f / segments;
+                    var point = center + Vector3.right * Mathf.Cos(angle) * radius + Vector3.up * Mathf.Sin(angle) * radius;
+                    positions.Add(apex);
+                    positions.Add(point);
+                }
+            }
+            else if (type == "Directional")
+            {
+                positions.Add(Vector3.zero);
+                positions.Add(Vector3.forward * 2f);
+                positions.Add(Vector3.forward * 2f);
+                positions.Add(Vector3.forward * 1.6f + Vector3.right * 0.2f);
+                positions.Add(Vector3.forward * 2f);
+                positions.Add(Vector3.forward * 1.6f + Vector3.left * 0.2f);
+                positions.Add(Vector3.forward * 2f);
+                positions.Add(Vector3.forward * 1.6f + Vector3.up * 0.2f);
+                positions.Add(Vector3.forward * 2f);
+                positions.Add(Vector3.forward * 1.6f + Vector3.down * 0.2f);
+            }
+            else
+            {
+                positions.Add(Vector3.zero);
+                positions.Add(Vector3.forward * 0.3f);
+            }
+
+            lr.positionCount = positions.Count;
+            lr.SetPositions(positions.ToArray());
+            lr.startColor = color;
+            lr.endColor = color;
         }
 
         public void SpawnBotSpawnPreview(BotSpawnPoint marker)
@@ -535,6 +593,41 @@ namespace MapLootEditorLite.Client
                 if (marker is StaticObject so)
                     preview.transform.localScale = so.scale.ToVector3();
             }
+
+            foreach (var preview in _effectPreviews)
+            {
+                if (preview == null)
+                    continue;
+
+                var meta = preview.GetComponent<PreviewEffectMarker>();
+                if (meta == null || meta.sourceMarkerId != marker.id)
+                    continue;
+
+                if (marker is LightZone lz)
+                {
+                    preview.transform.position = markerPos;
+                    preview.transform.rotation = markerRot;
+                    var light = preview.GetComponent<Light>();
+                    if (light != null)
+                    {
+                        light.type = ParseLightType(lz.lightType);
+                        light.color = lz.color.ToColor().linear;
+                        light.intensity = lz.intensity;
+                        light.range = lz.range;
+                        if (light.type == LightType.Spot)
+                            light.spotAngle = lz.spotAngle;
+                    }
+                    var sphere = preview.transform.Find("LightPreviewVisual")?.GetComponent<Renderer>();
+                    if (sphere != null)
+                    {
+                        sphere.material.color = light.color;
+                        sphere.material.SetColor("_EmissionColor", light.color * 2f);
+                    }
+                    var dirLr = preview.transform.Find("LightPreviewDirection")?.GetComponent<LineRenderer>();
+                    if (dirLr != null)
+                        DrawLightDirection(dirLr, lz);
+                }
+            }
         }
 
         public void SpawnAllPreviews(MapData data)
@@ -550,6 +643,8 @@ namespace MapLootEditorLite.Client
             foreach (var marker in data.wttStaticObjects ?? Enumerable.Empty<WTTStaticObject>())
                 SpawnPreviewForMarker(marker);
             foreach (var marker in data.interactiveObjects ?? Enumerable.Empty<InteractiveObject>())
+                SpawnPreviewForMarker(marker);
+            foreach (var marker in data.lightZones ?? Enumerable.Empty<LightZone>())
                 SpawnPreviewForMarker(marker);
         }
 
@@ -650,6 +745,9 @@ namespace MapLootEditorLite.Client
                     break;
                 case MarkerKind.InteractiveObject:
                     SpawnInteractivePreview((InteractiveObject)marker);
+                    break;
+                case MarkerKind.LightZone:
+                    SpawnLightPreview((LightZone)marker);
                     break;
             }
         }

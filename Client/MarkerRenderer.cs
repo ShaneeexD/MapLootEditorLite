@@ -602,6 +602,19 @@ namespace MapLootEditorLite.Client
             lr.endColor = _lightZoneWireColor;
 
             DrawWireSphere(lr, 0.5f);
+
+            var dir = new GameObject("LightDirection");
+            dir.transform.SetParent(go.transform, false);
+            dir.transform.localScale = Vector3.one;
+            dir.transform.localPosition = Vector3.zero;
+            var dirLr = dir.AddComponent<LineRenderer>();
+            dirLr.useWorldSpace = false;
+            dirLr.material = GetWireMaterial();
+            dirLr.startColor = _lightZoneWireColor;
+            dirLr.endColor = _lightZoneWireColor;
+            dirLr.positionCount = 0;
+            DrawLightDirection(dirLr, lz);
+
             return go;
         }
 
@@ -617,6 +630,61 @@ namespace MapLootEditorLite.Client
                 renderer.material.EnableKeyword("_EMISSION");
                 renderer.material.SetColor("_EmissionColor", c * 2f);
             }
+
+            var dirLr = visual.transform.Find("LightDirection")?.GetComponent<LineRenderer>();
+            if (dirLr != null)
+                DrawLightDirection(dirLr, lz);
+        }
+
+        private void DrawLightDirection(LineRenderer lr, LightZone lz)
+        {
+            var type = lz.lightType ?? "Point";
+            var color = lz.color.ToColor();
+            color.a = 1f;
+            var positions = new List<Vector3>();
+
+            if (type == "Spot")
+            {
+                var length = Mathf.Clamp(lz.range * 0.2f, 0.5f, 4f);
+                var radius = length * Mathf.Tan(lz.spotAngle * 0.5f * Mathf.Deg2Rad);
+                var apex = Vector3.zero;
+                var center = Vector3.forward * length;
+                positions.Add(apex);
+                positions.Add(center);
+                const int segments = 24;
+                for (int i = 0; i <= segments; i++)
+                {
+                    var angle = i * Mathf.PI * 2f / segments;
+                    var point = center + Vector3.right * Mathf.Cos(angle) * radius + Vector3.up * Mathf.Sin(angle) * radius;
+                    positions.Add(apex);
+                    positions.Add(point);
+                }
+            }
+            else if (type == "Directional")
+            {
+                positions.Add(Vector3.zero);
+                positions.Add(Vector3.forward * 2f);
+                positions.Add(Vector3.forward * 2f);
+                positions.Add(Vector3.forward * 1.6f + Vector3.right * 0.2f);
+                positions.Add(Vector3.forward * 2f);
+                positions.Add(Vector3.forward * 1.6f + Vector3.left * 0.2f);
+                positions.Add(Vector3.forward * 2f);
+                positions.Add(Vector3.forward * 1.6f + Vector3.up * 0.2f);
+                positions.Add(Vector3.forward * 2f);
+                positions.Add(Vector3.forward * 1.6f + Vector3.down * 0.2f);
+            }
+            else
+            {
+                positions.Add(Vector3.zero);
+                positions.Add(Vector3.forward * 0.3f);
+            }
+
+            lr.positionCount = positions.Count;
+            lr.SetPositions(positions.ToArray());
+            lr.startColor = color;
+            lr.endColor = color;
+            lr.startWidth = 0.04f;
+            lr.endWidth = 0.04f;
         }
 
         private Material GetWireMaterial()
