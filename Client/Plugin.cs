@@ -114,8 +114,7 @@ namespace MapLootEditorLite.Client
 
         private static string FindServerRoot(string clientRoot)
         {
-            // SPT is commonly installed with the server in a subfolder named "SPT" (e.g. C:\SPT\SPT).
-            // If that subfolder exists and contains the user/mods directory, use it. Otherwise fall back to the client root.
+            // Prefer the SPT server subfolder if it exists, otherwise fall back to the client root.
             var serverCandidate = Path.Combine(clientRoot, "SPT");
             if (Directory.Exists(Path.Combine(serverCandidate, "user")))
                 return serverCandidate;

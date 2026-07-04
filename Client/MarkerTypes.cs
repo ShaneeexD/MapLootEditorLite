@@ -391,7 +391,7 @@ namespace MapLootEditorLite.Client
     {
         public string spawnType = "bundle"; // "bundle" or "clone"
 
-        // Bundle mode (WTT CustomStaticSpawnService)
+        // Bundle mode
         public string bundleName = "";
         public string prefabName = "";
 
@@ -400,7 +400,7 @@ namespace MapLootEditorLite.Client
         public TransformData sourceObjectPosition { get; set; } = new TransformData();
         public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
 
-        // WTT CustomStaticSpawn conditions
+        // Quest conditions
         public string questId = "";
         public List<string> requiredQuestStatuses = new List<string>();
         public List<string> excludedQuestStatuses = new List<string>();

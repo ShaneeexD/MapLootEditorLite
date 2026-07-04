@@ -830,7 +830,7 @@ namespace MapLootEditorLite.Client
                 yield break;
             }
 
-            // Bundle mode: try to load the WTT bundle from the mod's bundles folder.
+            // Bundle mode: load the bundle from the mod's bundles folder.
             string path = Path.Combine(Application.streamingAssetsPath, "Windows", "bundles", "staticspawns", $"{marker.bundleName}.bundle");
             Plugin.Log.LogInfo($"Loading WTT static object bundle: {path}");
 

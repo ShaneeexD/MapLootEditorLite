@@ -59,7 +59,7 @@ public static class PackLoader
                 directories.Add(legacyClientSpawns);
             }
 
-            // Also support other mods: SPT/user/mods/*/MapLoot/
+            // Also load MapLoot folders from the user/mods tree.
             var userModsPath = Path.Combine(sptRoot, "user", "mods");
             if (Directory.Exists(userModsPath))
             {

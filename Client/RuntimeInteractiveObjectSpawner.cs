@@ -209,8 +209,7 @@ namespace MapLootEditorLite.Client
             var wio = instance.GetComponentInChildren<WorldInteractiveObject>(true);
             if (wio != null && wio.transform.parent == null)
             {
-                // EFT's CurrentAngle setter only rotates the transform when it has a parent.
-                // Spawned clones are root objects, so create a frame parent to satisfy that requirement.
+                // EFT requires a parent for CurrentAngle rotation, so wrap the root WIO in a frame.
                 var frame = new GameObject($"InteractiveObject_{obj.name}_Frame");
                 frame.transform.position = obj.position.ToVector3();
                 frame.transform.rotation = obj.rotation.ToQuaternion();
