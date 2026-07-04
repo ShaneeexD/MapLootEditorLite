@@ -114,7 +114,7 @@ namespace MapLootEditorLite.Client
 
             try
             {
-                var harmony = new Harmony("com.maplooteditorlite.extractzones");
+                var harmony = new Harmony("com.shane.mapeditorlite.extractzones");
                 var method = AccessTools.Method(typeof(ExfiltrationControllerClass), nameof(ExfiltrationControllerClass.InitAllExfiltrationPoints));
                 var postfix = AccessTools.Method(typeof(RuntimeExtractZoneSpawner), nameof(InitAllExfiltrationPointsPostfix));
                 harmony.Patch(method, postfix: new HarmonyMethod(postfix));

@@ -1,8 +1,8 @@
 {
-  "name": "MapLootEditorLite",
+  "name": "MapEditorLite",
   "author": "Shane",
   "version": "1.0.0",
   "license": "MIT",
-  "main": "MapLootEditorLite.Server.dll",
+  "main": "MapEditorLite.Server.dll",
   "sptVersion": "~4.0.13"
 }

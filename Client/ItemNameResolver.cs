@@ -47,7 +47,7 @@ namespace MapLootEditorLite.Client
             using (var request = UnityWebRequest.Get(url))
             {
                 request.timeout = 15;
-                request.SetRequestHeader("User-Agent", "MapLootEditorLite/1.0");
+                request.SetRequestHeader("User-Agent", "MapEditorLite/1.0");
                 request.SetRequestHeader("Accept", "application/json");
                 yield return request.SendWebRequest();
 

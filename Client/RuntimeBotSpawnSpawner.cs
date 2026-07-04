@@ -128,7 +128,7 @@ namespace MapLootEditorLite.Client
 
             try
             {
-                var harmony = new Harmony("com.maplooteditorlite.botspawns");
+                var harmony = new Harmony("com.shane.mapeditorlite.botspawns");
                 var method = AccessTools.Method(typeof(BotsController), nameof(BotsController.Init));
                 var prefix = AccessTools.Method(typeof(RuntimeBotSpawnSpawner), nameof(InitBotsControllerPrefix));
                 var postfix = AccessTools.Method(typeof(RuntimeBotSpawnSpawner), nameof(InitBotsControllerPostfix));

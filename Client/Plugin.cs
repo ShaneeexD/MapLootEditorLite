@@ -9,7 +9,7 @@ using UnityEngine;
 
 namespace MapLootEditorLite.Client
 {
-    [BepInPlugin("com.maplooteditorlite.client", "Map Loot Editor Lite", "1.0.0")]
+    [BepInPlugin("com.shaneeexd.mapeditorlite", "Map Editor Lite", "1.0.0")]
     [BepInDependency("com.wtt.commonlib", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
@@ -32,13 +32,13 @@ namespace MapLootEditorLite.Client
         {
             Instance = this;
             Log = BepInEx.Logging.Logger.CreateLogSource("MLEL");
-            Log.LogInfo("Map Loot Editor Lite client plugin loaded");
+            Log.LogInfo("Map Editor Lite client plugin loaded");
 
             SptRoot = FindSptRoot(Info.Location);
             SptServerRoot = FindServerRoot(SptRoot);
             var serverRoot = SptServerRoot;
-            ModDataDirectory = Path.Combine(SptRoot, "BepInEx", "config", "MapLootEditorLite");
-            ServerModDirectory = Path.Combine(serverRoot, "user", "mods", "MapLootEditorLite");
+            ServerModDirectory = Path.Combine(serverRoot, "user", "mods", "MapEditorLite");
+            ModDataDirectory = ServerModDirectory;
             ServerModPacksDirectory = Path.Combine(ServerModDirectory, "packs");
             ServerModExportsDirectory = Path.Combine(ServerModDirectory, "exports");
 
@@ -88,7 +88,7 @@ namespace MapLootEditorLite.Client
             gameObject.AddComponent<RuntimeLightZoneSpawner>();
             Log.LogInfo("Runtime light zone spawner attached");
 
-            var raidResetHarmony = new Harmony("com.maplooteditorlite.raidreset");
+            var raidResetHarmony = new Harmony("com.shane.mapeditorlite.raidreset");
             raidResetHarmony.PatchAll();
             Log.LogInfo("Raid reset patch applied");
 

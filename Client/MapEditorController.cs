@@ -44,7 +44,7 @@ namespace MapLootEditorLite.Client
         public static bool FreeCamInvulnerable => _editorModeActive || Time.time < _editorModeInvincibleEndTime;
         private static bool _editorModeActive;
         private static float _editorModeInvincibleEndTime;
-        private static readonly Harmony _freecamHarmony = new Harmony("com.maplooteditorlite.freecam");
+        private static readonly Harmony _freecamHarmony = new Harmony("com.shane.mapeditorlite.freecam");
         private static bool _freecamPatchesApplied;
 
         private bool _freeCamCursorLocked = true;

@@ -6,7 +6,7 @@
     <OutputType>Library</OutputType>
     <Version>1.0.0</Version>
     <OutputPath>bin\$(Configuration)\</OutputPath>
-    <AssemblyName>MapLootEditorLite.Client</AssemblyName>
+    <AssemblyName>MapEditorLite.Client</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>

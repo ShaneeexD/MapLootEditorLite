@@ -18,8 +18,8 @@ namespace MapLootEditorLite.Server;
 
 public record ModMetadata : AbstractModMetadata
 {
-    public override string ModGuid { get; init; } = "com.shane.maplooteditorlite";
-    public override string Name { get; init; } = "MapLootEditorLite";
+    public override string ModGuid { get; init; } = "com.shaneeexd.mapeditorlite";
+    public override string Name { get; init; } = "MapEditorLite";
     public override string Author { get; init; } = "Shane";
     public override List<string>? Contributors { get; init; } = null;
     public override Version Version { get; init; } = new("1.0.0");
@@ -55,7 +55,7 @@ public class ServerPlugin : IOnLoad
 
     public async Task OnLoad()
     {
-        _logger.Info("[MLEL] MapLootEditorLite server mod loading");
+        _logger.Info("[MLEL] Map Editor Lite server mod loading");
 
         try
         {
@@ -87,11 +87,11 @@ public class ServerPlugin : IOnLoad
             new MatchControllerStartLocalRaidPatch().Enable();
             _logger.Info("[MLEL] Enabled quest filter patches on LocationController.GenerateAll and MatchController.StartLocalRaid");
 
-            _logger.Info($"[MLEL] MapLootEditorLite server mod loaded. {PackRegistry.TotalSpawnCount()} custom spawns registered across {packs.Count} packs.");
+            _logger.Info($"[MLEL] Map Editor Lite server mod loaded. {PackRegistry.TotalSpawnCount()} custom spawns registered across {packs.Count} packs.");
         }
         catch (Exception ex)
         {
-            _logger.Error($"[MLEL] Failed to load MapLootEditorLite server mod: {ex.Message}");
+            _logger.Error($"[MLEL] Failed to load Map Editor Lite server mod: {ex.Message}");
         }
 
         await Task.CompletedTask;

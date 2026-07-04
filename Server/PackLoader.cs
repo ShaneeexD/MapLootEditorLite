@@ -21,23 +21,42 @@ public static class PackLoader
             var sptRoot = Path.GetFullPath(Path.Combine(rootDirectory, "..", "..", ".."));
 
             // Final user packs for loading
-            var serverModPacks = Path.Combine(sptRoot, "user", "mods", "MapLootEditorLite", "packs");
+            var serverModPacks = Path.Combine(sptRoot, "user", "mods", "MapEditorLite", "packs");
             if (Directory.Exists(serverModPacks))
             {
                 directories.Add(serverModPacks);
             }
 
             // Legacy client-side export paths (kept for backwards compatibility)
-            var clientExports = Path.Combine(sptRoot, "BepInEx", "config", "MapLootEditorLite", "exports");
+            var clientExports = Path.Combine(sptRoot, "BepInEx", "config", "MapEditorLite", "exports");
             if (Directory.Exists(clientExports))
             {
                 directories.Add(clientExports);
             }
 
-            var clientSpawns = Path.Combine(sptRoot, "BepInEx", "config", "MapLootEditorLite", "spawns");
+            var clientSpawns = Path.Combine(sptRoot, "BepInEx", "config", "MapEditorLite", "spawns");
             if (Directory.Exists(clientSpawns))
             {
                 directories.Add(clientSpawns);
+            }
+
+            // Legacy MapLootEditorLite paths (kept for backwards compatibility during rename)
+            var legacyServerModPacks = Path.Combine(sptRoot, "user", "mods", "MapLootEditorLite", "packs");
+            if (Directory.Exists(legacyServerModPacks))
+            {
+                directories.Add(legacyServerModPacks);
+            }
+
+            var legacyClientExports = Path.Combine(sptRoot, "BepInEx", "config", "MapLootEditorLite", "exports");
+            if (Directory.Exists(legacyClientExports))
+            {
+                directories.Add(legacyClientExports);
+            }
+
+            var legacyClientSpawns = Path.Combine(sptRoot, "BepInEx", "config", "MapLootEditorLite", "spawns");
+            if (Directory.Exists(legacyClientSpawns))
+            {
+                directories.Add(legacyClientSpawns);
             }
 
             // Also support other mods: SPT/user/mods/*/MapLoot/

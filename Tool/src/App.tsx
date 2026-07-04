@@ -176,7 +176,7 @@ export default function App() {
           </button>
           <div className="flex items-center gap-2 text-tarkov-accent">
             <Package size={24} />
-            <h1 className="text-xl font-bold">MapLootEditorLite Tool</h1>
+            <h1 className="text-xl font-bold">Map Editor Lite Tool</h1>
           </div>
           <div className="flex-1" />
           <input
@@ -421,7 +421,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
           <SidebarLink
             href="https://maplooteditorlite-tool.netlify.app"
             icon={<Package size={18} />}
-            label="MapLootEditorLite Tool"
+            label="Map Editor Lite Tool"
             active
           />
           <SidebarLink href="https://tradergen-tool.netlify.app" icon={<Store size={18} />} label="TraderGen Tool" />
