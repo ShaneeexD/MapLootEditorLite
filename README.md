@@ -75,9 +75,9 @@ Users install your pack by dragging the `SPT` folder (containing `SPT\user\mods\
 
 ## More Information
 
+View my framework mods and user created add-ons for them [here.](https://serenity-workshop.netlify.app)
+
 - Full documentation, JSON reference, and examples are in the [GitHub README](https://github.com/ShaneeexD/MapLootEditorLite/blob/main/README.md).
-- **SPT Discord**: https://discord.gg/Xn9ms4saGa
-- **BepInEx Docs**: https://docs.bepinex.dev/
 
 ## License
 

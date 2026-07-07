@@ -3,6 +3,7 @@ import {
   Archive,
   Box,
   Crosshair,
+  DoorOpen,
   Download,
   ExternalLink,
   FileJson,
@@ -11,9 +12,12 @@ import {
   Package,
   Plus,
   Store,
+  Sun,
   Target,
   Trash2,
+  Users,
   X,
+  Zap,
 } from 'lucide-react'
 import { saveAs } from 'file-saver'
 import { ClipboardPaste } from 'lucide-react'
@@ -45,8 +49,29 @@ import {
   generateId,
   MAP_OPTIONS,
 } from './types'
+import {
+  ExtractZoneList,
+  LightZoneList,
+  BotSpawnPointList,
+  BotSpawnZoneList,
+  WttQuestZoneList,
+  WttStaticObjectList,
+  TriggerZoneList,
+} from './MarkerLists'
 
-type MarkerTab = 'spawns' | 'zones' | 'objects' | 'interactive' | 'bundles'
+type MarkerTab =
+  | 'spawns'
+  | 'zones'
+  | 'objects'
+  | 'interactive'
+  | 'extracts'
+  | 'lights'
+  | 'botpoints'
+  | 'botzones'
+  | 'wttquests'
+  | 'wttobjects'
+  | 'triggers'
+  | 'bundles'
 
 function migratePackData(pack: PackData): PackData {
   const maps: Record<string, MapData> = {}
@@ -63,10 +88,34 @@ function migratePackData(pack: PackData): PackData {
         shape: (zone as any).shape ?? ZoneShape.Sphere,
         items: migrateItems(zone.items, (zone as any).itemTpls),
       })),
-      interactiveObjects: map.interactiveObjects ?? [],
+      interactiveObjects: migrateInteractiveObjects(map.interactiveObjects ?? []),
+      objects: map.objects ?? [],
+      wttQuestZones: map.wttQuestZones ?? [],
+      wttStaticObjects: map.wttStaticObjects ?? [],
+      extractZones: map.extractZones ?? [],
+      botSpawnPoints: map.botSpawnPoints ?? [],
+      botSpawnZones: map.botSpawnZones ?? [],
+      lightZones: map.lightZones ?? [],
+      triggerZones: map.triggerZones ?? [],
     }
   }
   return { ...pack, maps }
+}
+
+const defaultInteractiveObjectItem: InteractiveObjectItem = {
+  template: '',
+  chance: 100,
+  questOnly: false,
+  questCompleted: false,
+  questId: '',
+}
+
+function migrateInteractiveObjects(objects: InteractiveObject[]): InteractiveObject[] {
+  return objects.map((obj) => ({
+    ...defaultInteractiveObject(),
+    ...obj,
+    items: (obj.items ?? []).map((item) => ({ ...defaultInteractiveObjectItem, ...item })),
+  }))
 }
 
 function migrateItems(items: LootItem[] | undefined, itemTpls: string[] | undefined): LootItem[] {
@@ -297,7 +346,7 @@ export default function App() {
                   {MAP_OPTIONS.find((m) => m.id === selectedMapId)?.label || selectedMapId || 'none'}
                 </span>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <TabButton
                   active={tab === 'spawns'}
                   onClick={() => setTab('spawns')}
@@ -324,6 +373,55 @@ export default function App() {
                   onClick={() => setTab('interactive')}
                   icon={<Target size={16} />}
                   label={`Interactive${currentMap ? ` (${currentMap.interactiveObjects.length})` : ''}`}
+                  disabled={!currentMap}
+                />
+                <TabButton
+                  active={tab === 'extracts'}
+                  onClick={() => setTab('extracts')}
+                  icon={<DoorOpen size={16} />}
+                  label={`Extracts${currentMap ? ` (${currentMap.extractZones.length})` : ''}`}
+                  disabled={!currentMap}
+                />
+                <TabButton
+                  active={tab === 'lights'}
+                  onClick={() => setTab('lights')}
+                  icon={<Sun size={16} />}
+                  label={`Lights${currentMap ? ` (${currentMap.lightZones.length})` : ''}`}
+                  disabled={!currentMap}
+                />
+                <TabButton
+                  active={tab === 'botpoints'}
+                  onClick={() => setTab('botpoints')}
+                  icon={<Users size={16} />}
+                  label={`Bot Points${currentMap ? ` (${currentMap.botSpawnPoints.length})` : ''}`}
+                  disabled={!currentMap}
+                />
+                <TabButton
+                  active={tab === 'botzones'}
+                  onClick={() => setTab('botzones')}
+                  icon={<Users size={16} />}
+                  label={`Bot Zones${currentMap ? ` (${currentMap.botSpawnZones.length})` : ''}`}
+                  disabled={!currentMap}
+                />
+                <TabButton
+                  active={tab === 'wttquests'}
+                  onClick={() => setTab('wttquests')}
+                  icon={<MapPin size={16} />}
+                  label={`WTT Quests${currentMap ? ` (${currentMap.wttQuestZones.length})` : ''}`}
+                  disabled={!currentMap}
+                />
+                <TabButton
+                  active={tab === 'wttobjects'}
+                  onClick={() => setTab('wttobjects')}
+                  icon={<Box size={16} />}
+                  label={`WTT Objects${currentMap ? ` (${currentMap.wttStaticObjects.length})` : ''}`}
+                  disabled={!currentMap}
+                />
+                <TabButton
+                  active={tab === 'triggers'}
+                  onClick={() => setTab('triggers')}
+                  icon={<Zap size={16} />}
+                  label={`Triggers${currentMap ? ` (${currentMap.triggerZones.length})` : ''}`}
                   disabled={!currentMap}
                 />
                 <TabButton
@@ -369,6 +467,69 @@ export default function App() {
                   <InteractiveObjectList
                     data={currentMap.interactiveObjects}
                     onChange={(interactiveObjects) => updateMap(selectedMapId, (m) => ({ ...m, interactiveObjects }))}
+                  />
+                ) : (
+                  <NoMapMessage />
+                ))}
+              {tab === 'extracts' &&
+                (currentMap ? (
+                  <ExtractZoneList
+                    data={currentMap.extractZones}
+                    onChange={(zones) => updateMap(selectedMapId, (m) => ({ ...m, extractZones: zones }))}
+                  />
+                ) : (
+                  <NoMapMessage />
+                ))}
+              {tab === 'lights' &&
+                (currentMap ? (
+                  <LightZoneList
+                    data={currentMap.lightZones}
+                    onChange={(zones) => updateMap(selectedMapId, (m) => ({ ...m, lightZones: zones }))}
+                  />
+                ) : (
+                  <NoMapMessage />
+                ))}
+              {tab === 'botpoints' &&
+                (currentMap ? (
+                  <BotSpawnPointList
+                    data={currentMap.botSpawnPoints}
+                    onChange={(points) => updateMap(selectedMapId, (m) => ({ ...m, botSpawnPoints: points }))}
+                  />
+                ) : (
+                  <NoMapMessage />
+                ))}
+              {tab === 'botzones' &&
+                (currentMap ? (
+                  <BotSpawnZoneList
+                    data={currentMap.botSpawnZones}
+                    onChange={(zones) => updateMap(selectedMapId, (m) => ({ ...m, botSpawnZones: zones }))}
+                  />
+                ) : (
+                  <NoMapMessage />
+                ))}
+              {tab === 'wttquests' &&
+                (currentMap ? (
+                  <WttQuestZoneList
+                    data={currentMap.wttQuestZones}
+                    onChange={(zones) => updateMap(selectedMapId, (m) => ({ ...m, wttQuestZones: zones }))}
+                  />
+                ) : (
+                  <NoMapMessage />
+                ))}
+              {tab === 'wttobjects' &&
+                (currentMap ? (
+                  <WttStaticObjectList
+                    data={currentMap.wttStaticObjects}
+                    onChange={(objects) => updateMap(selectedMapId, (m) => ({ ...m, wttStaticObjects: objects }))}
+                  />
+                ) : (
+                  <NoMapMessage />
+                ))}
+              {tab === 'triggers' &&
+                (currentMap ? (
+                  <TriggerZoneList
+                    data={currentMap.triggerZones}
+                    onChange={(zones) => updateMap(selectedMapId, (m) => ({ ...m, triggerZones: zones }))}
                   />
                 ) : (
                   <NoMapMessage />

@@ -32,7 +32,7 @@ namespace MapLootEditorLite.Client
             Log = BepInEx.Logging.Logger.CreateLogSource("MEL");
             Log.LogInfo("Map Editor Lite client plugin loaded");
 
-            GameRoot = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(Config.ConfigFilePath)));
+            GameRoot = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(base.Config.ConfigFilePath)));
             var serverRoot = Path.Combine(GameRoot, "SPT");
             if (!Directory.Exists(Path.Combine(serverRoot, "user")))
                 serverRoot = GameRoot;

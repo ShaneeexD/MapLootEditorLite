@@ -1,4 +1,4 @@
-export interface TransformData {
+﻿export interface TransformData {
   x: number
   y: number
   z: number
@@ -9,7 +9,9 @@ export interface LootItem {
   chance: number
   rotation: TransformData
   randomRotation: boolean
+  yOffset?: number
   questOnly?: boolean
+  questCompleted?: boolean
   questId?: string
 }
 
@@ -19,7 +21,9 @@ export function defaultLootItem(): LootItem {
     chance: 100,
     rotation: defaultTransform(),
     randomRotation: true,
+    yOffset: 0,
     questOnly: false,
+    questCompleted: false,
     questId: '',
   }
 }
@@ -27,12 +31,18 @@ export function defaultLootItem(): LootItem {
 export interface LooseLootSpawn {
   id: string
   name: string
+  group?: string
   position: TransformData
   rotation: TransformData
+  itemTpls?: string[]
   items: LootItem[]
   spawnChance: number
   respawnable: boolean
   forced: boolean
+  useGravity?: boolean
+  questOnly?: boolean
+  questCompleted?: boolean
+  questId?: string
 }
 
 export enum ZoneShape {
@@ -45,25 +55,35 @@ export enum ZoneShape {
 export interface LootZone {
   id: string
   name: string
+  group?: string
   position: TransformData
   rotation: TransformData
   radius: number
   scale: TransformData
   shape: ZoneShape
+  itemTpls?: string[]
   items: LootItem[]
   spawnChance: number
   forced: boolean
+  useGravity?: boolean
+  questOnly?: boolean
+  questCompleted?: boolean
+  questId?: string
 }
 
 export interface StaticObject {
   id: string
   name: string
+  group?: string
   position: TransformData
   rotation: TransformData
   scale: TransformData
   prefabPath: string
   sourceObjectName?: string
   sourceObjectPosition?: TransformData
+  questOnly?: boolean
+  questCompleted?: boolean
+  questId?: string
 }
 
 export enum InteractiveObjectType {
@@ -81,12 +101,14 @@ export interface InteractiveObjectItem {
   template: string
   chance: number
   questOnly?: boolean
+  questCompleted?: boolean
   questId?: string
 }
 
 export interface InteractiveObject {
   id: string
   name: string
+  group?: string
   position: TransformData
   rotation: TransformData
   scale: TransformData
@@ -100,7 +122,258 @@ export interface InteractiveObject {
   items: InteractiveObjectItem[]
   spawnChance: number
   questOnly?: boolean
+  questCompleted?: boolean
   questId?: string
+}
+
+export enum ExtractZoneRequirementType {
+  None = 'None',
+  TransferItem = 'TransferItem',
+  HasItem = 'HasItem',
+  WearsItem = 'WearsItem',
+  QuestActive = 'QuestActive',
+  QuestCompleted = 'QuestCompleted',
+}
+
+export interface ExtractZoneRequirement {
+  type: ExtractZoneRequirementType | string
+  templateId?: string
+  count?: number
+  requiredSlot?: string
+  requirementTip?: string
+}
+
+export enum TriggerLightAction {
+  Toggle = 'Toggle',
+  Enable = 'Enable',
+  Disable = 'Disable',
+}
+
+export enum TriggerMode {
+  OneTime = 'OneTime',
+  Repeatable = 'Repeatable',
+  OncePerPlayer = 'OncePerPlayer',
+}
+
+export enum TriggerSide {
+  Any = 'Any',
+  Pmc = 'Pmc',
+  Scav = 'Scav',
+}
+
+export interface ExtractZone {
+  id: string
+  name: string
+  group?: string
+  position: TransformData
+  rotation: TransformData
+  radius: number
+  scale: TransformData
+  shape: ZoneShape
+  exitName: string
+  exfiltrationTime: number
+  exfiltrationType: string
+  spawnChance: number
+  questOnly?: boolean
+  questCompleted?: boolean
+  questId?: string
+  requirements: ExtractZoneRequirement[]
+  linkLights?: boolean
+  lightAction?: TriggerLightAction
+  lightZoneNames?: string[]
+}
+
+export enum BotSpawnSide {
+  Savage = 'Savage',
+  Bear = 'Bear',
+  Usec = 'Usec',
+  Pmc = 'Pmc',
+  All = 'All',
+}
+
+export enum BotSpawnCategory {
+  Bot = 'Bot',
+  Boss = 'Boss',
+  BotPmc = 'BotPmc',
+  All = 'All',
+}
+
+export enum BotSpawnPreset {
+  Any = 'Any',
+  Scav = 'Scav',
+  SniperScav = 'SniperScav',
+  Raider = 'Raider',
+  Rogue = 'Rogue',
+  PMC = 'PMC',
+  Bear = 'Bear',
+  Usec = 'Usec',
+  Boss = 'Boss',
+  Killa = 'Killa',
+  Tagilla = 'Tagilla',
+  Gluhar = 'Gluhar',
+  Sanitar = 'Sanitar',
+  Kojaniy = 'Kojaniy',
+  Knight = 'Knight',
+  Zryachiy = 'Zryachiy',
+  Boar = 'Boar',
+  Kolontay = 'Kolontay',
+  Partisan = 'Partisan',
+  Cultist = 'Cultist',
+  Infected = 'Infected',
+}
+
+export interface BotSpawnGroup {
+  id: string
+  spawnCount: number
+  preset: BotSpawnPreset
+  wildSpawnType?: string
+  side: BotSpawnSide
+  category: BotSpawnCategory
+}
+
+export interface BotSpawnPoint {
+  id: string
+  name: string
+  group?: string
+  position: TransformData
+  rotation: TransformData
+  radius: number
+  side: BotSpawnSide
+  category: BotSpawnCategory
+  preset: BotSpawnPreset
+  wildSpawnType?: string
+  spawnChance: number
+  delayToCanSpawnSec?: number
+  botZoneName?: string
+  questOnly?: boolean
+  questCompleted?: boolean
+  questId?: string
+  spawnMode?: string
+  botSpawnChance?: number
+  randomSpawnTypes?: string[]
+  triggerActivated?: boolean
+  triggerZoneName?: string
+}
+
+export interface BotSpawnZone {
+  id: string
+  name: string
+  group?: string
+  position: TransformData
+  rotation: TransformData
+  radius: number
+  scale: TransformData
+  shape: ZoneShape
+  side: BotSpawnSide
+  category: BotSpawnCategory
+  preset: BotSpawnPreset
+  wildSpawnType?: string
+  spawnCount: number
+  spawnChance: number
+  delayToCanSpawnSec?: number
+  botZoneName?: string
+  questOnly?: boolean
+  questCompleted?: boolean
+  questId?: string
+  spawnMode?: string
+  botSpawnChance?: number
+  randomSpawnTypes?: string[]
+  randomGroups?: BotSpawnGroup[]
+  triggerActivated?: boolean
+  triggerZoneName?: string
+}
+
+export interface TriggerZone {
+  id: string
+  name: string
+  group?: string
+  position: TransformData
+  rotation: TransformData
+  scale: TransformData
+  shape: ZoneShape
+  triggerMode: TriggerMode
+  triggerChance: number
+  delaySeconds?: number
+  cooldownSeconds?: number
+  minRaidTime?: number
+  maxRaidTime?: number
+  allowedSide: TriggerSide
+  lightAction?: TriggerLightAction
+  lightZoneNames?: string[]
+}
+
+export interface LightColorData {
+  r: number
+  g: number
+  b: number
+  a: number
+}
+
+export enum LightType {
+  Point = 'Point',
+  Spot = 'Spot',
+  Directional = 'Directional',
+  Area = 'Area',
+}
+
+export interface LightZone {
+  id: string
+  name: string
+  group?: string
+  position: TransformData
+  rotation: TransformData
+  color: LightColorData
+  intensity: number
+  range: number
+  spotAngle: number
+  lightType: LightType | string
+  enabled: boolean
+  spawnChance: number
+  questOnly?: boolean
+  questCompleted?: boolean
+  questId?: string
+}
+
+export interface WTTQuestZone {
+  id: string
+  name: string
+  group?: string
+  position: TransformData
+  rotation: TransformData
+  zoneId: string
+  zoneName: string
+  zoneLocation: string
+  zoneType: string
+  flareType?: string
+  scale: TransformData
+}
+
+export interface WTTStaticObject {
+  id: string
+  name: string
+  group?: string
+  position: TransformData
+  rotation: TransformData
+  scale: TransformData
+  spawnType: string
+  bundleName?: string
+  prefabName?: string
+  sourceObjectName?: string
+  sourceObjectPosition?: TransformData
+  questId?: string
+  requiredQuestStatuses?: string[]
+  excludedQuestStatuses?: string[]
+  questMustExist?: boolean
+  linkedQuestId?: string
+  linkedRequiredStatuses?: string[]
+  linkedExcludedStatuses?: string[]
+  linkedQuestMustExist?: boolean | null
+  requiredItemInInventory?: string
+  requiredLevel?: number
+  requiredFaction?: string
+  requiredBossSpawned?: string
+  questOnly?: boolean
+  questCompleted?: boolean
 }
 
 export interface MapData {
@@ -109,6 +382,13 @@ export interface MapData {
   lootZones: LootZone[]
   objects: StaticObject[]
   interactiveObjects: InteractiveObject[]
+  wttQuestZones: WTTQuestZone[]
+  wttStaticObjects: WTTStaticObject[]
+  extractZones: ExtractZone[]
+  botSpawnPoints: BotSpawnPoint[]
+  botSpawnZones: BotSpawnZone[]
+  lightZones: LightZone[]
+  triggerZones: TriggerZone[]
 }
 
 export interface PackData {
@@ -186,6 +466,10 @@ export function defaultTransform(): TransformData {
   return { x: 0, y: 0, z: 0 }
 }
 
+export function defaultLightColor(): LightColorData {
+  return { r: 1, g: 1, b: 1, a: 1 }
+}
+
 export function defaultMapData(mapId: string): MapData {
   return {
     map: mapId,
@@ -193,6 +477,13 @@ export function defaultMapData(mapId: string): MapData {
     lootZones: [],
     objects: [],
     interactiveObjects: [],
+    wttQuestZones: [],
+    wttStaticObjects: [],
+    extractZones: [],
+    botSpawnPoints: [],
+    botSpawnZones: [],
+    lightZones: [],
+    triggerZones: [],
   }
 }
 
@@ -210,9 +501,168 @@ export function defaultInteractiveObject(): InteractiveObject {
     containerId: '',
     containerTemplate: '578f87a3245977356274f2cb',
     lootMode: ContainerLootMode.Default,
-    items: [{ template: '', chance: 100, questOnly: false, questId: '' }],
+    items: [{ template: '', chance: 100, questOnly: false, questCompleted: false, questId: '' }],
     spawnChance: 100,
     questOnly: false,
+    questCompleted: false,
     questId: '',
+  }
+}
+
+export function defaultExtractZone(): ExtractZone {
+  return {
+    id: generateId(),
+    name: 'extract_zone',
+    position: defaultTransform(),
+    rotation: defaultTransform(),
+    radius: 1,
+    scale: { x: 1, y: 1, z: 1 },
+    shape: ZoneShape.Box,
+    exitName: '',
+    exfiltrationTime: 5,
+    exfiltrationType: 'Individual',
+    spawnChance: 100,
+    requirements: [],
+    linkLights: false,
+    lightAction: TriggerLightAction.Toggle,
+    lightZoneNames: [],
+    questOnly: false,
+    questCompleted: false,
+    questId: '',
+  }
+}
+
+export function defaultLightZone(): LightZone {
+  return {
+    id: generateId(),
+    name: 'light_zone',
+    position: defaultTransform(),
+    rotation: defaultTransform(),
+    color: defaultLightColor(),
+    intensity: 1,
+    range: 10,
+    spotAngle: 30,
+    lightType: LightType.Point,
+    enabled: true,
+    spawnChance: 100,
+    questOnly: false,
+    questCompleted: false,
+    questId: '',
+  }
+}
+
+export function defaultBotSpawnPoint(): BotSpawnPoint {
+  return {
+    id: generateId(),
+    name: 'bot_spawn_point',
+    position: defaultTransform(),
+    rotation: defaultTransform(),
+    radius: 1,
+    side: BotSpawnSide.Savage,
+    category: BotSpawnCategory.Bot,
+    preset: BotSpawnPreset.Scav,
+    spawnChance: 100,
+    delayToCanSpawnSec: 4,
+    botZoneName: '',
+    questOnly: false,
+    questCompleted: false,
+    questId: '',
+    spawnMode: 'Forced',
+    botSpawnChance: 100,
+    randomSpawnTypes: [],
+    triggerActivated: false,
+    triggerZoneName: '',
+  }
+}
+
+export function defaultBotSpawnZone(): BotSpawnZone {
+  return {
+    id: generateId(),
+    name: 'bot_spawn_zone',
+    position: defaultTransform(),
+    rotation: defaultTransform(),
+    radius: 5,
+    scale: { x: 1, y: 1, z: 1 },
+    shape: ZoneShape.Sphere,
+    side: BotSpawnSide.Savage,
+    category: BotSpawnCategory.Bot,
+    preset: BotSpawnPreset.Scav,
+    spawnCount: 3,
+    spawnChance: 100,
+    delayToCanSpawnSec: 4,
+    botZoneName: '',
+    questOnly: false,
+    questCompleted: false,
+    questId: '',
+    spawnMode: 'Forced',
+    botSpawnChance: 100,
+    randomSpawnTypes: [],
+    randomGroups: [],
+    triggerActivated: false,
+    triggerZoneName: '',
+  }
+}
+
+export function defaultWttQuestZone(): WTTQuestZone {
+  return {
+    id: generateId(),
+    name: 'wtt_quest_zone',
+    position: defaultTransform(),
+    rotation: defaultTransform(),
+    zoneId: '',
+    zoneName: '',
+    zoneLocation: '',
+    zoneType: 'placeitem',
+    flareType: '',
+    scale: { x: 1, y: 1, z: 1 },
+  }
+}
+
+export function defaultWttStaticObject(): WTTStaticObject {
+  return {
+    id: generateId(),
+    name: 'wtt_static_object',
+    position: defaultTransform(),
+    rotation: defaultTransform(),
+    scale: { x: 1, y: 1, z: 1 },
+    spawnType: 'bundle',
+    bundleName: '',
+    prefabName: '',
+    sourceObjectName: '',
+    sourceObjectPosition: defaultTransform(),
+    questId: '',
+    requiredQuestStatuses: [],
+    excludedQuestStatuses: [],
+    questMustExist: true,
+    linkedQuestId: '',
+    linkedRequiredStatuses: [],
+    linkedExcludedStatuses: [],
+    linkedQuestMustExist: null,
+    requiredItemInInventory: '',
+    requiredLevel: 0,
+    requiredFaction: '',
+    requiredBossSpawned: '',
+    questOnly: false,
+    questCompleted: false,
+  }
+}
+
+export function defaultTriggerZone(): TriggerZone {
+  return {
+    id: generateId(),
+    name: 'trigger_zone',
+    position: defaultTransform(),
+    rotation: defaultTransform(),
+    scale: { x: 1, y: 1, z: 1 },
+    shape: ZoneShape.Sphere,
+    triggerMode: TriggerMode.OneTime,
+    triggerChance: 100,
+    delaySeconds: 0,
+    cooldownSeconds: 0,
+    minRaidTime: 0,
+    maxRaidTime: 0,
+    allowedSide: TriggerSide.Any,
+    lightAction: TriggerLightAction.Toggle,
+    lightZoneNames: [],
   }
 }
