@@ -386,10 +386,17 @@ namespace MapLootEditorLite.Client
 
         private void OnCameraPreRender(Camera cam)
         {
-            if (!_editorOpen || _freeCam || _menuCursorLocked || !_menuUnlockedCameraRotationCaptured)
+            if (!_editorOpen)
                 return;
+
             if (cam == Camera.main)
-                cam.transform.rotation = _menuUnlockedCameraRotation;
+            {
+                cam.rect = new Rect(0f, 0f, 1f, 1f);
+                cam.aspect = Screen.width / (float)Screen.height;
+
+                if (!_freeCam && !_menuCursorLocked && _menuUnlockedCameraRotationCaptured)
+                    cam.transform.rotation = _menuUnlockedCameraRotation;
+            }
         }
 
         public void ResetState()
@@ -900,6 +907,8 @@ namespace MapLootEditorLite.Client
             go.transform.rotation = _gameCamera.transform.rotation;
             _freeCamCamera = go.AddComponent<Camera>();
             _freeCamCamera.CopyFrom(_gameCamera);
+            _freeCamCamera.rect = new Rect(0f, 0f, 1f, 1f);
+            _freeCamCamera.targetTexture = null;
             _freeCamCamera.tag = "MainCamera";
             _freeCamEuler = _gameCamera.transform.eulerAngles;
 
