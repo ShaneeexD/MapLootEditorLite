@@ -12,16 +12,6 @@
 - **Forced spawns**: quest and guaranteed spawns are registered through **WTT-CommonLib**.
 - **Modder friendly**: other mods can ship pack JSON files in their own `MapLoot/` folders; the server mod loads them automatically.
 
-## Web Tool
-
-The included **Map Editor Lite Tool** is a React app for importing, editing, and finalizing packs. Build it locally from the `Tool/` folder:
-
-```powershell
-cd Tool
-npm install
-npm run build
-```
-
 ## Installation
 
 1. Drag the `SPT` and `BepInEx` folders from the mod archive into your SPT installation directory.
