@@ -462,7 +462,6 @@ namespace MapLootEditorLite.Client
             }, 40, 22);
             BuildMenuButton(row1, "Tools", new List<MenuItem>
             {
-                new MenuItem("Pick Scene Object", () => OpenSceneObjectPicker()),
                 new MenuItem("Debug", subItems: new List<MenuItem>
                 {
                     new MenuItem("Dump door IDs", () => controller.DumpDoorIds()),
@@ -1103,6 +1102,7 @@ namespace MapLootEditorLite.Client
             if (_selectedSceneGO == null)
             {
                 UIBuilder.CreateLabel(_goActionBtnRow, "Select an object", 10, 120, 22);
+                _goActionBtnRow.gameObject.SetActive(true);
                 return;
             }
 
@@ -1122,18 +1122,12 @@ namespace MapLootEditorLite.Client
                     _goListTarget = null;
                     RefreshGOActionRow();
                 }, 46, 22);
+                _goActionBtnRow.gameObject.SetActive(true);
+                return;
             }
-            else
-            {
-                UIBuilder.CreateButton(_goActionBtnRow, "Place Here", () =>
-                {
-                    controller?.PlaceStaticFromSceneGO(_selectedSceneGO);
-                }, 80, 22);
-                UIBuilder.CreateButton(_goActionBtnRow, "Remove", () =>
-                {
-                    RemoveSelectedSceneGO();
-                }, 50, 22);
-            }
+
+            // Place Here / Remove have moved to the Inspector tab
+            _goActionBtnRow.gameObject.SetActive(false);
         }
 
         private string FormatSceneGODetails(GameObject go)
@@ -1309,7 +1303,7 @@ namespace MapLootEditorLite.Client
         {
             if (_removedContent == null) return;
             ClearChildren(_removedContent);
-            var list = manager.Data?.removedObjects;
+            var list = manager?.Data?.removedObjects;
             if (list == null || list.Count == 0)
             {
                 UIBuilder.CreateText(_removedContent, "No vanilla objects marked for removal.", 11, new Color(0.5f, 0.5f, 0.5f, 1f));
@@ -1809,7 +1803,32 @@ namespace MapLootEditorLite.Client
                 if (_selectedSceneGO != null)
                 {
                     UIBuilder.CreateText(_inspectorContent, "Scene Object", 12, Color.white, FontStyle.Bold);
-                    UIBuilder.CreateText(_inspectorContent, FormatSceneGODetails(_selectedSceneGO), 10, new Color(0.7f, 0.7f, 0.7f, 1f));
+
+                    var detailsPanel = UIBuilder.CreatePanel("SceneGODetails", _inspectorContent, new Color(0, 0, 0, 0));
+                    detailsPanel.GetComponent<Image>().raycastTarget = false;
+                    UIBuilder.AddVerticalLayout(detailsPanel, 2, 4, true, true);
+                    UIBuilder.AddLayoutElement(detailsPanel.gameObject, null, null, null, null, null, 1);
+
+                    var details = FormatSceneGODetails(_selectedSceneGO);
+                    var lines = details.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var line in lines)
+                    {
+                        var t = UIBuilder.CreateText(detailsPanel, line, 10, new Color(0.75f, 0.75f, 0.75f, 1f));
+                        if (t != null)
+                        {
+                            t.horizontalOverflow = HorizontalWrapMode.Wrap;
+                            t.verticalOverflow = VerticalWrapMode.Overflow;
+                            var rt = t.GetComponent<RectTransform>();
+                            if (rt != null) rt.sizeDelta = new Vector2(0, 14);
+                        }
+                    }
+
+                    var actionRow = UIBuilder.CreatePanel("SceneGOActions", _inspectorContent, new Color(0, 0, 0, 0));
+                    actionRow.GetComponent<Image>().raycastTarget = false;
+                    UIBuilder.AddHorizontalLayout(actionRow, 4, 2, false, false);
+                    UIBuilder.AddLayoutElement(actionRow.gameObject, null, 26, null, 26, null, 0);
+                    UIBuilder.CreateButton(actionRow, "Place Here", () => controller?.PlaceStaticFromSceneGO(_selectedSceneGO), 80, 22);
+                    UIBuilder.CreateButton(actionRow, "Remove", () => RemoveSelectedSceneGO(), 60, 22);
                 }
                 else
                 {
