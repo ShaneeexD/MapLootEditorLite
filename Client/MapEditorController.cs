@@ -1768,6 +1768,21 @@ namespace MapLootEditorLite.Client
                     case "InteractiveObject":
                         copy = entry.data.ToObject<InteractiveObject>();
                         break;
+                    case "ExtractZone":
+                        copy = entry.data.ToObject<ExtractZone>();
+                        break;
+                    case "BotSpawnPoint":
+                        copy = entry.data.ToObject<BotSpawnPoint>();
+                        break;
+                    case "BotSpawnZone":
+                        copy = entry.data.ToObject<BotSpawnZone>();
+                        break;
+                    case "LightZone":
+                        copy = entry.data.ToObject<LightZone>();
+                        break;
+                    case "TriggerZone":
+                        copy = entry.data.ToObject<TriggerZone>();
+                        break;
                     default:
                         continue;
                 }
@@ -1915,6 +1930,11 @@ namespace MapLootEditorLite.Client
                 case "WTTQuestZone": return entry.data.ToObject<WTTQuestZone>();
                 case "WTTStaticObject": return entry.data.ToObject<WTTStaticObject>();
                 case "InteractiveObject": return entry.data.ToObject<InteractiveObject>();
+                case "ExtractZone": return entry.data.ToObject<ExtractZone>();
+                case "BotSpawnPoint": return entry.data.ToObject<BotSpawnPoint>();
+                case "BotSpawnZone": return entry.data.ToObject<BotSpawnZone>();
+                case "LightZone": return entry.data.ToObject<LightZone>();
+                case "TriggerZone": return entry.data.ToObject<TriggerZone>();
                 default: return null;
             }
         }
