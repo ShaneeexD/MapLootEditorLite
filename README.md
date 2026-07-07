@@ -36,11 +36,11 @@ Edit `SPT/BepInEx/config/com.shaneeexd.mapeditorlite.cfg`:
 
 ```ini
 [General]
-EnableEditor = true
+EnableEditor = false
 EnableDebugVisuals = false
 ```
 
-- `EnableEditor` — set to `true` while developing. When `false`, the F8 editor is disabled.
+- `EnableEditor` — set to `true` while developing. Default is `false`, so the F8 editor is disabled until you opt in.
 - `EnableDebugVisuals` — show extra debug visuals in raid.
 
 ## Creating a Map Pack
@@ -62,11 +62,11 @@ The final pack is a JSON file that can be distributed as a standalone add-on.
 
 When publishing:
 
-1. **State the dependency**: Your pack requires **Map Editor Lite v1.0.0** for SPT 4.0.13.
+1. **State the dependency**: Your add-on pack requires **Map Editor Lite v1.0.0** for SPT 4.0.13.
 2. **Do not include** the Map Editor Lite DLL or other authors' packs in your zip.
 3. **Test** by extracting and running the server before publishing.
 
-Users install your pack by dragging the `SPT` folder (containing `user/mods/<YourMod>/MapLoot/...`) into their SPT install.
+Users install your pack by dragging the `SPT` folder (containing `SPT\user\mods\MapEditorLite\packs`) into their SPT install.
 
 ## Dependencies
 
