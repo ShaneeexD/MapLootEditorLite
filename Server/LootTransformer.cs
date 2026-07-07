@@ -30,7 +30,7 @@ public static class LootTransformer
     {
         if (_databaseService is null)
         {
-            ServerPlugin.Logger?.Warning("[MLEL] LootTransformer.Register() called before DatabaseService was set; skipping.");
+            ServerPlugin.Logger?.Warning("[MEL] LootTransformer.Register() called before DatabaseService was set; skipping.");
             return;
         }
 
@@ -50,7 +50,7 @@ public static class LootTransformer
             var looseLoot = location.LooseLoot;
             if (looseLoot == null)
             {
-                ServerPlugin.Logger?.Warning($"[MLEL] Location '{locationId}' has no LooseLoot; skipping loot transformer.");
+                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' has no LooseLoot; skipping loot transformer.");
                 continue;
             }
 
@@ -135,7 +135,7 @@ public static class LootTransformer
                 }
 
                 if (added > 0)
-                    ServerPlugin.Logger?.Info($"[MLEL] Added {added} custom loot spawnpoints to {locationId}.");
+                    ServerPlugin.Logger?.Info($"[MEL] Added {added} custom loot spawnpoints to {locationId}.");
 
                 looseLootObj.Spawnpoints = spawnpoints;
                 return looseLootObj;
@@ -144,7 +144,7 @@ public static class LootTransformer
             registered++;
         }
 
-        ServerPlugin.Logger?.Info($"[MLEL] Registered loot transformers for {registered} locations (skipped {skipped} already-registered).");
+        ServerPlugin.Logger?.Info($"[MEL] Registered loot transformers for {registered} locations (skipped {skipped} already-registered).");
     }
 
     private static Spawnpoint CreateSpawnpoint(LooseLootSpawn spawn, List<LootItem> filteredItems)

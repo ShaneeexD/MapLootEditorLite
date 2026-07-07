@@ -9,7 +9,7 @@ namespace MapLootEditorLite.Client
         [HarmonyPostfix]
         public static void Postfix()
         {
-            Plugin.Log.LogInfo("[MLEL Runtime] GameWorld.OnDestroy detected, resetting raid state.");
+            Plugin.Log.LogInfo("GameWorld.OnDestroy detected, resetting raid state.");
             RuntimeStaticObjectSpawner.Instance?.ResetState();
             RuntimeInteractiveObjectSpawner.Instance?.ResetState();
             RuntimeExtractZoneSpawner.Instance?.ResetState();

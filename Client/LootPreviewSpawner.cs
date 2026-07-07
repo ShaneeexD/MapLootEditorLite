@@ -1032,7 +1032,7 @@ namespace MapLootEditorLite.Client
 
             if (best != null)
             {
-                Plugin.Log.LogInfo($"[MLEL Preview] Found source object '{name}' at {best.transform.position} (distance {(float)Math.Sqrt(bestDist):F2}, candidates {candidates}).");
+                Plugin.Log.LogInfo($"Found source object '{name}' at {best.transform.position} (distance {(float)Math.Sqrt(bestDist):F2}, candidates {candidates}).");
                 return best;
             }
 
@@ -1050,14 +1050,14 @@ namespace MapLootEditorLite.Client
                     {
                         if (string.Equals(t.name, name, StringComparison.OrdinalIgnoreCase))
                         {
-                            Plugin.Log.LogInfo($"[MLEL Preview] Found source object '{name}' by name fallback at {t.position} (recorded position was {position}).");
+                            Plugin.Log.LogInfo($"Found source object '{name}' by name fallback at {t.position} (recorded position was {position}).");
                             return t.gameObject;
                         }
                     }
                 }
             }
 
-            Plugin.Log.LogWarning($"[MLEL Preview] No source object named '{name}' found near {position}. Scanned {candidates} candidates.");
+            Plugin.Log.LogWarning($"No source object named '{name}' found near {position}. Scanned {candidates} candidates.");
             return null;
         }
 

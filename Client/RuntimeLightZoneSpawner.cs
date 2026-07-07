@@ -45,7 +45,7 @@ namespace MapLootEditorLite.Client
             {
                 if (_currentWorld != null)
                 {
-                    Plugin.Log.LogInfo("[MLEL Light] GameWorld changed or ended, clearing light zones.");
+                    Plugin.Log.LogInfo("GameWorld changed or ended, clearing light zones.");
                     ClearSpawned();
                     _currentWorld = null;
                     _currentMapId = null;
@@ -76,7 +76,7 @@ namespace MapLootEditorLite.Client
 
             if (directories.Count == 0)
             {
-                Plugin.Log.LogWarning("[MLEL Light] No pack directories found; light zones will not be spawned.");
+                Plugin.Log.LogWarning("No pack directories found; light zones will not be spawned.");
                 return;
             }
 
@@ -91,12 +91,12 @@ namespace MapLootEditorLite.Client
                         if (pack?.maps != null)
                         {
                             _packs.Add(pack);
-                            Plugin.Log.LogInfo($"[MLEL Light] Loaded pack '{pack.name}' from {file}");
+                            Plugin.Log.LogInfo($"Loaded pack '{pack.name}' from {file}");
                         }
                     }
                     catch (Exception ex)
                     {
-                        Plugin.Log.LogWarning($"[MLEL Light] Failed to load pack {file}: {ex.Message}");
+                        Plugin.Log.LogWarning($"Failed to load pack {file}: {ex.Message}");
                     }
                 }
             }
@@ -111,7 +111,7 @@ namespace MapLootEditorLite.Client
 
             if (string.IsNullOrEmpty(mapId))
             {
-                Plugin.Log.LogWarning("[MLEL Light] Cannot spawn light zones: no current map.");
+                Plugin.Log.LogWarning("Cannot spawn light zones: no current map.");
                 return;
             }
 
@@ -124,7 +124,7 @@ namespace MapLootEditorLite.Client
                     {
                         if (!QuestConditionsMet(zone.questOnly, zone.questCompleted, zone.questId))
                         {
-                            Plugin.Log.LogInfo($"[MLEL Light] Skipping quest-gated light zone '{zone.name}' (quest {zone.questId} not active/completed).");
+                            Plugin.Log.LogInfo($"Skipping quest-gated light zone '{zone.name}' (quest {zone.questId} not active/completed).");
                             continue;
                         }
                         zones.Add(zone);
@@ -134,19 +134,19 @@ namespace MapLootEditorLite.Client
 
             if (zones.Count == 0)
             {
-                Plugin.Log.LogInfo($"[MLEL Light] No custom light zones for map {mapId}.");
+                Plugin.Log.LogInfo($"No custom light zones for map {mapId}.");
                 return;
             }
 
             var rng = new System.Random();
             var created = 0;
 
-            Plugin.Log.LogInfo($"[MLEL Light] Spawning {zones.Count} custom light zones for map {mapId}.");
+            Plugin.Log.LogInfo($"Spawning {zones.Count} custom light zones for map {mapId}.");
             foreach (var zone in zones)
             {
                 if (zone.spawnChance < 100f && rng.NextDouble() * 100 > zone.spawnChance)
                 {
-                    Plugin.Log.LogInfo($"[MLEL Light] Zone '{zone.name}' failed spawn chance roll ({zone.spawnChance:F2}%).");
+                    Plugin.Log.LogInfo($"Zone '{zone.name}' failed spawn chance roll ({zone.spawnChance:F2}%).");
                     continue;
                 }
 
@@ -157,16 +157,16 @@ namespace MapLootEditorLite.Client
                     {
                         _spawned.Add(go);
                         created++;
-                        Plugin.Log.LogInfo($"[MLEL Light] Created light zone '{zone.name}' at {zone.position.x:F2}, {zone.position.y:F2}, {zone.position.z:F2}.");
+                        Plugin.Log.LogInfo($"Created light zone '{zone.name}' at {zone.position.x:F2}, {zone.position.y:F2}, {zone.position.z:F2}.");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log.LogError($"[MLEL Light] Failed to create light zone '{zone.name}': {ex.Message}");
+                    Plugin.Log.LogError($"Failed to create light zone '{zone.name}': {ex.Message}");
                 }
             }
 
-            Plugin.Log.LogInfo($"[MLEL Light] Created {created} custom light zones for map {mapId}.");
+            Plugin.Log.LogInfo($"Created {created} custom light zones for map {mapId}.");
         }
 
         private GameObject CreateLightObject(LightZone zone)
@@ -184,7 +184,7 @@ namespace MapLootEditorLite.Client
             if (light.type == LightType.Spot)
                 light.spotAngle = zone.spotAngle;
 
-            Plugin.Log.LogInfo($"[MLEL Light] Created light '{zone.name}' enabled={zone.enabled} color={zone.color.r:F2},{zone.color.g:F2},{zone.color.b:F2},{zone.color.a:F2} linear={light.color.r:F2},{light.color.g:F2},{light.color.b:F2}.");
+            Plugin.Log.LogInfo($"Created light '{zone.name}' enabled={zone.enabled} color={zone.color.r:F2},{zone.color.g:F2},{zone.color.b:F2},{zone.color.a:F2} linear={light.color.r:F2},{light.color.g:F2},{light.color.b:F2}.");
 
             return go;
         }
@@ -217,9 +217,9 @@ namespace MapLootEditorLite.Client
             }
 
             if (any)
-                Plugin.Log.LogInfo($"[MLEL Light] Trigger set light zone '{normalized}' to {(active.HasValue ? (active.Value ? "enabled" : "disabled") : "toggled")}.");
+                Plugin.Log.LogInfo($"Trigger set light zone '{normalized}' to {(active.HasValue ? (active.Value ? "enabled" : "disabled") : "toggled")}.");
             else
-                Plugin.Log.LogWarning($"[MLEL Light] Trigger could not find light zone '{normalized}'.");
+                Plugin.Log.LogWarning($"Trigger could not find light zone '{normalized}'.");
         }
 
         private void ClearSpawned()
@@ -234,7 +234,7 @@ namespace MapLootEditorLite.Client
                     }
                     catch (Exception ex)
                     {
-                        Plugin.Log.LogWarning($"[MLEL Light] Error destroying light zone: {ex.Message}");
+                        Plugin.Log.LogWarning($"Error destroying light zone: {ex.Message}");
                     }
                 }
             }

@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Newtonsoft.Json;
 using UnityEngine.Networking;
 
@@ -53,7 +54,7 @@ namespace MapLootEditorLite.Client
 
                 if (request.result != UnityWebRequest.Result.Success)
                 {
-                    Plugin.Log.LogWarning($"[MLEL NameAPI] Failed to load API names: {request.error}; trying offline cache.");
+                    Plugin.Log.LogWarning($"Failed to load API names: {request.error}; trying offline cache.");
                     LoadOfflineCache();
                     yield break;
                 }
@@ -75,11 +76,11 @@ namespace MapLootEditorLite.Client
                     }
 
                     _apiNames = dict;
-                    Plugin.Log.LogInfo($"[MLEL NameAPI] Loaded {dict.Count} names from API.");
+                    Plugin.Log.LogInfo($"Loaded {dict.Count} names from API.");
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log.LogWarning($"[MLEL NameAPI] Failed to parse API names: {ex.Message}; trying offline cache.");
+                    Plugin.Log.LogWarning($"Failed to parse API names: {ex.Message}; trying offline cache.");
                     LoadOfflineCache();
                 }
             }
@@ -89,11 +90,10 @@ namespace MapLootEditorLite.Client
         {
             try
             {
-                var path = Path.Combine(Plugin.ModDataDirectory, "api_item_names.json");
-                if (!File.Exists(path))
+                var json = ReadOfflineCacheJson();
+                if (string.IsNullOrEmpty(json))
                     return;
 
-                var json = File.ReadAllText(path);
                 var file = JsonConvert.DeserializeObject<Dictionary<string, OfflineNameEntry>>(json);
                 if (file == null)
                     return;
@@ -108,11 +108,27 @@ namespace MapLootEditorLite.Client
                 }
 
                 _apiNames = dict;
-                Plugin.Log.LogInfo($"[MLEL NameAPI] Loaded {dict.Count} names from offline cache.");
+                Plugin.Log.LogInfo($"Loaded {dict.Count} names from offline cache.");
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogWarning($"[MLEL NameAPI] Failed to load offline cache: {ex.Message}");
+                Plugin.Log.LogWarning($"Failed to load offline cache: {ex.Message}");
+            }
+        }
+
+        private static string ReadOfflineCacheJson()
+        {
+            var path = Path.Combine(Plugin.ModDataDirectory, "api_item_names.json");
+            if (File.Exists(path))
+                return File.ReadAllText(path);
+
+            var assembly = Assembly.GetExecutingAssembly();
+            using (var stream = assembly.GetManifestResourceStream("api_item_names.json"))
+            {
+                if (stream == null)
+                    return null;
+                using (var reader = new StreamReader(stream))
+                    return reader.ReadToEnd();
             }
         }
 
@@ -123,8 +139,7 @@ namespace MapLootEditorLite.Client
 
             _names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-            var serverRoot = string.IsNullOrEmpty(Plugin.SptServerRoot) ? Plugin.SptRoot : Plugin.SptServerRoot;
-            var path = Path.Combine(serverRoot, "SPT_Data", "database", "templates", "items.json");
+            var path = Path.Combine(Plugin.GameRoot, "SPT_Data", "database", "templates", "items.json");
             if (!File.Exists(path))
                 return;
 
@@ -145,7 +160,7 @@ namespace MapLootEditorLite.Client
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogWarning($"[MLEL] Failed to load item name database: {ex.Message}");
+                Plugin.Log.LogWarning($"Failed to load item name database: {ex.Message}");
             }
         }
 

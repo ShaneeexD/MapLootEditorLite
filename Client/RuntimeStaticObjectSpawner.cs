@@ -46,7 +46,7 @@ namespace MapLootEditorLite.Client
             {
                 if (_currentWorld != null)
                 {
-                    Plugin.Log.LogInfo("[MLEL Runtime] GameWorld changed or ended, clearing static objects.");
+                    Plugin.Log.LogInfo("GameWorld changed or ended, clearing static objects.");
                     ClearSpawned();
                     _currentWorld = null;
                     _currentMapId = null;
@@ -65,7 +65,7 @@ namespace MapLootEditorLite.Client
                 _currentWorld = world;
                 _currentMapId = mapId;
                 ClearSpawned();
-                Plugin.Log.LogInfo($"[MLEL Runtime] Map detected: {mapId}, spawning static objects");
+                Plugin.Log.LogInfo($"Map detected: {mapId}, spawning static objects");
                 SpawnForMap(mapId);
             }
         }
@@ -80,7 +80,7 @@ namespace MapLootEditorLite.Client
 
             if (directories.Count == 0)
             {
-                Plugin.Log.LogWarning($"[MLEL Runtime] No pack directories found; static objects will not be spawned.");
+                Plugin.Log.LogWarning($"No pack directories found; static objects will not be spawned.");
                 return;
             }
 
@@ -95,12 +95,12 @@ namespace MapLootEditorLite.Client
                         if (pack?.maps != null)
                         {
                             _packs.Add(pack);
-                            Plugin.Log.LogInfo($"[MLEL Runtime] Loaded pack '{pack.name}' from {file}");
+                            Plugin.Log.LogInfo($"Loaded pack '{pack.name}' from {file}");
                         }
                     }
                     catch (Exception ex)
                     {
-                        Plugin.Log.LogWarning($"[MLEL Runtime] Failed to load pack {file}: {ex.Message}");
+                        Plugin.Log.LogWarning($"Failed to load pack {file}: {ex.Message}");
                     }
                 }
             }
@@ -118,7 +118,7 @@ namespace MapLootEditorLite.Client
                     {
                         if (!QuestConditionsMet(obj.questOnly, obj.questCompleted, obj.questId))
                         {
-                            Plugin.Log.LogInfo($"[MLEL Runtime] Skipping quest-gated static object '{obj.name}' (quest {obj.questId} not active/completed).");
+                            Plugin.Log.LogInfo($"Skipping quest-gated static object '{obj.name}' (quest {obj.questId} not active/completed).");
                             continue;
                         }
                         objects.Add(obj);
@@ -131,7 +131,7 @@ namespace MapLootEditorLite.Client
 
                         if (!QuestConditionsMet(obj.questOnly, obj.questCompleted, obj.questId))
                         {
-                            Plugin.Log.LogInfo($"[MLEL Runtime] Skipping quest-gated WTT clone '{obj.name}' (quest {obj.questId} not active/completed).");
+                            Plugin.Log.LogInfo($"Skipping quest-gated WTT clone '{obj.name}' (quest {obj.questId} not active/completed).");
                             continue;
                         }
                         wttClones.Add(obj);
@@ -142,11 +142,11 @@ namespace MapLootEditorLite.Client
             var total = objects.Count + wttClones.Count;
             if (total == 0)
             {
-                Plugin.Log.LogInfo($"[MLEL Runtime] No static objects for map {mapId}");
+                Plugin.Log.LogInfo($"No static objects for map {mapId}");
                 return;
             }
 
-            Plugin.Log.LogInfo($"[MLEL Runtime] Spawning {total} static objects for map {mapId} ({objects.Count} regular, {wttClones.Count} WTT clone)");
+            Plugin.Log.LogInfo($"Spawning {total} static objects for map {mapId} ({objects.Count} regular, {wttClones.Count} WTT clone)");
             foreach (var obj in objects)
             {
                 StartCoroutine(SpawnObjectCoroutine(obj));
@@ -181,7 +181,7 @@ namespace MapLootEditorLite.Client
                         break;
 
                     if (attempt == 0)
-                        Plugin.Log.LogInfo($"[MLEL Runtime] Source object '{sourceObj.sourceObjectName}' for {marker.name} not ready, waiting...");
+                        Plugin.Log.LogInfo($"Source object '{sourceObj.sourceObjectName}' for {marker.name} not ready, waiting...");
 
                     yield return new WaitForSeconds(1f);
                 }
@@ -193,14 +193,14 @@ namespace MapLootEditorLite.Client
                 }
                 else
                 {
-                    Plugin.Log.LogWarning($"[MLEL Runtime] Could not find source scene object '{sourceObj.sourceObjectName}' for {marker.name}");
+                    Plugin.Log.LogWarning($"Could not find source scene object '{sourceObj.sourceObjectName}' for {marker.name}");
                 }
             }
 
             if (!spawned && !string.IsNullOrEmpty(fallbackPrefabPath))
             {
                 string path = Path.Combine(Application.streamingAssetsPath, "Windows", fallbackPrefabPath.TrimStart('/'));
-                Plugin.Log.LogInfo($"[MLEL Runtime] Loading static object bundle: {path}");
+                Plugin.Log.LogInfo($"Loading static object bundle: {path}");
 
                 AssetBundle bundle = null;
                 bool bundleOwned = false;
@@ -236,7 +236,7 @@ namespace MapLootEditorLite.Client
                     }
                     else
                     {
-                        Plugin.Log.LogWarning($"[MLEL Runtime] No GameObject in bundle: {path}");
+                        Plugin.Log.LogWarning($"No GameObject in bundle: {path}");
                     }
 
                     if (bundleOwned)
@@ -244,13 +244,13 @@ namespace MapLootEditorLite.Client
                 }
                 else
                 {
-                    Plugin.Log.LogWarning($"[MLEL Runtime] Failed to load bundle: {path}");
+                    Plugin.Log.LogWarning($"Failed to load bundle: {path}");
                 }
             }
 
             if (!spawned)
             {
-                Plugin.Log.LogWarning($"[MLEL Runtime] Static object '{marker.name}' could not be spawned from bundle or source object.");
+                Plugin.Log.LogWarning($"Static object '{marker.name}' could not be spawned from bundle or source object.");
             }
         }
 
@@ -298,7 +298,7 @@ namespace MapLootEditorLite.Client
             instance.transform.rotation = marker.rotation.ToQuaternion();
             instance.transform.localScale = scale.ToVector3();
             _spawned.Add(instance);
-            Plugin.Log.LogInfo($"[MLEL Runtime] Spawned static object {marker.name} (fallback={isFallback}, source={sourceName})");
+            Plugin.Log.LogInfo($"Spawned static object {marker.name} (fallback={isFallback}, source={sourceName})");
         }
 
         private void ClearSpawned()

@@ -33,7 +33,7 @@ public static class InteractiveObjectTransformer
     {
         if (_databaseService is null)
         {
-            ServerPlugin.Logger?.Warning("[MLEL] InteractiveObjectTransformer.Register() called before DatabaseService was set; skipping.");
+            ServerPlugin.Logger?.Warning("[MEL] InteractiveObjectTransformer.Register() called before DatabaseService was set; skipping.");
             return;
         }
 
@@ -63,7 +63,7 @@ public static class InteractiveObjectTransformer
             registered++;
         }
 
-        ServerPlugin.Logger?.Info($"[MLEL] Registered interactive object transformers for {registered} locations");
+        ServerPlugin.Logger?.Info($"[MEL] Registered interactive object transformers for {registered} locations");
     }
 
     private static bool ShouldSpawnObject(InteractiveObject obj)
@@ -95,27 +95,27 @@ public static class InteractiveObjectTransformer
             var staticLootProp = location.GetType().GetProperty("StaticLoot", BindingFlags.Public | BindingFlags.Instance);
             if (staticLootProp == null)
             {
-                ServerPlugin.Logger?.Warning($"[MLEL] Location '{locationId}' has no StaticLoot property; container loot will not be registered.");
+                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' has no StaticLoot property; container loot will not be registered.");
                 return;
             }
 
             var staticLoot = staticLootProp.GetValue(location);
             if (staticLoot == null)
             {
-                ServerPlugin.Logger?.Warning($"[MLEL] Location '{locationId}' StaticLoot is null; container loot will not be registered.");
+                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' StaticLoot is null; container loot will not be registered.");
                 return;
             }
 
             var addTransformer = staticLoot.GetType().GetMethod("AddTransformer", BindingFlags.Public | BindingFlags.Instance);
             if (addTransformer == null)
             {
-                ServerPlugin.Logger?.Warning($"[MLEL] Location '{locationId}' StaticLoot has no AddTransformer method; container loot will not be registered.");
+                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' StaticLoot has no AddTransformer method; container loot will not be registered.");
                 return;
             }
 
             if (RegisteredStaticLoot.TryGetValue(staticLoot, out _))
             {
-                ServerPlugin.Logger?.Info($"[MLEL] StaticLoot transformer already registered for {locationId}; skipping.");
+                ServerPlugin.Logger?.Info($"[MEL] StaticLoot transformer already registered for {locationId}; skipping.");
                 return;
             }
             RegisteredStaticLoot.Add(staticLoot, true);
@@ -133,7 +133,7 @@ public static class InteractiveObjectTransformer
             var genericArg = parameterType.GetGenericArguments().FirstOrDefault();
             if (genericArg == null)
             {
-                ServerPlugin.Logger?.Warning($"[MLEL] Location '{locationId}' StaticLoot transformer argument is not a Func<T>; container loot will not be registered.");
+                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' StaticLoot transformer argument is not a Func<T>; container loot will not be registered.");
                 return;
             }
 
@@ -142,11 +142,11 @@ public static class InteractiveObjectTransformer
             var del = createGeneric.Invoke(null, new object[] { transformedContainers });
 
             addTransformer.Invoke(staticLoot, new object[] { del });
-            ServerPlugin.Logger?.Info($"[MLEL] Registered {transformedContainers.Count} custom container loot entries for {locationId}");
+            ServerPlugin.Logger?.Info($"[MEL] Registered {transformedContainers.Count} custom container loot entries for {locationId}");
         }
         catch (Exception ex)
         {
-            ServerPlugin.Logger?.Error($"[MLEL] Failed to register static loot for {locationId}: {ex.Message}");
+            ServerPlugin.Logger?.Error($"[MEL] Failed to register static loot for {locationId}: {ex.Message}");
         }
     }
 
@@ -160,7 +160,7 @@ public static class InteractiveObjectTransformer
         var dict = data as IDictionary;
         if (dict == null)
         {
-            ServerPlugin.Logger?.Warning("[MLEL] StaticLoot is not a dictionary; cannot add custom container loot.");
+            ServerPlugin.Logger?.Warning("[MEL] StaticLoot is not a dictionary; cannot add custom container loot.");
             return data;
         }
 
@@ -169,7 +169,7 @@ public static class InteractiveObjectTransformer
             var key = new MongoId(container.ContainerId);
             if (dict.Contains(key))
             {
-                ServerPlugin.Logger?.Debug($"[MLEL] Container {container.ContainerId} already exists in static loot; skipping.");
+                ServerPlugin.Logger?.Debug($"[MEL] Container {container.ContainerId} already exists in static loot; skipping.");
                 continue;
             }
 
@@ -191,7 +191,7 @@ public static class InteractiveObjectTransformer
 
         if (type == null)
         {
-            ServerPlugin.Logger?.Warning("[MLEL] StaticLootDetails type not found; cannot create container loot entry.");
+            ServerPlugin.Logger?.Warning("[MEL] StaticLootDetails type not found; cannot create container loot entry.");
             return null;
         }
 
@@ -210,7 +210,7 @@ public static class InteractiveObjectTransformer
 
         if (itemDistributionType == null || itemCountDistributionType == null)
         {
-            ServerPlugin.Logger?.Warning("[MLEL] ItemDistribution or ItemCountDistribution type not found; cannot create container loot entry.");
+            ServerPlugin.Logger?.Warning("[MEL] ItemDistribution or ItemCountDistribution type not found; cannot create container loot entry.");
             return null;
         }
 
@@ -258,27 +258,27 @@ public static class InteractiveObjectTransformer
             var staticContainersProp = location.GetType().GetProperty("StaticContainers", BindingFlags.Public | BindingFlags.Instance);
             if (staticContainersProp == null)
             {
-                ServerPlugin.Logger?.Warning($"[MLEL] Location '{locationId}' has no StaticContainers property; custom containers will not be registered.");
+                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' has no StaticContainers property; custom containers will not be registered.");
                 return;
             }
 
             var staticContainers = staticContainersProp.GetValue(location);
             if (staticContainers == null)
             {
-                ServerPlugin.Logger?.Warning($"[MLEL] Location '{locationId}' StaticContainers is null; custom containers will not be registered.");
+                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' StaticContainers is null; custom containers will not be registered.");
                 return;
             }
 
             var addTransformer = staticContainers.GetType().GetMethod("AddTransformer", BindingFlags.Public | BindingFlags.Instance);
             if (addTransformer == null)
             {
-                ServerPlugin.Logger?.Warning($"[MLEL] Location '{locationId}' StaticContainers has no AddTransformer method; custom containers will not be registered.");
+                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' StaticContainers has no AddTransformer method; custom containers will not be registered.");
                 return;
             }
 
             if (RegisteredStaticContainers.TryGetValue(staticContainers, out _))
             {
-                ServerPlugin.Logger?.Info($"[MLEL] StaticContainers transformer already registered for {locationId}; skipping.");
+                ServerPlugin.Logger?.Info($"[MEL] StaticContainers transformer already registered for {locationId}; skipping.");
                 return;
             }
             RegisteredStaticContainers.Add(staticContainers, true);
@@ -287,7 +287,7 @@ public static class InteractiveObjectTransformer
             var genericArg = parameterType.GetGenericArguments().FirstOrDefault();
             if (genericArg == null)
             {
-                ServerPlugin.Logger?.Warning($"[MLEL] Location '{locationId}' StaticContainers transformer argument is not a Func<T>; custom containers will not be registered.");
+                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' StaticContainers transformer argument is not a Func<T>; custom containers will not be registered.");
                 return;
             }
 
@@ -305,11 +305,11 @@ public static class InteractiveObjectTransformer
             var del = createGeneric.Invoke(null, new object[] { transformedContainers });
 
             addTransformer.Invoke(staticContainers, new object[] { del });
-            ServerPlugin.Logger?.Info($"[MLEL] Registered {transformedContainers.Count} custom static containers for {locationId}");
+            ServerPlugin.Logger?.Info($"[MEL] Registered {transformedContainers.Count} custom static containers for {locationId}");
         }
         catch (Exception ex)
         {
-            ServerPlugin.Logger?.Error($"[MLEL] Failed to register static containers for {locationId}: {ex.Message}");
+            ServerPlugin.Logger?.Error($"[MEL] Failed to register static containers for {locationId}: {ex.Message}");
         }
     }
 
@@ -330,7 +330,7 @@ public static class InteractiveObjectTransformer
             var staticContainersProp = dataType.GetProperty("StaticContainers", BindingFlags.Public | BindingFlags.Instance);
             if (staticContainersProp == null)
             {
-                ServerPlugin.Logger?.Warning("[MLEL] StaticContainerDetails has no StaticContainers property.");
+                ServerPlugin.Logger?.Warning("[MEL] StaticContainerDetails has no StaticContainers property.");
                 return data;
             }
 
@@ -342,7 +342,7 @@ public static class InteractiveObjectTransformer
             {
                 if (existingList.Any(x => GetStaticContainerId(x) == container.ContainerId))
                 {
-                    ServerPlugin.Logger?.Debug($"[MLEL] Container {container.ContainerId} already exists in static containers; skipping.");
+                    ServerPlugin.Logger?.Debug($"[MEL] Container {container.ContainerId} already exists in static containers; skipping.");
                     continue;
                 }
 
@@ -359,7 +359,7 @@ public static class InteractiveObjectTransformer
             return data;
         }
 
-        ServerPlugin.Logger?.Warning($"[MLEL] StaticContainers data type is {dataType.FullName}; expected StaticContainerDetails.");
+        ServerPlugin.Logger?.Warning($"[MEL] StaticContainers data type is {dataType.FullName}; expected StaticContainerDetails.");
         return data;
     }
 
@@ -377,7 +377,7 @@ public static class InteractiveObjectTransformer
 
         if (templateType == null)
         {
-            ServerPlugin.Logger?.Warning("[MLEL] SpawnpointTemplate type not found; cannot create custom container entry.");
+            ServerPlugin.Logger?.Warning("[MEL] SpawnpointTemplate type not found; cannot create custom container entry.");
             return null;
         }
 
@@ -407,7 +407,7 @@ public static class InteractiveObjectTransformer
 
         if (itemType == null)
         {
-            ServerPlugin.Logger?.Warning("[MLEL] SptLootItem type not found; cannot create custom container root item.");
+            ServerPlugin.Logger?.Warning("[MEL] SptLootItem type not found; cannot create custom container root item.");
             return null;
         }
 

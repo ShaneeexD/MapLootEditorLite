@@ -15,8 +15,7 @@ namespace MapLootEditorLite.Client
         {
             get
             {
-                var serverRoot = string.IsNullOrEmpty(Plugin.SptServerRoot) ? Plugin.SptRoot : Plugin.SptServerRoot;
-                return Path.Combine(serverRoot, "SPT_Data", "database", "locations");
+                return Path.Combine(Plugin.GameRoot, "SPT_Data", "database", "locations");
             }
         }
 
@@ -31,7 +30,7 @@ namespace MapLootEditorLite.Client
             MarkVanilla(data);
             ClearContainerCache();
 
-            Plugin.Log.LogInfo($"[MLEL] Imported vanilla data for {mapId}: {data.lootSpawns.Count} loose loot, {data.interactiveObjects.Count} containers.");
+            Plugin.Log.LogInfo($"Imported vanilla data for {mapId}: {data.lootSpawns.Count} loose loot, {data.interactiveObjects.Count} containers.");
             return data;
         }
 
@@ -63,7 +62,7 @@ namespace MapLootEditorLite.Client
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogWarning($"[MLEL] Failed to import vanilla loose loot for {dir}: {ex.Message}");
+                Plugin.Log.LogWarning($"Failed to import vanilla loose loot for {dir}: {ex.Message}");
             }
         }
 
@@ -127,7 +126,7 @@ namespace MapLootEditorLite.Client
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogWarning($"[MLEL] Failed to import vanilla static containers for {dir}: {ex.Message}");
+                Plugin.Log.LogWarning($"Failed to import vanilla static containers for {dir}: {ex.Message}");
             }
         }
 
@@ -277,7 +276,7 @@ namespace MapLootEditorLite.Client
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogWarning($"[MLEL] Failed to load staticLoot.json from {dir}: {ex.Message}");
+                Plugin.Log.LogWarning($"Failed to load staticLoot.json from {dir}: {ex.Message}");
             }
         }
 

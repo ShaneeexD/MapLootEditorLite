@@ -14,14 +14,14 @@ public static class WttStaticSpawnConverter
     {
         if (string.IsNullOrWhiteSpace(outputDirectory))
         {
-            ServerPlugin.Logger?.Warning("[MLEL] WTT static spawn output directory is empty; skipping static spawn export.");
+            ServerPlugin.Logger?.Warning("[MEL] WTT static spawn output directory is empty; skipping static spawn export.");
             return;
         }
 
         var normalized = Path.GetFullPath(outputDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         if (!Path.GetFileName(normalized).Equals("CustomStaticSpawns", StringComparison.OrdinalIgnoreCase))
         {
-            ServerPlugin.Logger?.Warning($"[MLEL] WTT static spawn output directory '{outputDirectory}' is not the expected CustomStaticSpawns folder; skipping static spawn export.");
+            ServerPlugin.Logger?.Warning($"[MEL] WTT static spawn output directory '{outputDirectory}' is not the expected CustomStaticSpawns folder; skipping static spawn export.");
             return;
         }
 
@@ -34,7 +34,7 @@ public static class WttStaticSpawnConverter
             }
             catch (Exception ex)
             {
-                ServerPlugin.Logger?.Warning($"[MLEL] Failed to clean WTT static spawn config directory: {ex.Message}");
+                ServerPlugin.Logger?.Warning($"[MEL] Failed to clean WTT static spawn config directory: {ex.Message}");
             }
         }
 
@@ -67,7 +67,7 @@ public static class WttStaticSpawnConverter
             File.WriteAllText(filePath, json);
         }
 
-        ServerPlugin.Logger?.Info($"[MLEL] Wrote WTT static spawn configs for {configsByMap.Count} maps to {configsDir}");
+        ServerPlugin.Logger?.Info($"[MEL] Wrote WTT static spawn configs for {configsByMap.Count} maps to {configsDir}");
     }
 
     private static WttStaticConfig CreateWttStaticConfig(WTTStaticObject obj, string locationId)

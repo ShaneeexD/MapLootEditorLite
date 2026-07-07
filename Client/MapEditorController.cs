@@ -699,7 +699,7 @@ namespace MapLootEditorLite.Client
             if (_renderer == null)
                 return;
             _renderer.ShowVanillaGizmos = !_renderer.ShowVanillaGizmos;
-            Plugin.Log.LogInfo($"[MLEL] Vanilla gizmos: {(_renderer.ShowVanillaGizmos ? "ON" : "OFF")}");
+            Plugin.Log.LogInfo($"Vanilla gizmos: {(_renderer.ShowVanillaGizmos ? "ON" : "OFF")}");
         }
 
         public void TogglePackGizmos()
@@ -707,7 +707,7 @@ namespace MapLootEditorLite.Client
             if (_renderer == null)
                 return;
             _renderer.ShowPackGizmos = !_renderer.ShowPackGizmos;
-            Plugin.Log.LogInfo($"[MLEL] Pack gizmos: {(_renderer.ShowPackGizmos ? "ON" : "OFF")}");
+            Plugin.Log.LogInfo($"Pack gizmos: {(_renderer.ShowPackGizmos ? "ON" : "OFF")}");
         }
 
         private void EnterFreeCam()
@@ -1302,7 +1302,7 @@ namespace MapLootEditorLite.Client
         {
             if (string.IsNullOrEmpty(_currentMapId))
             {
-                Plugin.Log.LogWarning("[MLEL] Cannot import vanilla loot: no map loaded.");
+                Plugin.Log.LogWarning("Cannot import vanilla loot: no map loaded.");
                 return;
             }
 
@@ -1312,7 +1312,7 @@ namespace MapLootEditorLite.Client
 
             _manager.VanillaData = vanillaData;
             _renderer.Rebuild();
-            Plugin.Log.LogInfo($"[MLEL] Imported vanilla loot for {_currentMapId}.");
+            Plugin.Log.LogInfo($"Imported vanilla loot for {_currentMapId}.");
             _ui?.RequestRefresh();
         }
 

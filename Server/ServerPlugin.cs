@@ -55,7 +55,7 @@ public class ServerPlugin : IOnLoad
 
     public async Task OnLoad()
     {
-        _logger.Info("[MLEL] Map Editor Lite server mod loading");
+        _logger.Info("[MEL] Map Editor Lite server mod loading");
 
         try
         {
@@ -63,7 +63,7 @@ public class ServerPlugin : IOnLoad
             var modDirectory = Path.GetDirectoryName(assembly.Location);
             if (string.IsNullOrEmpty(modDirectory))
             {
-                _logger.Error("[MLEL] Unable to determine mod directory");
+                _logger.Error("[MEL] Unable to determine mod directory");
                 return;
             }
 
@@ -73,25 +73,25 @@ public class ServerPlugin : IOnLoad
             var forcedSpawnDirectory = Path.Combine(modDirectory, "db", "CustomLootspawns");
             WttSpawnConverter.WriteForcedSpawns(packs, forcedSpawnDirectory);
             await _wttCommon.CustomLootspawnService.CreateCustomLootSpawns(assembly, Path.Combine("db", "CustomLootspawns"));
-            _logger.Info($"[MLEL] Registered forced quest spawns with WTT-CommonLib from {forcedSpawnDirectory}");
+            _logger.Info($"[MEL] Registered forced quest spawns with WTT-CommonLib from {forcedSpawnDirectory}");
 
             var staticSpawnDirectory = Path.Combine(modDirectory, "db", "CustomStaticSpawns");
             WttStaticSpawnConverter.WriteStaticSpawns(packs, staticSpawnDirectory);
             await _wttCommon.CustomStaticSpawnService.CreateCustomStaticSpawns(assembly, Path.Combine("db", "CustomStaticSpawns"));
-            _logger.Info($"[MLEL] Registered custom static spawns with WTT-CommonLib from {staticSpawnDirectory}");
+            _logger.Info($"[MEL] Registered custom static spawns with WTT-CommonLib from {staticSpawnDirectory}");
 
             QuestFilter.Initialize(_profileHelper);
             LootTransformer.Register(_databaseService);
             InteractiveObjectTransformer.Register(_databaseService);
             new LocationControllerGenerateAllPatch().Enable();
             new MatchControllerStartLocalRaidPatch().Enable();
-            _logger.Info("[MLEL] Enabled quest filter patches on LocationController.GenerateAll and MatchController.StartLocalRaid");
+            _logger.Info("[MEL] Enabled quest filter patches on LocationController.GenerateAll and MatchController.StartLocalRaid");
 
-            _logger.Info($"[MLEL] Map Editor Lite server mod loaded. {PackRegistry.TotalSpawnCount()} custom spawns registered across {packs.Count} packs.");
+            _logger.Info($"[MEL] Map Editor Lite server mod loaded. {PackRegistry.TotalSpawnCount()} custom spawns registered across {packs.Count} packs.");
         }
         catch (Exception ex)
         {
-            _logger.Error($"[MLEL] Failed to load Map Editor Lite server mod: {ex.Message}");
+            _logger.Error($"[MEL] Failed to load Map Editor Lite server mod: {ex.Message}");
         }
 
         await Task.CompletedTask;

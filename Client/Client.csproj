@@ -103,4 +103,8 @@
     </Reference>
     -->
   </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\api_item_names.json" LogicalName="api_item_names.json" />
+  </ItemGroup>
 </Project>

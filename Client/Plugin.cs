@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Linq;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
@@ -16,8 +15,7 @@ namespace MapLootEditorLite.Client
         public static Plugin Instance { get; private set; }
         public static ManualLogSource Log { get; private set; }
         public static KeyCode ToggleKey { get; private set; } = KeyCode.F8;
-        public static string SptRoot { get; private set; } = string.Empty;
-        public static string SptServerRoot { get; private set; } = string.Empty;
+        public static string GameRoot { get; private set; } = string.Empty;
         public static string ModDataDirectory { get; private set; } = string.Empty;
         public static string ServerModDirectory { get; private set; } = string.Empty;
         public static string ServerModPacksDirectory { get; private set; } = string.Empty;
@@ -31,19 +29,19 @@ namespace MapLootEditorLite.Client
         private void Awake()
         {
             Instance = this;
-            Log = BepInEx.Logging.Logger.CreateLogSource("MLEL");
+            Log = BepInEx.Logging.Logger.CreateLogSource("MEL");
             Log.LogInfo("Map Editor Lite client plugin loaded");
 
-            SptRoot = FindSptRoot(Info.Location);
-            SptServerRoot = FindServerRoot(SptRoot);
-            var serverRoot = SptServerRoot;
+            GameRoot = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(Config.ConfigFilePath)));
+            var serverRoot = Path.Combine(GameRoot, "SPT");
+            if (!Directory.Exists(Path.Combine(serverRoot, "user")))
+                serverRoot = GameRoot;
             ServerModDirectory = Path.Combine(serverRoot, "user", "mods", "MapEditorLite");
             ModDataDirectory = ServerModDirectory;
             ServerModPacksDirectory = Path.Combine(ServerModDirectory, "packs");
             ServerModExportsDirectory = Path.Combine(ServerModDirectory, "exports");
 
-            Log.LogInfo($"Detected client root: {SptRoot}");
-            Log.LogInfo($"Detected server root: {serverRoot}");
+            Log.LogInfo($"Detected game root: {GameRoot}");
             Log.LogInfo($"Server mod directory: {ServerModDirectory}");
             Log.LogInfo($"Exports directory: {ServerModExportsDirectory}");
 
@@ -95,31 +93,5 @@ namespace MapLootEditorLite.Client
             StartCoroutine(ItemNameResolver.LoadApiNames());
         }
 
-        private static string FindSptRoot(string pluginPath)
-        {
-            var dir = Path.GetDirectoryName(pluginPath);
-            while (!string.IsNullOrEmpty(dir))
-            {
-                if (Directory.Exists(Path.Combine(dir, "BepInEx")) && Directory.Exists(Path.Combine(dir, "user")))
-                    return dir;
-
-                var parent = Path.GetDirectoryName(dir);
-                if (parent == dir)
-                    break;
-                dir = parent;
-            }
-
-            return Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(pluginPath)));
-        }
-
-        private static string FindServerRoot(string clientRoot)
-        {
-            // Prefer the SPT server subfolder if it exists, otherwise fall back to the client root.
-            var serverCandidate = Path.Combine(clientRoot, "SPT");
-            if (Directory.Exists(Path.Combine(serverCandidate, "user")))
-                return serverCandidate;
-
-            return clientRoot;
-        }
     }
 }

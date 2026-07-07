@@ -22,7 +22,7 @@ public static class QuestFilter
         var sessionId = QuestFilterContext.CurrentSessionId;
         if (string.IsNullOrWhiteSpace(sessionId))
         {
-            ServerPlugin.Logger?.Warning($"[MLEL] Quest-only check for '{questId}' skipped: no current session ID available.");
+            ServerPlugin.Logger?.Warning($"[MEL] Quest-only check for '{questId}' skipped: no current session ID available.");
             return false;
         }
 
@@ -51,7 +51,7 @@ public static class QuestFilter
         }
         catch (System.Exception ex)
         {
-            ServerPlugin.Logger?.Error($"[MLEL] Failed to check quest status for '{questId}': {ex.Message}");
+            ServerPlugin.Logger?.Error($"[MEL] Failed to check quest status for '{questId}': {ex.Message}");
             return false;
         }
     }
@@ -64,7 +64,7 @@ public static class QuestFilter
         var sessionId = QuestFilterContext.CurrentSessionId;
         if (string.IsNullOrWhiteSpace(sessionId))
         {
-            ServerPlugin.Logger?.Warning($"[MLEL] Quest-completed check for '{questId}' skipped: no current session ID available.");
+            ServerPlugin.Logger?.Warning($"[MEL] Quest-completed check for '{questId}' skipped: no current session ID available.");
             return false;
         }
 
@@ -91,7 +91,7 @@ public static class QuestFilter
         }
         catch (System.Exception ex)
         {
-            ServerPlugin.Logger?.Error($"[MLEL] Failed to check quest completion for '{questId}': {ex.Message}");
+            ServerPlugin.Logger?.Error($"[MEL] Failed to check quest completion for '{questId}': {ex.Message}");
             return false;
         }
     }

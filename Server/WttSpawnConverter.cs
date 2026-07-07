@@ -17,7 +17,7 @@ public static class WttSpawnConverter
     {
         if (string.IsNullOrWhiteSpace(outputDirectory))
         {
-            ServerPlugin.Logger?.Warning("[MLEL] WTT spawn output directory is empty; skipping forced spawn export.");
+            ServerPlugin.Logger?.Warning("[MEL] WTT spawn output directory is empty; skipping forced spawn export.");
             return;
         }
 
@@ -25,7 +25,7 @@ public static class WttSpawnConverter
         var normalized = Path.GetFullPath(outputDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         if (!Path.GetFileName(normalized).Equals("CustomLootspawns", StringComparison.OrdinalIgnoreCase))
         {
-            ServerPlugin.Logger?.Warning($"[MLEL] WTT spawn output directory '{outputDirectory}' is not the expected CustomLootspawns folder; skipping forced spawn export.");
+            ServerPlugin.Logger?.Warning($"[MEL] WTT spawn output directory '{outputDirectory}' is not the expected CustomLootspawns folder; skipping forced spawn export.");
             return;
         }
 
@@ -38,7 +38,7 @@ public static class WttSpawnConverter
             }
             catch (Exception ex)
             {
-                ServerPlugin.Logger?.Warning($"[MLEL] Failed to clean WTT forced spawn directory: {ex.Message}");
+                ServerPlugin.Logger?.Warning($"[MEL] Failed to clean WTT forced spawn directory: {ex.Message}");
             }
         }
 
@@ -87,7 +87,7 @@ public static class WttSpawnConverter
             File.WriteAllText(filePath, json);
         }
 
-        ServerPlugin.Logger?.Info($"[MLEL] Wrote forced spawns for {forcedByMap.Count} maps to {outputDirectory}");
+        ServerPlugin.Logger?.Info($"[MEL] Wrote forced spawns for {forcedByMap.Count} maps to {outputDirectory}");
     }
 
     private static WttSpawnpoint CreateWttSpawnpoint(LooseLootSpawn spawn)

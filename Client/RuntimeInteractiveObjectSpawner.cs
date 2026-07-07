@@ -48,7 +48,7 @@ namespace MapLootEditorLite.Client
             {
                 if (_currentWorld != null)
                 {
-                    Plugin.Log.LogInfo("[MLEL Runtime] GameWorld changed or ended, clearing interactive objects.");
+                    Plugin.Log.LogInfo("GameWorld changed or ended, clearing interactive objects.");
                     ClearSpawned();
                     _currentWorld = null;
                     _currentMapId = null;
@@ -67,7 +67,7 @@ namespace MapLootEditorLite.Client
                 _currentWorld = world;
                 _currentMapId = mapId;
                 ClearSpawned();
-                Plugin.Log.LogInfo($"[MLEL Runtime] Map detected: {mapId}, spawning interactive objects");
+                Plugin.Log.LogInfo($"Map detected: {mapId}, spawning interactive objects");
                 SpawnForMap(mapId);
             }
         }
@@ -82,7 +82,7 @@ namespace MapLootEditorLite.Client
 
             if (directories.Count == 0)
             {
-                Plugin.Log.LogWarning($"[MLEL Runtime] No pack directories found; interactive objects will not be spawned.");
+                Plugin.Log.LogWarning($"No pack directories found; interactive objects will not be spawned.");
                 return;
             }
 
@@ -97,12 +97,12 @@ namespace MapLootEditorLite.Client
                         if (pack?.maps != null)
                         {
                             _packs.Add(pack);
-                            Plugin.Log.LogInfo($"[MLEL Runtime] Loaded pack '{pack.name}' from {file}");
+                            Plugin.Log.LogInfo($"Loaded pack '{pack.name}' from {file}");
                         }
                     }
                     catch (Exception ex)
                     {
-                        Plugin.Log.LogWarning($"[MLEL Runtime] Failed to load pack {file}: {ex.Message}");
+                        Plugin.Log.LogWarning($"Failed to load pack {file}: {ex.Message}");
                     }
                 }
             }
@@ -121,16 +121,16 @@ namespace MapLootEditorLite.Client
 
             if (objects.Count == 0)
             {
-                Plugin.Log.LogInfo($"[MLEL Runtime] No interactive objects for map {mapId}");
+                Plugin.Log.LogInfo($"No interactive objects for map {mapId}");
                 return;
             }
 
-            Plugin.Log.LogInfo($"[MLEL Runtime] Spawning {objects.Count} interactive objects for map {mapId}");
+            Plugin.Log.LogInfo($"Spawning {objects.Count} interactive objects for map {mapId}");
             foreach (var obj in objects)
             {
                 if (!QuestConditionsMet(obj.questOnly, obj.questCompleted, obj.questId))
                 {
-                    Plugin.Log.LogInfo($"[MLEL Runtime] Skipping quest-gated interactive object '{obj.name}' (quest {obj.questId} not active/completed).");
+                    Plugin.Log.LogInfo($"Skipping quest-gated interactive object '{obj.name}' (quest {obj.questId} not active/completed).");
                     continue;
                 }
 
@@ -142,7 +142,7 @@ namespace MapLootEditorLite.Client
         {
             if (string.IsNullOrEmpty(obj.sourceObjectName))
             {
-                Plugin.Log.LogWarning($"[MLEL Runtime] Interactive object '{obj.name}' has no source object; skipping.");
+                Plugin.Log.LogWarning($"Interactive object '{obj.name}' has no source object; skipping.");
                 yield break;
             }
 
@@ -154,14 +154,14 @@ namespace MapLootEditorLite.Client
                     break;
 
                 if (attempt == 0)
-                    Plugin.Log.LogInfo($"[MLEL Runtime] Source object '{obj.sourceObjectName}' for {obj.name} not ready, waiting...");
+                    Plugin.Log.LogInfo($"Source object '{obj.sourceObjectName}' for {obj.name} not ready, waiting...");
 
                 yield return new WaitForSeconds(1f);
             }
 
             if (source == null)
             {
-                Plugin.Log.LogWarning($"[MLEL Runtime] Could not find source scene object '{obj.sourceObjectName}' for {obj.name}");
+                Plugin.Log.LogWarning($"Could not find source scene object '{obj.sourceObjectName}' for {obj.name}");
                 yield break;
             }
 
@@ -217,7 +217,7 @@ namespace MapLootEditorLite.Client
                 instance.transform.localPosition = Vector3.zero;
                 instance.transform.localRotation = Quaternion.identity;
                 _spawned.Add(frame);
-                Plugin.Log.LogInfo($"[MLEL Runtime] Created interaction frame for '{obj.name}' because WIO was on a root GameObject.");
+                Plugin.Log.LogInfo($"Created interaction frame for '{obj.name}' because WIO was on a root GameObject.");
             }
             else
             {
@@ -239,7 +239,7 @@ namespace MapLootEditorLite.Client
                         wio.InitialDoorState = EDoorState.Locked;
                         wio.FallbackState = EDoorState.Locked;
                         wio.CurrentAngle = wio.GetAngle(EDoorState.Locked);
-                        Plugin.Log.LogInfo($"[MLEL Runtime] Set door '{obj.name}' key to {obj.keyId}");
+                        Plugin.Log.LogInfo($"Set door '{obj.name}' key to {obj.keyId}");
                     }
                     else
                     {
@@ -248,7 +248,7 @@ namespace MapLootEditorLite.Client
                         wio.FallbackState = EDoorState.Shut;
                         wio.CurrentAngle = wio.GetAngle(EDoorState.Shut);
                     }
-                    Plugin.Log.LogInfo($"[MLEL Runtime] Door '{obj.name}' initial state={wio.DoorState}, angle={wio.CurrentAngle}, openAngle={wio.OpenAngle}, closeAngle={wio.CloseAngle}");
+                    Plugin.Log.LogInfo($"Door '{obj.name}' initial state={wio.DoorState}, angle={wio.CurrentAngle}, openAngle={wio.OpenAngle}, closeAngle={wio.CloseAngle}");
                 }
                 else if (obj.interactiveType == InteractiveObjectType.Container && !string.IsNullOrEmpty(obj.containerId))
                 {
@@ -263,30 +263,30 @@ namespace MapLootEditorLite.Client
                     }
                     else if (gameWorld == null)
                     {
-                        Plugin.Log.LogWarning($"[MLEL Runtime] GameWorld not available for container '{obj.name}'; cannot initialize loot.");
+                        Plugin.Log.LogWarning($"GameWorld not available for container '{obj.name}'; cannot initialize loot.");
                     }
                     else
                     {
-                        Plugin.Log.LogWarning($"[MLEL Runtime] Container '{obj.name}' has no LootableContainer component; loot interface will not work.");
+                        Plugin.Log.LogWarning($"Container '{obj.name}' has no LootableContainer component; loot interface will not work.");
                     }
                 }
 
                 if (gameWorld != null && gameWorld.World_0 != null)
                 {
                     gameWorld.RegisterWorldInteractionObject(wio);
-                    Plugin.Log.LogInfo($"[MLEL Runtime] Registered interactive object '{obj.name}' (id={wio.Id}) with world.");
+                    Plugin.Log.LogInfo($"Registered interactive object '{obj.name}' (id={wio.Id}) with world.");
                 }
                 else
                 {
-                    Plugin.Log.LogWarning($"[MLEL Runtime] GameWorld/World not available for '{obj.name}'; interactive object not registered.");
+                    Plugin.Log.LogWarning($"GameWorld/World not available for '{obj.name}'; interactive object not registered.");
                 }
             }
             else
             {
-                Plugin.Log.LogWarning($"[MLEL Runtime] Spawned interactive object '{obj.name}' has no WorldInteractiveObject component in its prefab; interaction will not work.");
+                Plugin.Log.LogWarning($"Spawned interactive object '{obj.name}' has no WorldInteractiveObject component in its prefab; interaction will not work.");
             }
 
-            Plugin.Log.LogInfo($"[MLEL Runtime] Spawned interactive object {obj.name} (type={obj.interactiveType})");
+            Plugin.Log.LogInfo($"Spawned interactive object {obj.name} (type={obj.interactiveType})");
         }
 
         private static string GenerateItemId()
@@ -324,7 +324,7 @@ namespace MapLootEditorLite.Client
             var itemFactory = Singleton<ItemFactoryClass>.Instance;
             if (itemFactory == null)
             {
-                Plugin.Log.LogWarning($"[MLEL Runtime] ItemFactoryClass not available for container '{obj.name}'.");
+                Plugin.Log.LogWarning($"ItemFactoryClass not available for container '{obj.name}'.");
                 yield break;
             }
 
@@ -359,12 +359,12 @@ namespace MapLootEditorLite.Client
                     }
                     else
                     {
-                        Plugin.Log.LogWarning($"[MLEL Runtime] Container '{obj.name}' found in AllLoot but Item is null; falling back to empty item.");
+                        Plugin.Log.LogWarning($"Container '{obj.name}' found in AllLoot but Item is null; falling back to empty item.");
                     }
                 }
                 else
                 {
-                    Plugin.Log.LogWarning($"[MLEL Runtime] Container '{obj.name}' not found in AllLoot after {timeout}s; falling back to empty item.");
+                    Plugin.Log.LogWarning($"Container '{obj.name}' not found in AllLoot after {timeout}s; falling back to empty item.");
                 }
 
                 if (item == null)
@@ -376,7 +376,7 @@ namespace MapLootEditorLite.Client
 
             if (item == null)
             {
-                Plugin.Log.LogWarning($"[MLEL Runtime] Failed to create item for container '{obj.name}'.");
+                Plugin.Log.LogWarning($"Failed to create item for container '{obj.name}'.");
                 yield break;
             }
 
@@ -389,7 +389,7 @@ namespace MapLootEditorLite.Client
             var controller = new TraderControllerClass(item, item.Id, item.ShortName.Localized(null), true, EOwnerType.Profile);
             lootable.Init(controller);
             gameWorld.RegisterLoot<LootableContainer>(lootable);
-            Plugin.Log.LogInfo($"[MLEL Runtime] Initialized lootable container '{obj.name}' id={obj.containerId}, template={lootable.Template}, itemId={item.Id}, source={source}, injectedItems={addedItems}");
+            Plugin.Log.LogInfo($"Initialized lootable container '{obj.name}' id={obj.containerId}, template={lootable.Template}, itemId={item.Id}, source={source}, injectedItems={addedItems}");
         }
 
         private int InjectMarkerItems(InteractiveObject obj, CompoundItem compoundItem)
@@ -409,7 +409,7 @@ namespace MapLootEditorLite.Client
 
                 if (!QuestConditionsMet(loot.questOnly, loot.questCompleted, loot.questId))
                 {
-                    Plugin.Log.LogInfo($"[MLEL Runtime] Skipping quest-gated item {loot.template} for container '{obj.name}' (quest {loot.questId} not active/completed).");
+                    Plugin.Log.LogInfo($"Skipping quest-gated item {loot.template} for container '{obj.name}' (quest {loot.questId} not active/completed).");
                     continue;
                 }
 
@@ -418,7 +418,7 @@ namespace MapLootEditorLite.Client
                     var roll = UnityEngine.Random.Range(0f, 100f);
                     if (roll >= loot.chance)
                     {
-                        Plugin.Log.LogInfo($"[MLEL Runtime] Item {loot.template} chance roll {roll:F1} >= {loot.chance}; skipping for container '{obj.name}'.");
+                        Plugin.Log.LogInfo($"Item {loot.template} chance roll {roll:F1} >= {loot.chance}; skipping for container '{obj.name}'.");
                         continue;
                     }
                 }
@@ -426,7 +426,7 @@ namespace MapLootEditorLite.Client
                 var childItem = itemFactory.CreateItem(GenerateItemId(), loot.template, null);
                 if (childItem == null)
                 {
-                    Plugin.Log.LogWarning($"[MLEL Runtime] Failed to create item {loot.template} for container '{obj.name}'");
+                    Plugin.Log.LogWarning($"Failed to create item {loot.template} for container '{obj.name}'");
                     continue;
                 }
 
@@ -447,7 +447,7 @@ namespace MapLootEditorLite.Client
                 if (placed)
                     added++;
                 else
-                    Plugin.Log.LogWarning($"[MLEL Runtime] Could not place item {loot.template} in container '{obj.name}'");
+                    Plugin.Log.LogWarning($"Could not place item {loot.template} in container '{obj.name}'");
             }
 
             return added;

@@ -75,7 +75,7 @@ public static class PackLoader
         }
         catch (Exception ex)
         {
-            ServerPlugin.Logger?.Error($"[MLEL] Failed to scan pack directories: {ex.Message}");
+            ServerPlugin.Logger?.Error($"[MEL] Failed to scan pack directories: {ex.Message}");
         }
 
         foreach (var dir in directories)
@@ -93,18 +93,18 @@ public static class PackLoader
                     var pack = JsonSerializer.Deserialize<PackData>(json);
                     if (pack is null)
                     {
-                        ServerPlugin.Logger?.Warning($"[MLEL] Failed to parse pack: {file}");
+                        ServerPlugin.Logger?.Warning($"[MEL] Failed to parse pack: {file}");
                         continue;
                     }
 
                     pack.Name = string.IsNullOrWhiteSpace(pack.Name) ? Path.GetFileNameWithoutExtension(file) : pack.Name;
                     MigrateLegacyItems(pack);
                     packs.Add(pack);
-                    ServerPlugin.Logger?.Info($"[MLEL] Loaded pack '{pack.Name}' from {file}");
+                    ServerPlugin.Logger?.Info($"[MEL] Loaded pack '{pack.Name}' from {file}");
                 }
                 catch (Exception ex)
                 {
-                    ServerPlugin.Logger?.Error($"[MLEL] Failed to load pack {file}: {ex.Message}");
+                    ServerPlugin.Logger?.Error($"[MEL] Failed to load pack {file}: {ex.Message}");
                 }
             }
         }

@@ -94,7 +94,7 @@ namespace MapLootEditorLite.Client
 
             if (directories.Count == 0)
             {
-                Plugin.Log.LogWarning("[MLEL Bot] No pack directories found; bot spawn points will not be spawned.");
+                Plugin.Log.LogWarning("No pack directories found; bot spawn points will not be spawned.");
                 return;
             }
 
@@ -109,12 +109,12 @@ namespace MapLootEditorLite.Client
                         if (pack?.maps != null)
                         {
                             _packs.Add(pack);
-                            Plugin.Log.LogInfo($"[MLEL Bot] Loaded pack '{pack.name}' from {file}");
+                            Plugin.Log.LogInfo($"Loaded pack '{pack.name}' from {file}");
                         }
                     }
                     catch (Exception ex)
                     {
-                        Plugin.Log.LogWarning($"[MLEL Bot] Failed to load pack {file}: {ex.Message}");
+                        Plugin.Log.LogWarning($"Failed to load pack {file}: {ex.Message}");
                     }
                 }
             }
@@ -133,11 +133,11 @@ namespace MapLootEditorLite.Client
                 var prefix = AccessTools.Method(typeof(RuntimeBotSpawnSpawner), nameof(InitBotsControllerPrefix));
                 var postfix = AccessTools.Method(typeof(RuntimeBotSpawnSpawner), nameof(InitBotsControllerPostfix));
                 harmony.Patch(method, prefix: new HarmonyMethod(prefix), postfix: new HarmonyMethod(postfix));
-                Plugin.Log.LogInfo("[MLEL Bot] Patched BotsController.Init.");
+                Plugin.Log.LogInfo("Patched BotsController.Init.");
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[MLEL Bot] Failed to apply patch: {ex.Message}");
+                Plugin.Log.LogError($"Failed to apply patch: {ex.Message}");
             }
         }
 
@@ -145,7 +145,7 @@ namespace MapLootEditorLite.Client
         {
             if (Instance == null)
             {
-                Plugin.Log.LogWarning("[MLEL Bot] No spawner instance, skipping custom bot spawn points.");
+                Plugin.Log.LogWarning("No spawner instance, skipping custom bot spawn points.");
                 return;
             }
 
@@ -155,7 +155,7 @@ namespace MapLootEditorLite.Client
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[MLEL Bot] Error in prefix: {ex.Message}");
+                Plugin.Log.LogError($"Error in prefix: {ex.Message}");
             }
         }
 
@@ -163,7 +163,7 @@ namespace MapLootEditorLite.Client
         {
             if (Instance == null)
             {
-                Plugin.Log.LogWarning("[MLEL Bot] No spawner instance, skipping custom bot spawn.");
+                Plugin.Log.LogWarning("No spawner instance, skipping custom bot spawn.");
                 return;
             }
 
@@ -173,7 +173,7 @@ namespace MapLootEditorLite.Client
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[MLEL Bot] Error in postfix: {ex.Message}");
+                Plugin.Log.LogError($"Error in postfix: {ex.Message}");
             }
         }
 
@@ -186,7 +186,7 @@ namespace MapLootEditorLite.Client
 
             if (string.IsNullOrEmpty(mapId))
             {
-                Plugin.Log.LogWarning("[MLEL Bot] Cannot spawn bot points: no current map.");
+                Plugin.Log.LogWarning("Cannot spawn bot points: no current map.");
                 return;
             }
 
@@ -222,10 +222,10 @@ namespace MapLootEditorLite.Client
                 }
             }
 
-            Plugin.Log.LogInfo($"[MLEL Bot] Spawning for map '{mapId}' with {points.Count} points, {zones.Count} zones, and {_triggerZones.Count} trigger zones from {_packs.Count} packs.");
+            Plugin.Log.LogInfo($"Spawning for map '{mapId}' with {points.Count} points, {zones.Count} zones, and {_triggerZones.Count} trigger zones from {_packs.Count} packs.");
             if (points.Count == 0 && zones.Count == 0 && _triggerZones.Count == 0)
             {
-                Plugin.Log.LogInfo($"[MLEL Bot] No custom bot spawn or trigger data for map {mapId}.");
+                Plugin.Log.LogInfo($"No custom bot spawn or trigger data for map {mapId}.");
                 return;
             }
 
@@ -235,7 +235,7 @@ namespace MapLootEditorLite.Client
                 var botZone = botZones?.FirstOrDefault(z => z.name == zoneName);
                 if (botZone == null)
                 {
-                    Plugin.Log.LogWarning($"[MLEL Bot] Trigger-activated point {point.id} has no valid BotZone, skipping.");
+                    Plugin.Log.LogWarning($"Trigger-activated point {point.id} has no valid BotZone, skipping.");
                     continue;
                 }
                 AddTriggeredSpawnData(point.triggerZoneName, new TriggerSpawnData { Point = point, BotZone = botZone });
@@ -247,7 +247,7 @@ namespace MapLootEditorLite.Client
                 var botZone = botZones?.FirstOrDefault(z => z.name == zoneName);
                 if (botZone == null)
                 {
-                    Plugin.Log.LogWarning($"[MLEL Bot] Trigger-activated zone {zone.id} has no valid BotZone, skipping.");
+                    Plugin.Log.LogWarning($"Trigger-activated zone {zone.id} has no valid BotZone, skipping.");
                     continue;
                 }
                 AddTriggeredSpawnData(zone.triggerZoneName, new TriggerSpawnData { Zone = zone, BotZone = botZone });
@@ -277,7 +277,7 @@ namespace MapLootEditorLite.Client
                 created += CreateZoneMarkers(zone, botZones, zoneName, "spawn").Count;
             }
 
-            Plugin.Log.LogInfo($"[MLEL Bot] Created {created} custom bot spawn markers for map {mapId} across {botZones?.Length ?? 0} zones. {points.Count(p => p.triggerActivated) + zones.Count(z => z.triggerActivated)} spawns are trigger-activated.");
+            Plugin.Log.LogInfo($"Created {created} custom bot spawn markers for map {mapId} across {botZones?.Length ?? 0} zones. {points.Count(p => p.triggerActivated) + zones.Count(z => z.triggerActivated)} spawns are trigger-activated.");
         }
 
         private void AddTriggeredSpawnData(string triggerZoneName, TriggerSpawnData data)
@@ -364,7 +364,7 @@ namespace MapLootEditorLite.Client
                 var zone = string.IsNullOrEmpty(botZoneName) ? null : botZones?.FirstOrDefault(z => z != null && z.name == botZoneName);
                 if (zone == null)
                 {
-                    Plugin.Log.LogWarning($"[MLEL Bot] No BotZone found for marker {id} (resolved name: '{botZoneName}'). Skipping.");
+                    Plugin.Log.LogWarning($"No BotZone found for marker {id} (resolved name: '{botZoneName}'). Skipping.");
                     return null;
                 }
                 if (zone.SpawnPointMarkers == null)
@@ -373,7 +373,7 @@ namespace MapLootEditorLite.Client
                 var marker = SpawnPointMarker.Create(@params, zone.transform);
                 if (marker == null)
                 {
-                    Plugin.Log.LogError($"[MLEL Bot] SpawnPointMarker.Create returned null for {id}.");
+                    Plugin.Log.LogError($"SpawnPointMarker.Create returned null for {id}.");
                     return null;
                 }
 
@@ -382,12 +382,12 @@ namespace MapLootEditorLite.Client
 
                 _spawnRequests.Add(new SpawnRequest { Zone = zone, Marker = marker, Point = point, ZoneData = zoneData, Group = group, ResolvedWildSpawnType = resolvedType });
 
-                Plugin.Log.LogInfo($"[MLEL Bot] Created marker {id} at {position} in zone '{botZoneName}' (category: {category}, side: {side}).");
+                Plugin.Log.LogInfo($"Created marker {id} at {position} in zone '{botZoneName}' (category: {category}, side: {side}).");
                 return marker;
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[MLEL Bot] Failed to create spawn marker {id}: {ex.Message}");
+                Plugin.Log.LogError($"Failed to create spawn marker {id}: {ex.Message}");
                 return null;
             }
         }
@@ -506,11 +506,11 @@ namespace MapLootEditorLite.Client
             _botsController = controller;
             if (controller?.BotSpawner == null)
             {
-                Plugin.Log.LogWarning("[MLEL Bot] BotsController or BotSpawner is null, cannot force custom spawn.");
+                Plugin.Log.LogWarning("BotsController or BotSpawner is null, cannot force custom spawn.");
                 return;
             }
 
-            Plugin.Log.LogInfo($"[MLEL Bot] Forcing spawn for {_spawnRequests.Count} custom bot requests.");
+            Plugin.Log.LogInfo($"Forcing spawn for {_spawnRequests.Count} custom bot requests.");
             foreach (var request in _spawnRequests)
             {
                 UpdateMarkerCorePoint(controller, request.Marker);
@@ -559,7 +559,7 @@ namespace MapLootEditorLite.Client
                 var wildSpawnType = ResolveWildSpawnType(request);
                 if (!wildSpawnType.HasValue)
                 {
-                    Plugin.Log.LogWarning("[MLEL Bot] Skipping zone group spawn with unknown wild spawn type.");
+                    Plugin.Log.LogWarning("Skipping zone group spawn with unknown wild spawn type.");
                     return;
                 }
 
@@ -572,11 +572,11 @@ namespace MapLootEditorLite.Client
                 var data = await BotCreationDataClass.Create(new BotProfileDataClass(side, wildSpawnType.Value, difficulty, 0f, spawnParams, false), controller.BotSpawner.BotCreator, count, controller.BotSpawner);
                 var points = requests.Select(r => r.Marker.SpawnPoint).ToList();
                 controller.BotSpawner.TryToSpawnInZoneAndDelay(request.Zone, data, true, true, points, true);
-                Plugin.Log.LogInfo($"[MLEL Bot] Submitted group spawn of {count} {wildSpawnType.Value} in zone {request.Zone.name} (corePoint={points[0].CorePointId}).");
+                Plugin.Log.LogInfo($"Submitted group spawn of {count} {wildSpawnType.Value} in zone {request.Zone.name} (corePoint={points[0].CorePointId}).");
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[MLEL Bot] Failed to spawn zone group: {ex.Message}");
+                Plugin.Log.LogError($"Failed to spawn zone group: {ex.Message}");
             }
         }
 
@@ -587,7 +587,7 @@ namespace MapLootEditorLite.Client
                 var wildSpawnType = ResolveWildSpawnType(request);
                 if (!wildSpawnType.HasValue)
                 {
-                    Plugin.Log.LogWarning("[MLEL Bot] Skipping spawn request with unknown wild spawn type.");
+                    Plugin.Log.LogWarning("Skipping spawn request with unknown wild spawn type.");
                     return;
                 }
 
@@ -596,11 +596,11 @@ namespace MapLootEditorLite.Client
                 var point = request.Marker.SpawnPoint;
                 var data = await BotCreationDataClass.Create(new BotProfileDataClass(side, wildSpawnType.Value, difficulty, 0f, new BotSpawnParams(), false), controller.BotSpawner.BotCreator, 1, controller.BotSpawner);
                 controller.BotSpawner.TryToSpawnInZoneAndDelay(request.Zone, data, true, true, new List<ISpawnPoint> { point }, true);
-                Plugin.Log.LogInfo($"[MLEL Bot] Submitted forced spawn at {point.Position} ({wildSpawnType.Value}, {side}, zone={request.Zone.name}, corePoint={point.CorePointId}).");
+                Plugin.Log.LogInfo($"Submitted forced spawn at {point.Position} ({wildSpawnType.Value}, {side}, zone={request.Zone.name}, corePoint={point.CorePointId}).");
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[MLEL Bot] Failed to force spawn bot: {ex.Message}");
+                Plugin.Log.LogError($"Failed to force spawn bot: {ex.Message}");
             }
         }
 
@@ -616,7 +616,7 @@ namespace MapLootEditorLite.Client
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[MLEL Bot] Failed to get core point: {ex.Message}");
+                Plugin.Log.LogError($"Failed to get core point: {ex.Message}");
                 return 0;
             }
         }
@@ -628,21 +628,21 @@ namespace MapLootEditorLite.Client
                 var corePointId = GetCorePointId(controller, marker.SpawnPoint.Position);
                 if (corePointId == 0)
                 {
-                    Plugin.Log.LogWarning($"[MLEL Bot] Could not resolve core point for {marker.SpawnPoint.Id}, using 0.");
+                    Plugin.Log.LogWarning($"Could not resolve core point for {marker.SpawnPoint.Id}, using 0.");
                     return;
                 }
 
                 var spawnPointField = typeof(SpawnPointMarker).GetField("_spawnPoint", BindingFlags.NonPublic | BindingFlags.Instance);
                 if (spawnPointField == null)
                 {
-                    Plugin.Log.LogWarning("[MLEL Bot] Could not find _spawnPoint field on SpawnPointMarker.");
+                    Plugin.Log.LogWarning("Could not find _spawnPoint field on SpawnPointMarker.");
                     return;
                 }
 
                 var spawnPoint = spawnPointField.GetValue(marker);
                 if (spawnPoint == null)
                 {
-                    Plugin.Log.LogWarning("[MLEL Bot] _spawnPoint is null on marker.");
+                    Plugin.Log.LogWarning("_spawnPoint is null on marker.");
                     return;
                 }
 
@@ -663,11 +663,11 @@ namespace MapLootEditorLite.Client
                         field.SetValue(newSpawnPoint, field.GetValue(spawnPoint));
                 }
                 spawnPointField.SetValue(marker, newSpawnPoint);
-                Plugin.Log.LogInfo($"[MLEL Bot] Updated core point for {marker.SpawnPoint.Id} to {corePointId}.");
+                Plugin.Log.LogInfo($"Updated core point for {marker.SpawnPoint.Id} to {corePointId}.");
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[MLEL Bot] Failed to update marker core point: {ex.Message}");
+                Plugin.Log.LogError($"Failed to update marker core point: {ex.Message}");
             }
         }
 
@@ -680,13 +680,13 @@ namespace MapLootEditorLite.Client
             {
                 var preset = request.Group?.preset ?? request.Point?.preset ?? request.ZoneData?.preset ?? BotSpawnPreset.Scav;
                 wildSpawnType = BotSpawnPresetMapping.GetWildSpawnType(preset);
-                Plugin.Log.LogInfo($"[MLEL Bot] wildSpawnType empty, inferred '{wildSpawnType}' from preset {preset}.");
+                Plugin.Log.LogInfo($"wildSpawnType empty, inferred '{wildSpawnType}' from preset {preset}.");
             }
             if (string.IsNullOrWhiteSpace(wildSpawnType))
                 return WildSpawnType.assault;
             if (Enum.TryParse<WildSpawnType>(wildSpawnType, true, out var result))
                 return result;
-            Plugin.Log.LogWarning($"[MLEL Bot] Unknown WildSpawnType: {wildSpawnType}");
+            Plugin.Log.LogWarning($"Unknown WildSpawnType: {wildSpawnType}");
             return null;
         }
 
@@ -807,7 +807,7 @@ namespace MapLootEditorLite.Client
         {
             if (trigger.triggerChance < 100f && _rng.NextDouble() * 100 > trigger.triggerChance)
             {
-                Plugin.Log.LogInfo($"[MLEL Bot] Trigger zone '{trigger.name}' failed chance roll ({trigger.triggerChance:F2}%).");
+                Plugin.Log.LogInfo($"Trigger zone '{trigger.name}' failed chance roll ({trigger.triggerChance:F2}%).");
                 return;
             }
 
@@ -819,7 +819,7 @@ namespace MapLootEditorLite.Client
             state.LastActivationTime = Time.time;
             state.ActivatedPlayers.Add(profileId);
 
-            Plugin.Log.LogInfo($"[MLEL Bot] Trigger zone '{trigger.name}' activated for player {profileId}.");
+            Plugin.Log.LogInfo($"Trigger zone '{trigger.name}' activated for player {profileId}.");
 
             ApplyTriggerLightActions(trigger);
 
@@ -843,7 +843,7 @@ namespace MapLootEditorLite.Client
             var spawner = RuntimeLightZoneSpawner.Instance;
             if (spawner == null)
             {
-                Plugin.Log.LogWarning("[MLEL Bot] Cannot apply light actions: RuntimeLightZoneSpawner is not available.");
+                Plugin.Log.LogWarning("Cannot apply light actions: RuntimeLightZoneSpawner is not available.");
                 return;
             }
 
@@ -865,7 +865,7 @@ namespace MapLootEditorLite.Client
 
             if (point.spawnChance < 100f && _rng.NextDouble() * 100 > point.spawnChance)
             {
-                Plugin.Log.LogInfo($"[MLEL Bot] Trigger-activated point {point.id} failed spawn chance.");
+                Plugin.Log.LogInfo($"Trigger-activated point {point.id} failed spawn chance.");
                 return;
             }
 
@@ -885,7 +885,7 @@ namespace MapLootEditorLite.Client
             if (BotSpawnChancePassed(request))
                 SpawnBotAt(_botsController, request);
             else
-                Plugin.Log.LogInfo($"[MLEL Bot] Trigger-activated point {point.id} failed bot spawn chance.");
+                Plugin.Log.LogInfo($"Trigger-activated point {point.id} failed bot spawn chance.");
         }
 
         private void SpawnTriggeredZone(BotSpawnZone zone, BotZone botZone)
@@ -895,7 +895,7 @@ namespace MapLootEditorLite.Client
 
             if (zone.spawnChance < 100f && _rng.NextDouble() * 100 > zone.spawnChance)
             {
-                Plugin.Log.LogInfo($"[MLEL Bot] Trigger-activated zone {zone.id} failed spawn chance.");
+                Plugin.Log.LogInfo($"Trigger-activated zone {zone.id} failed spawn chance.");
                 return;
             }
 
@@ -912,11 +912,11 @@ namespace MapLootEditorLite.Client
             if (filtered.Count > 0)
             {
                 SpawnZoneGroup(_botsController, zone, filtered);
-                Plugin.Log.LogInfo($"[MLEL Bot] Trigger-activated zone {zone.id} spawned {filtered.Count} bots.");
+                Plugin.Log.LogInfo($"Trigger-activated zone {zone.id} spawned {filtered.Count} bots.");
             }
             else
             {
-                Plugin.Log.LogInfo($"[MLEL Bot] Trigger-activated zone {zone.id} had no bots pass bot spawn chance.");
+                Plugin.Log.LogInfo($"Trigger-activated zone {zone.id} had no bots pass bot spawn chance.");
             }
         }
 

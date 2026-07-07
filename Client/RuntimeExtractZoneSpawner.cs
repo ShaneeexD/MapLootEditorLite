@@ -49,7 +49,7 @@ namespace MapLootEditorLite.Client
             {
                 if (_currentWorld != null)
                 {
-                    Plugin.Log.LogInfo("[MLEL Extract] GameWorld changed or ended, clearing extract zones.");
+                    Plugin.Log.LogInfo("GameWorld changed or ended, clearing extract zones.");
                     ClearSpawned();
                     _currentWorld = null;
                     _currentMapId = null;
@@ -68,7 +68,7 @@ namespace MapLootEditorLite.Client
                 _currentWorld = world;
                 _currentMapId = mapId;
                 ClearSpawned();
-                Plugin.Log.LogInfo($"[MLEL Extract] Map detected: {mapId}. Waiting for exfiltration controller initialization.");
+                Plugin.Log.LogInfo($"Map detected: {mapId}. Waiting for exfiltration controller initialization.");
             }
         }
 
@@ -80,7 +80,7 @@ namespace MapLootEditorLite.Client
 
             if (directories.Count == 0)
             {
-                Plugin.Log.LogWarning("[MLEL Extract] No pack directories found; extract zones will not be spawned.");
+                Plugin.Log.LogWarning("No pack directories found; extract zones will not be spawned.");
                 return;
             }
 
@@ -95,12 +95,12 @@ namespace MapLootEditorLite.Client
                         if (pack?.maps != null)
                         {
                             _packs.Add(pack);
-                            Plugin.Log.LogInfo($"[MLEL Extract] Loaded pack '{pack.name}' from {file}");
+                            Plugin.Log.LogInfo($"Loaded pack '{pack.name}' from {file}");
                         }
                     }
                     catch (Exception ex)
                     {
-                        Plugin.Log.LogWarning($"[MLEL Extract] Failed to load pack {file}: {ex.Message}");
+                        Plugin.Log.LogWarning($"Failed to load pack {file}: {ex.Message}");
                     }
                 }
             }
@@ -118,11 +118,11 @@ namespace MapLootEditorLite.Client
                 var method = AccessTools.Method(typeof(ExfiltrationControllerClass), nameof(ExfiltrationControllerClass.InitAllExfiltrationPoints));
                 var postfix = AccessTools.Method(typeof(RuntimeExtractZoneSpawner), nameof(InitAllExfiltrationPointsPostfix));
                 harmony.Patch(method, postfix: new HarmonyMethod(postfix));
-                Plugin.Log.LogInfo("[MLEL Extract] Patched ExfiltrationControllerClass.InitAllExfiltrationPoints.");
+                Plugin.Log.LogInfo("Patched ExfiltrationControllerClass.InitAllExfiltrationPoints.");
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[MLEL Extract] Failed to apply patch: {ex.Message}");
+                Plugin.Log.LogError($"Failed to apply patch: {ex.Message}");
             }
         }
 
@@ -130,7 +130,7 @@ namespace MapLootEditorLite.Client
         {
             if (Instance == null)
             {
-                Plugin.Log.LogWarning("[MLEL Extract] No spawner instance, skipping custom extract zones.");
+                Plugin.Log.LogWarning("No spawner instance, skipping custom extract zones.");
                 return;
             }
 
@@ -149,7 +149,7 @@ namespace MapLootEditorLite.Client
 
             if (string.IsNullOrEmpty(mapId))
             {
-                Plugin.Log.LogWarning("[MLEL Extract] Cannot spawn zones: no current map.");
+                Plugin.Log.LogWarning("Cannot spawn zones: no current map.");
                 return;
             }
 
@@ -162,7 +162,7 @@ namespace MapLootEditorLite.Client
                     {
                         if (!QuestConditionsMet(zone.questOnly, zone.questCompleted, zone.questId))
                         {
-                            Plugin.Log.LogInfo($"[MLEL Extract] Skipping quest-gated extract zone '{zone.name}' (quest {zone.questId} not active/completed).");
+                            Plugin.Log.LogInfo($"Skipping quest-gated extract zone '{zone.name}' (quest {zone.questId} not active/completed).");
                             continue;
                         }
                         zones.Add(zone);
@@ -172,7 +172,7 @@ namespace MapLootEditorLite.Client
 
             if (zones.Count == 0)
             {
-                Plugin.Log.LogInfo($"[MLEL Extract] No custom extract zones for map {mapId}.");
+                Plugin.Log.LogInfo($"No custom extract zones for map {mapId}.");
                 return;
             }
 
@@ -180,12 +180,12 @@ namespace MapLootEditorLite.Client
             var entryPoint = player?.Profile?.Info?.EntryPoint?.ToLower() ?? "";
             var rng = new System.Random();
 
-            Plugin.Log.LogInfo($"[MLEL Extract] Spawning {zones.Count} custom extract zones for map {mapId}.");
+            Plugin.Log.LogInfo($"Spawning {zones.Count} custom extract zones for map {mapId}.");
             foreach (var zone in zones)
             {
                 if (zone.spawnChance < 100f && rng.NextDouble() * 100 > zone.spawnChance)
                 {
-                    Plugin.Log.LogInfo($"[MLEL Extract] Zone '{zone.name}' failed spawn chance roll ({zone.spawnChance:F2}%).");
+                    Plugin.Log.LogInfo($"Zone '{zone.name}' failed spawn chance roll ({zone.spawnChance:F2}%).");
                     continue;
                 }
 
@@ -199,12 +199,12 @@ namespace MapLootEditorLite.Client
                         ExfiltrationControllerClass.Instance.ExfiltrationPoints = list.ToArray();
                         _spawned.Add(point);
                         ApplyLinkedLightActions(zone);
-                        Plugin.Log.LogInfo($"[MLEL Extract] Registered custom extract zone '{zone.name}' ({zone.exitName}) at {zone.position.x:F2}, {zone.position.y:F2}, {zone.position.z:F2}.");
+                        Plugin.Log.LogInfo($"Registered custom extract zone '{zone.name}' ({zone.exitName}) at {zone.position.x:F2}, {zone.position.y:F2}, {zone.position.z:F2}.");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log.LogError($"[MLEL Extract] Failed to create extract zone '{zone.name}': {ex.Message}");
+                    Plugin.Log.LogError($"Failed to create extract zone '{zone.name}': {ex.Message}");
                 }
             }
         }
@@ -217,7 +217,7 @@ namespace MapLootEditorLite.Client
             var spawner = RuntimeLightZoneSpawner.Instance;
             if (spawner == null)
             {
-                Plugin.Log.LogWarning("[MLEL Extract] Cannot apply linked light actions: RuntimeLightZoneSpawner is not available.");
+                Plugin.Log.LogWarning("Cannot apply linked light actions: RuntimeLightZoneSpawner is not available.");
                 return;
             }
 
@@ -368,7 +368,7 @@ namespace MapLootEditorLite.Client
                     }
                     catch (Exception ex)
                     {
-                        Plugin.Log.LogWarning($"[MLEL Extract] Error destroying zone: {ex.Message}");
+                        Plugin.Log.LogWarning($"Error destroying zone: {ex.Message}");
                     }
                 }
             }
