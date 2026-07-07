@@ -89,6 +89,10 @@ namespace MapLootEditorLite.Client
             light.intensity = marker.intensity;
             light.range = marker.range;
             light.enabled = marker.enabled;
+            light.shadows = ParseLightShadows(marker.shadows);
+            light.shadowStrength = marker.shadowStrength;
+            light.shadowBias = marker.shadowBias;
+            light.shadowNormalBias = marker.shadowNormalBias;
             if (light.type == LightType.Spot)
                 light.spotAngle = marker.spotAngle;
 
@@ -269,6 +273,13 @@ namespace MapLootEditorLite.Client
             if (Enum.TryParse<LightType>(type, true, out var result))
                 return result;
             return LightType.Point;
+        }
+
+        private static LightShadows ParseLightShadows(string shadows)
+        {
+            if (Enum.TryParse<LightShadows>(shadows, true, out var result))
+                return result;
+            return LightShadows.None;
         }
 
         public static Vector3 GetRandomPointInZone(LootZone zone)
@@ -611,6 +622,10 @@ namespace MapLootEditorLite.Client
                         light.color = lz.color.ToColor().linear;
                         light.intensity = lz.intensity;
                         light.range = lz.range;
+                        light.shadows = ParseLightShadows(lz.shadows);
+                        light.shadowStrength = lz.shadowStrength;
+                        light.shadowBias = lz.shadowBias;
+                        light.shadowNormalBias = lz.shadowNormalBias;
                         if (light.type == LightType.Spot)
                             light.spotAngle = lz.spotAngle;
                     }

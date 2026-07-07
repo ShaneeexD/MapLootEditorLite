@@ -652,7 +652,11 @@ namespace MapLootEditorLite.Client
                 range = 10f,
                 spotAngle = 30f,
                 lightType = "Point",
-                spawnChance = 100f
+                spawnChance = 100f,
+                shadows = "Soft",
+                shadowStrength = 1f,
+                shadowBias = 0.05f,
+                shadowNormalBias = 0.4f
             };
             Data.lightZones.Add(marker);
             IsDirty = true;

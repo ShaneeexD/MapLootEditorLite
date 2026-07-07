@@ -1998,6 +1998,10 @@ namespace MapLootEditorLite.Client
             BuildDropdownField(_inspectorContent, "Type", zone.lightType ?? "Point", new[] { "Point", "Spot", "Directional" }, (v) => { zone.lightType = v; manager.IsDirty = true; });
             if ((zone.lightType ?? "Point") == "Spot")
                 BuildFloatField(_inspectorContent, "Spot Angle", zone.spotAngle, (v) => { zone.spotAngle = v; manager.IsDirty = true; });
+            BuildDropdownField(_inspectorContent, "Shadows", zone.shadows ?? "Soft", new[] { "None", "Hard", "Soft" }, (v) => { zone.shadows = v; manager.IsDirty = true; previews.UpdateForMarker(zone); });
+            BuildFloatField(_inspectorContent, "Shadow Strength", zone.shadowStrength, (v) => { zone.shadowStrength = v; manager.IsDirty = true; previews.UpdateForMarker(zone); });
+            BuildFloatField(_inspectorContent, "Shadow Bias", zone.shadowBias, (v) => { zone.shadowBias = v; manager.IsDirty = true; previews.UpdateForMarker(zone); });
+            BuildFloatField(_inspectorContent, "Shadow Normal Bias", zone.shadowNormalBias, (v) => { zone.shadowNormalBias = v; manager.IsDirty = true; previews.UpdateForMarker(zone); });
             BuildFloatField(_inspectorContent, "Spawn Chance", zone.spawnChance, (v) => { zone.spawnChance = v; manager.IsDirty = true; });
             BuildToggleField(_inspectorContent, "Enabled", zone.enabled, (v) => { zone.enabled = v; manager.IsDirty = true; });
 
@@ -2010,6 +2014,7 @@ namespace MapLootEditorLite.Client
             UIBuilder.AddHorizontalLayout(previewRow, 2, 2, false, false);
             UIBuilder.AddLayoutElement(previewRow, null, 22, null, 22, null, 0);
             UIBuilder.CreateButton(previewRow, "Preview Light", () => previews.SpawnLightPreview(zone), 100, 22);
+            UIBuilder.CreateButton(previewRow, "Force Shadows", () => RuntimeLightZoneSpawner.ForceShadowCastersInRange(zone.position.ToVector3(), zone.range), 110, 22);
 
             previews.SpawnLightPreview(zone);
         }

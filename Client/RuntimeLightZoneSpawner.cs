@@ -7,6 +7,7 @@ using EFT;
 using EFT.Quests;
 using Newtonsoft.Json;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace MapLootEditorLite.Client
 {
@@ -181,6 +182,10 @@ namespace MapLootEditorLite.Client
             light.intensity = zone.intensity;
             light.range = zone.range;
             light.enabled = zone.enabled;
+            light.shadows = ParseLightShadows(zone.shadows);
+            light.shadowStrength = zone.shadowStrength;
+            light.shadowBias = zone.shadowBias;
+            light.shadowNormalBias = zone.shadowNormalBias;
             if (light.type == LightType.Spot)
                 light.spotAngle = zone.spotAngle;
 
@@ -194,6 +199,31 @@ namespace MapLootEditorLite.Client
             if (Enum.TryParse<LightType>(type, true, out var result))
                 return result;
             return LightType.Point;
+        }
+
+        private LightShadows ParseLightShadows(string shadows)
+        {
+            if (Enum.TryParse<LightShadows>(shadows, true, out var result))
+                return result;
+            return LightShadows.None;
+        }
+
+        public static void ForceShadowCastersInRange(Vector3 position, float range)
+        {
+            var rangeSqr = range * range;
+            var renderers = FindObjectsOfType<Renderer>();
+            var changed = 0;
+            foreach (var renderer in renderers)
+            {
+                if (renderer == null)
+                    continue;
+                if ((renderer.transform.position - position).sqrMagnitude > rangeSqr)
+                    continue;
+                renderer.shadowCastingMode = ShadowCastingMode.On;
+                renderer.receiveShadows = true;
+                changed++;
+            }
+            CustomEditorUI.LogOutput($"Forced {changed} renderers within {range:F1}m to cast/receive shadows.");
         }
 
         public void SetLightState(string name, bool? active)

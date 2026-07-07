@@ -578,6 +578,11 @@ namespace MapLootEditorLite.Client
         public bool questCompleted = false;
         public string questId = "";
 
+        public string shadows = "Soft";
+        public float shadowStrength = 1f;
+        public float shadowBias = 0.05f;
+        public float shadowNormalBias = 0.4f;
+
         public override MarkerKind Kind => MarkerKind.LightZone;
     }
 }
