@@ -36,6 +36,7 @@ namespace MapLootEditorLite.Client
         private bool _freeCam;
         private Camera _freeCamCamera;
         private Camera _gameCamera;
+        private bool _gameCameraActive;
         private Vector3 _freeCamEuler;
         public const float FreeCamSpeed = 5f;
         public const float FreeCamFastSpeed = 15f;
@@ -60,9 +61,10 @@ namespace MapLootEditorLite.Client
         private bool _menuUnlockedCameraRotationCaptured;
         private Player _freeCamPlayer;
         private CharacterController _freeCamPlayerController;
-        private Vector3 _freeCamPlayerStartPosition;
         private GamePlayerOwner _gamePlayerOwner;
         private bool _originalGamePlayerOwnerEnabled;
+        private List<DisablerCullingObjectBase> _cullingObjects;
+        private List<bool> _cullingObjectsEnabled;
 
         private GizmoMode _gizmoMode = GizmoMode.Translate;
         public GizmoMode GizmoMode => _gizmoMode;
@@ -369,8 +371,6 @@ namespace MapLootEditorLite.Client
                         Cursor.lockState = CursorLockMode.None;
                         HandleMouseInput();
                     }
-
-                    UpdateFreeCamPlayer();
                 }
                 else
                 {
@@ -948,31 +948,43 @@ namespace MapLootEditorLite.Client
                 return;
             }
 
-            var go = new GameObject("MLE_FreeCam");
+            var go = UnityEngine.Object.Instantiate(_gameCamera.gameObject);
+            go.name = "MLE_FreeCam";
             go.transform.position = _gameCamera.transform.position;
             go.transform.rotation = _gameCamera.transform.rotation;
-            _freeCamCamera = go.AddComponent<Camera>();
-            _freeCamCamera.CopyFrom(_gameCamera);
+            _freeCamCamera = go.GetComponent<Camera>();
+            if (_freeCamCamera == null)
+            {
+                _freeCam = false;
+                Plugin.Log.LogWarning("Cloned camera has no Camera component; cannot enter editor mode.");
+                UnityEngine.Object.Destroy(go);
+                return;
+            }
             _freeCamCamera.rect = new Rect(0f, 0f, 1f, 1f);
             _freeCamCamera.targetTexture = null;
             _freeCamCamera.tag = "MainCamera";
             _freeCamEuler = _gameCamera.transform.eulerAngles;
 
-            var camLight = go.AddComponent<Light>();
-            camLight.type = LightType.Spot;
-            camLight.range = 100f;
-            camLight.spotAngle = 120f;
-            camLight.intensity = 1.5f;
-            camLight.color = Color.white;
-            camLight.shadows = LightShadows.None;
+            var camLight = go.GetComponent<Light>();
+            if (camLight == null)
+            {
+                camLight = go.AddComponent<Light>();
+                camLight.type = LightType.Spot;
+                camLight.range = 100f;
+                camLight.spotAngle = 120f;
+                camLight.intensity = 1.5f;
+                camLight.color = Color.white;
+                camLight.shadows = LightShadows.None;
+            }
 
             var renderController = go.GetComponent<MapEditorFreecamRenderController>();
             if (renderController == null)
                 renderController = go.AddComponent<MapEditorFreecamRenderController>();
             renderController.enabled = true;
 
+            _gameCameraActive = _gameCamera.gameObject.activeSelf;
             _gameCamera.gameObject.tag = "Untagged";
-            _gameCamera.enabled = false;
+            _gameCamera.gameObject.SetActive(false);
 
             _freeCamPlayer = GetMainPlayer();
             if (_freeCamPlayer != null)
@@ -987,8 +999,19 @@ namespace MapLootEditorLite.Client
                     _originalGamePlayerOwnerEnabled = _gamePlayerOwner.enabled;
                     _gamePlayerOwner.enabled = false;
                 }
+            }
 
-                _freeCamPlayerStartPosition = _freeCamPlayer.Position;
+            var cullingObjects = FindObjectsOfType<DisablerCullingObjectBase>();
+            _cullingObjects = new List<DisablerCullingObjectBase>(cullingObjects.Length);
+            _cullingObjectsEnabled = new List<bool>(cullingObjects.Length);
+            foreach (var cullingObject in cullingObjects)
+            {
+                if (cullingObject == null)
+                    continue;
+                _cullingObjects.Add(cullingObject);
+                _cullingObjectsEnabled.Add(cullingObject.enabled);
+                cullingObject.enabled = false;
+                cullingObject.SetComponentsEnabled(true);
             }
 
             _freeCamCursorLocked = true;
@@ -1001,10 +1024,8 @@ namespace MapLootEditorLite.Client
         {
             if (_freeCamPlayer != null)
             {
-                var exitPos = _freeCamCamera != null ? _freeCamCamera.transform.position : _freeCamPlayer.Transform.position;
-                var ground = MarkerManager.GetGroundPosition(exitPos);
-                if (ground.HasValue)
-                    _freeCamPlayer.Transform.position = ground.Value;
+                if (_freeCamCamera != null)
+                    _freeCamPlayer.Transform.position = _freeCamCamera.transform.position;
 
                 if (_gamePlayerOwner != null)
                     _gamePlayerOwner.enabled = _originalGamePlayerOwnerEnabled;
@@ -1015,6 +1036,20 @@ namespace MapLootEditorLite.Client
                     _freeCamPlayerController = null;
                 }
                 _freeCamPlayer = null;
+            }
+
+            if (_cullingObjects != null)
+            {
+                for (int i = 0; i < _cullingObjects.Count; i++)
+                {
+                    var cullingObject = _cullingObjects[i];
+                    if (cullingObject == null)
+                        continue;
+                    cullingObject.enabled = _cullingObjectsEnabled[i];
+                    cullingObject.UpdateComponentsStatusOnUpdate();
+                }
+                _cullingObjects = null;
+                _cullingObjectsEnabled = null;
             }
 
             if (_freeCamCamera != null)
@@ -1030,7 +1065,7 @@ namespace MapLootEditorLite.Client
             if (_gameCamera != null)
             {
                 _gameCamera.gameObject.tag = "MainCamera";
-                _gameCamera.enabled = true;
+                _gameCamera.gameObject.SetActive(_gameCameraActive);
                 _gameCamera = null;
             }
 
@@ -1072,20 +1107,6 @@ namespace MapLootEditorLite.Client
 
             if (move.sqrMagnitude > 0.001f)
                 _freeCamCamera.transform.position += move.normalized * speed;
-        }
-
-        private void UpdateFreeCamPlayer()
-        {
-            if (_freeCamPlayer == null || _freeCamCamera == null)
-                return;
-
-            var playerPos = _freeCamCamera.transform.position - _freeCamCamera.transform.forward * 2.5f;
-            _freeCamPlayer.Transform.position = playerPos;
-
-            var forward = _freeCamCamera.transform.forward;
-            forward.y = 0;
-            if (forward.sqrMagnitude > 0.001f)
-                _freeCamPlayer.Transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
         }
 
         private void ToggleFreeCamCursor()
