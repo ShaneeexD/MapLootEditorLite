@@ -1,71 +1,34 @@
-# MapEditorLite
+﻿# Map Editor Lite - Custom Map Editor Framework
 
-A lightweight SPTarkov framework that lets players and modders place custom loot spawns, loot zones, and static objects in raid, then export them as shareable loot packs. The client handles the editor and preview; the server mod injects the loot into the SPT raid loot tables so it works like regular server loot. Forced spawns are handled by WTT-CommonLib, making them ideal for quest items.
+**Map Editor Lite** is a server-side framework for SPTarkov that lets anyone create and share custom map content - loot spawns, loot zones, static objects, interactive objects, bot spawn points, extract zones, and light zones - using an in-raid editor and simple JSON packs, no programming required.
 
-## What it does
+## What It Does
 
-- **Editor (client)**: in-raid BepInEx tool for placing markers, previewing items, and exporting loot packs.
-- **Web tool**: React app for editing packs, item TPL mapping, and importing spawns copied from the in-game editor.
-- **Server mod**: reads the pack JSON and injects the loot into the server's raid loot tables.
-- **WTT-CommonLib integration**: forced/quest spawns are registered through WTT-CommonLib's `CustomLootspawnService`.
-- **Modder friendly**: other mods ship pack JSON files; the server mod loads them automatically.
+- **In-raid editor**: press `F8` while in a raid to place markers, preview items, and build custom map packs.
+- **Custom markers**: loot spawns, loot zones, static objects, interactive objects, bot spawn points, extract zones, and light zones.
+- **Pack system**: export your map edits as shareable JSON packs.
+- **Web tool**: import and tune exported packs, adjust spawn chances, mark quest/forced items, and finalize them for release.
+- **Server injection**: the server mod reads pack JSON and injects the content into SPT raid loot tables, exfiltration points, bot zones, and lighting.
+- **Forced spawns**: quest and guaranteed spawns are registered through **WTT-CommonLib**.
+- **Modder friendly**: other mods can ship pack JSON files in their own `MapLoot/` folders; the server mod loads them automatically.
 
-## Structure
+## Web Tool
 
+The included **Map Editor Lite Tool** is a React app for importing, editing, and finalizing packs. Build it locally from the `Tool/` folder:
+
+```powershell
+cd Tool
+npm install
+npm run build
 ```
-MapEditorLite/
-├── Client/                 # BepInEx client plugin (editor + preview)
-├── Server/                 # SPT server mod (loot injection)
-├── Tool/                   # Web app (Vite + React + TypeScript + Tailwind)
-├── MapEditorLite.sln
-└── README.md
-```
-
-## Setup
-
-1. **Set SPT Path**
-
-   ```
-   SPTPath=C:\Games\SPT-4.0.1
-   ```
-
-2. **Build the plugin**
-
-   ```powershell
-   dotnet build "MapEditorLite.sln" -c Release /p:SPTPath=%SPTPath%
-   ```
-
-   Output:
-   - `Client/bin/Release/net471/MapEditorLite.Client.dll`
-   - `Server/bin/Release/net9.0/MapEditorLite.Server.dll`
-
-3. **Build the web tool**
-
-   ```powershell
-   cd Tool
-   npm install
-   npm run build
-   ```
 
 ## Installation
 
-### Client plugin
+1. Drag the `SPT` and `BepInEx` folders from the mod archive into your SPT installation directory.
+2. Make sure **WTT-CommonLib** (`com.wtt.commonlib`) is installed as a server mod.
+3. Start the server. Map Editor Lite loads automatically.
 
-Copy `MapEditorLite.Client.dll` to `SPT/BepInEx/plugins/`.
-
-### Server mod
-
-Create `SPT/user/mods/MapEditorLite/` and copy `MapEditorLite.Server.dll` and `package.json` into it.
-
-```
-SPT/user/mods/MapEditorLite/
-├── MapEditorLite.Server.dll
-└── package.json
-```
-
-The server mod requires **WTT-CommonLib** (`com.wtt.commonlib`) to be installed as a server mod. The SPT server mod loader will load it automatically because of the declared dependency.
-
-On first launch the client mod creates:
+On first launch the client creates:
 
 - `SPT/BepInEx/config/com.shaneeexd.mapeditorlite.cfg` — BepInEx configuration (editor toggle, hotkeys, etc.)
 - `SPT/user/mods/MapEditorLite/` — client read/write data folder
@@ -74,9 +37,8 @@ On first launch the client mod creates:
   - `imports/`         # files imported into the tool
   - `cache/`           # cached item data
   - `prefabs/`         # saved prefabs
-  - `exports/`         # packs exported from the in-raid editor (temporary)
+  - `exports/`         # packs exported from the in-raid editor
   - `packs/`           # final user packs for the server to load
-  - `api_item_names.json` — offline item name cache
 
 ## Configuration
 
@@ -91,73 +53,42 @@ EnableDebugVisuals = false
 - `EnableEditor` — set to `true` while developing. When `false`, the F8 editor is disabled.
 - `EnableDebugVisuals` — show extra debug visuals in raid.
 
-## Usage
+## Creating a Map Pack
 
-### For players
+1. Install the client plugin and server mod.
+2. Set `EnableEditor = true` in the BepInEx config.
+3. Enter a raid and press `F8` to open the editor.
+4. Place markers for loot, zones, objects, bot spawns, extracts, or lights.
+5. Enter a pack name and click **Export Pack** in the editor.
+6. The exported pack is written to `SPT/user/mods/MapEditorLite/exports/`.
+7. Open the **Map Editor Lite Tool**, import the pack, tune spawn chances, and mark any quest items as **Forced (Quest)**.
+8. Move the final pack into `SPT/user/mods/MapEditorLite/packs/` (or your own mod's `MapLoot/` folder).
 
-1. Install the client plugin and the server mod.
-2. Place final loot packs in any of these locations:
-   - `SPT/user/mods/MapEditorLite/MapLoot/`
-   - `SPT/user/mods/MapEditorLite/packs/`
-   - `SPT/user/mods/MyCustomMod/MapLoot/`
-   - `SPT/BepInEx/config/MapEditorLite/exports/` (legacy)
-   - `SPT/BepInEx/config/MapEditorLite/spawns/` (legacy)
+> **Tip**: Always test on a new developer profile (and clear temp cache) so you can verify spawns, loot, extracts, and lighting without affecting your main save.
 
-The server mod loads every `.json` pack in those folders and injects the loot into the matching map.
+## Publishing a Pack
 
-### For creators
+The final pack is a JSON file that can be distributed as a standalone add-on.
 
-1. Make sure `EnableEditor` is `true` and restart the client.
-2. In raid, press `F8` to open the editor.
-3. Place markers with hotkeys or the F12 buttons.
-4. Enter a pack name and click **Export Pack** in the editor window.
-5. The pack is written to `SPT/user/mods/MapEditorLite/exports/`.
-6. Open the **Map Editor Lite Tool**, import the pack, tune spawn chances, and mark any quest items as **Forced (Quest)**.
-7. Move the final pack into `SPT/user/mods/MapEditorLite/packs/` (or your own mod's `MapLoot/` directory).
+When publishing:
 
-Forced spawns are handled by **WTT-CommonLib** and are guaranteed to spawn, making them ideal for quest items.
+1. **State the dependency**: Your pack requires **Map Editor Lite v1.0.0** for SPT 4.0.13.
+2. **Do not include** the Map Editor Lite DLL or other authors' packs in your zip.
+3. **Test** by extracting and running the server before publishing.
 
-## Pack format
+Users install your pack by dragging the `SPT` folder (containing `user/mods/<YourMod>/MapLoot/...`) into their SPT install.
 
-Packs are JSON files that can contain multiple maps:
+## Dependencies
 
-```json
-{
-  "name": "My Loot Pack",
-  "author": "Your Name",
-  "version": "1.0.0",
-  "maps": {
-    "customs": {
-      "map": "customs",
-      "lootSpawns": [
-        {
-          "id": "abc123",
-          "name": "loot_spawn",
-          "position": { "x": 0, "y": 0, "z": 0 },
-          "rotation": { "x": 0, "y": 0, "z": 0 },
-          "items": [
-            { "template": "544fb45d4bdc2dee738b4568", "chance": 100 },
-            { "template": "5c052e6986f7746b207bc3c9", "chance": 50 }
-          ],
-          "spawnChance": 100,
-          "respawnable": false,
-          "forced": false
-        }
-      ],
-      "lootZones": [ ... ],
-      "objects": [ ... ]
-    }
-  }
-}
-```
+- SPTarkov 4.0.13
+- WTT-CommonLib (server mod)
 
-Each spawn/zone has an `items` list. Every item has its own `chance` (0–100) and is rolled independently, so the total does not need to add up to 100 and the spawn can still end up empty. Old packs using `itemTpls` are automatically migrated.
+## More Information
 
-## Resources
-
+- Full documentation, JSON reference, and examples are in the [GitHub README](https://github.com/ShaneeexD/MapLootEditorLite/blob/main/README.md).
 - **SPT Discord**: https://discord.gg/Xn9ms4saGa
 - **BepInEx Docs**: https://docs.bepinex.dev/
 
 ## License
 
-Use this template freely for your SPT mods.
+MIT License
