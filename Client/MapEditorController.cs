@@ -37,9 +37,9 @@ namespace MapLootEditorLite.Client
         private Camera _freeCamCamera;
         private Camera _gameCamera;
         private Vector3 _freeCamEuler;
-        private const float _freeCamSpeed = 5f;
-        private const float _freeCamFastSpeed = 15f;
-        private const float _freeCamLookSpeed = 2f;
+        public const float FreeCamSpeed = 5f;
+        public const float FreeCamFastSpeed = 15f;
+        public const float FreeCamLookSpeed = 2f;
 
         private bool _mouseDragging;
         private bool _visualsCleared;
@@ -61,6 +61,8 @@ namespace MapLootEditorLite.Client
         private Player _freeCamPlayer;
         private CharacterController _freeCamPlayerController;
         private Vector3 _freeCamPlayerStartPosition;
+        private GamePlayerOwner _gamePlayerOwner;
+        private bool _originalGamePlayerOwnerEnabled;
 
         private GizmoMode _gizmoMode = GizmoMode.Translate;
         public GizmoMode GizmoMode => _gizmoMode;
@@ -108,6 +110,7 @@ namespace MapLootEditorLite.Client
             PatchMethod(typeof(ActiveHealthController), "ApplyDamage", nameof(ApplyDamagePrefix));
             PatchMethod(typeof(ActiveHealthController), "ChangeHealth", nameof(ChangeHealthPrefix));
             PatchMethod(typeof(Player), "ReceiveDamage", nameof(ReceiveDamagePrefix));
+            PatchMethod(typeof(CameraClass), nameof(CameraClass.ForceSetPosition), nameof(ForceSetCameraPositionPrefix));
         }
 
         private void TryApplyInputPatches()
@@ -273,6 +276,13 @@ namespace MapLootEditorLite.Client
         public static bool ReceiveDamagePrefix(float damage, EBodyPart part, EDamageType type, float absorbed, MaterialType special, Player __instance)
         {
             if (!FreeCamInvulnerable || __instance == null || !__instance.IsYourPlayer)
+                return true;
+            return false;
+        }
+
+        public static bool ForceSetCameraPositionPrefix()
+        {
+            if (Instance == null || !Instance._freeCam)
                 return true;
             return false;
         }
@@ -825,6 +835,7 @@ namespace MapLootEditorLite.Client
         }
 
         public bool IsFreeCam => _freeCam;
+        public bool IsFreeCamCursorLocked => _freeCamCursorLocked;
 
         public void CloseEditor()
         {
@@ -955,6 +966,11 @@ namespace MapLootEditorLite.Client
             camLight.color = Color.white;
             camLight.shadows = LightShadows.None;
 
+            var renderController = go.GetComponent<MapEditorFreecamRenderController>();
+            if (renderController == null)
+                renderController = go.AddComponent<MapEditorFreecamRenderController>();
+            renderController.enabled = true;
+
             _gameCamera.gameObject.tag = "Untagged";
             _gameCamera.enabled = false;
 
@@ -964,6 +980,14 @@ namespace MapLootEditorLite.Client
                 _freeCamPlayerController = _freeCamPlayer.gameObject.GetComponent<CharacterController>();
                 if (_freeCamPlayerController != null)
                     _freeCamPlayerController.enabled = false;
+
+                _gamePlayerOwner = _freeCamPlayer.GetComponentInChildren<GamePlayerOwner>();
+                if (_gamePlayerOwner != null)
+                {
+                    _originalGamePlayerOwnerEnabled = _gamePlayerOwner.enabled;
+                    _gamePlayerOwner.enabled = false;
+                }
+
                 _freeCamPlayerStartPosition = _freeCamPlayer.Position;
             }
 
@@ -982,6 +1006,9 @@ namespace MapLootEditorLite.Client
                 if (ground.HasValue)
                     _freeCamPlayer.Transform.position = ground.Value;
 
+                if (_gamePlayerOwner != null)
+                    _gamePlayerOwner.enabled = _originalGamePlayerOwnerEnabled;
+
                 if (_freeCamPlayerController != null)
                 {
                     _freeCamPlayerController.enabled = true;
@@ -992,6 +1019,10 @@ namespace MapLootEditorLite.Client
 
             if (_freeCamCamera != null)
             {
+                var renderController = _freeCamCamera.gameObject.GetComponent<MapEditorFreecamRenderController>();
+                if (renderController != null)
+                    renderController.enabled = false;
+
                 _freeCamCamera.gameObject.tag = "Untagged";
                 UnityEngine.Object.Destroy(_freeCamCamera.gameObject);
                 _freeCamCamera = null;
@@ -1015,12 +1046,12 @@ namespace MapLootEditorLite.Client
             if (_freeCamCamera == null)
                 return;
 
-            _freeCamEuler.x -= Input.GetAxis("Mouse Y") * _freeCamLookSpeed;
-            _freeCamEuler.y += Input.GetAxis("Mouse X") * _freeCamLookSpeed;
+            _freeCamEuler.x -= Input.GetAxis("Mouse Y") * FreeCamLookSpeed;
+            _freeCamEuler.y += Input.GetAxis("Mouse X") * FreeCamLookSpeed;
             _freeCamCamera.transform.eulerAngles = _freeCamEuler;
 
             float speed = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)
-                ? _freeCamFastSpeed : _freeCamSpeed;
+                ? FreeCamFastSpeed : FreeCamSpeed;
             speed *= Time.deltaTime;
 
             var forward = _freeCamCamera.transform.forward;
@@ -1032,8 +1063,15 @@ namespace MapLootEditorLite.Client
             if (Input.GetKey(KeyCode.D)) move += right;
             if (Input.GetKey(KeyCode.Space)) move += Vector3.up;
             if (Input.GetKey(KeyCode.LeftControl)) move -= Vector3.up;
+            if (Input.GetKey(KeyCode.Q)) move += Vector3.up;
+            if (Input.GetKey(KeyCode.E)) move -= Vector3.up;
 
-            _freeCamCamera.transform.position += move.normalized * speed;
+            var scroll = Input.GetAxis("Mouse ScrollWheel");
+            if (scroll != 0f)
+                move += forward * scroll * 100f;
+
+            if (move.sqrMagnitude > 0.001f)
+                _freeCamCamera.transform.position += move.normalized * speed;
         }
 
         private void UpdateFreeCamPlayer()
