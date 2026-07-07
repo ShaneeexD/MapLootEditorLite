@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
@@ -7,6 +8,11 @@ namespace MapLootEditorLite.Client
 {
     public static class PrefabStorage
     {
+        private static readonly JsonSerializerSettings _settings = new JsonSerializerSettings
+        {
+            Culture = CultureInfo.InvariantCulture,
+            Formatting = Formatting.Indented
+        };
         private static string _prefabDir;
 
         public static void Initialize(string baseDir)
@@ -24,7 +30,7 @@ namespace MapLootEditorLite.Client
         public static void Save(PrefabData prefab)
         {
             var path = PrefabPath(prefab.name);
-            File.WriteAllText(path, JsonConvert.SerializeObject(prefab, Formatting.Indented));
+            File.WriteAllText(path, JsonConvert.SerializeObject(prefab, _settings));
         }
 
         public static PrefabData Load(string name)
@@ -32,7 +38,7 @@ namespace MapLootEditorLite.Client
             var path = PrefabPath(name);
             if (!File.Exists(path))
                 return null;
-            return JsonConvert.DeserializeObject<PrefabData>(File.ReadAllText(path));
+            return JsonConvert.DeserializeObject<PrefabData>(File.ReadAllText(path), _settings);
         }
 
         public static List<string> ListPrefabNames()

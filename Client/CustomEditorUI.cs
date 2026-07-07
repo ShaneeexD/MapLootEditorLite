@@ -118,6 +118,14 @@ namespace MapLootEditorLite.Client
         private bool _scanning;
         private Text _goPreviewNameText;
         private RectTransform _goActionBtnRow;
+
+        // Output tab
+        private RectTransform _outputTab;
+        private Button _outputTabButton;
+        private RectTransform _outputContent;
+        private static readonly List<string> _outputMessages = new List<string>();
+        private static CustomEditorUI _outputInstance;
+        private const int MaxOutputMessages = 100;
         private readonly List<GameObject> _sceneObjectCache = new List<GameObject>();
         private GameObject _selectedSceneGO;
         private IHasSourceObject _goListTarget;
@@ -167,6 +175,7 @@ namespace MapLootEditorLite.Client
 
         private void Awake()
         {
+            _outputInstance = this;
             BuildUI();
             Hide();
         }
@@ -174,6 +183,8 @@ namespace MapLootEditorLite.Client
         private void Start()
         {
             _modEventSystem = UIBuilder.EnsureEventSystem(transform);
+            LogOutput($"Mod data directory: {Plugin.ModDataDirectory}");
+            LogOutput($"Server mod directory: {Plugin.ServerModDirectory}");
         }
 
         private void Update()
@@ -275,6 +286,37 @@ namespace MapLootEditorLite.Client
         public void RequestInspectorRefresh()
         {
             _inspectorRefreshPending = true;
+        }
+
+        public static void LogOutput(string message)
+        {
+            lock (_outputMessages)
+            {
+                _outputMessages.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
+                while (_outputMessages.Count > MaxOutputMessages)
+                    _outputMessages.RemoveAt(0);
+            }
+            _outputInstance?.RefreshOutput();
+        }
+
+        public static void ClearOutput()
+        {
+            lock (_outputMessages)
+            {
+                _outputMessages.Clear();
+            }
+            _outputInstance?.RefreshOutput();
+        }
+
+        public static void CopyOutputToClipboard()
+        {
+            string text;
+            lock (_outputMessages)
+            {
+                text = string.Join("\n", _outputMessages);
+            }
+            GUIUtility.systemCopyBuffer = text;
+            LogOutput("Copied output log to clipboard.");
         }
 
         private void UpdateCanvasScale()
@@ -558,10 +600,11 @@ namespace MapLootEditorLite.Client
             var tabBar = UIBuilder.CreatePanel("TabBar", _bottomPanel, new Color(0.08f, 0.08f, 0.08f, 1f));
             UIBuilder.AddHorizontalLayout(tabBar, 4, 4, false, false);
             UIBuilder.AddLayoutElement(tabBar, null, 26, null, 26, null, 0);
-            _prefabsTabButton  = UIBuilder.CreateButton(tabBar, "Prefabs",      () => SelectBottomTab(0), 70, 22);
-            _scatterTabButton  = UIBuilder.CreateButton(tabBar, "Scatter",      () => SelectBottomTab(1), 70, 22);
-            _groupsTabButton   = UIBuilder.CreateButton(tabBar, "Groups",       () => SelectBottomTab(2), 70, 22);
-            _objectsTabButton  = UIBuilder.CreateButton(tabBar, "GameObjects",  () => SelectBottomTab(3), 90, 22);
+            _prefabsTabButton  = UIBuilder.CreateButton(tabBar, "Prefabs",      () => SelectBottomTab(0), 60, 22);
+            _scatterTabButton  = UIBuilder.CreateButton(tabBar, "Scatter",      () => SelectBottomTab(1), 60, 22);
+            _groupsTabButton   = UIBuilder.CreateButton(tabBar, "Groups",       () => SelectBottomTab(2), 60, 22);
+            _objectsTabButton  = UIBuilder.CreateButton(tabBar, "GameObjects",  () => SelectBottomTab(3), 76, 22);
+            _outputTabButton   = UIBuilder.CreateButton(tabBar, "Output",       () => SelectBottomTab(4), 60, 22);
 
             var tabContent = UIBuilder.CreatePanel("TabContent", _bottomPanel, new Color(0, 0, 0, 0));
             tabContent.anchorMin = Vector2.zero;
@@ -574,6 +617,7 @@ namespace MapLootEditorLite.Client
             BuildScatterTab(tabContent);
             BuildGroupsTab(tabContent);
             BuildObjectsTab(tabContent);
+            BuildOutputTab(tabContent);
 
             SelectBottomTab(0);
         }
@@ -585,11 +629,13 @@ namespace MapLootEditorLite.Client
             _scatterTab.gameObject.SetActive(index == 1);
             _groupsTab.gameObject.SetActive(index == 2);
             if (_objectsTab != null) _objectsTab.gameObject.SetActive(index == 3);
+            if (_outputTab != null) _outputTab.gameObject.SetActive(index == 4);
 
             UpdateTabButton(_prefabsTabButton, index == 0);
             UpdateTabButton(_scatterTabButton, index == 1);
             UpdateTabButton(_groupsTabButton, index == 2);
             if (_objectsTabButton != null) UpdateTabButton(_objectsTabButton, index == 3);
+            if (_outputTabButton != null) UpdateTabButton(_outputTabButton, index == 4);
         }
 
         private void UpdateTabButton(Button btn, bool active)
@@ -735,6 +781,50 @@ namespace MapLootEditorLite.Client
             UIBuilder.AddHorizontalLayout(_goActionBtnRow, 2, 2, false, false);
             UIBuilder.AddLayoutElement(_goActionBtnRow, null, 22, null, 22, null, 0);
             RefreshGOActionRow();
+        }
+
+        private void BuildOutputTab(RectTransform parent)
+        {
+            _outputTab = UIBuilder.CreatePanel("OutputTab", parent, new Color(0.14f, 0.14f, 0.14f, 1f));
+            _outputTab.anchorMin = Vector2.zero;
+            _outputTab.anchorMax = Vector2.one;
+            _outputTab.offsetMin = Vector2.zero;
+            _outputTab.offsetMax = Vector2.zero;
+            UIBuilder.AddVerticalLayout(_outputTab, 4, 4, true, true);
+
+            var header = UIBuilder.CreatePanel("OutputHeader", _outputTab, new Color(0, 0, 0, 0));
+            header.GetComponent<Image>().raycastTarget = false;
+            UIBuilder.AddHorizontalLayout(header, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(header, null, 22, null, 22, null, 0);
+            UIBuilder.CreateButton(header, "Copy", () => CopyOutputToClipboard(), 60, 22);
+            UIBuilder.CreateButton(header, "Clear", () => ClearOutput(), 60, 22);
+
+            var scroll = UIBuilder.CreateScrollView(_outputTab, out _outputContent, out _, 0, 0, 14);
+            UIBuilder.AddLayoutElement(scroll.gameObject, null, null, null, null, null, 1);
+            UIBuilder.AddVerticalLayout(_outputContent, 2, 2, true, true);
+
+            RefreshOutput();
+        }
+
+        private void RefreshOutput()
+        {
+            if (_outputContent == null)
+                return;
+            ClearChildren(_outputContent);
+            List<string> messages;
+            lock (_outputMessages)
+            {
+                messages = new List<string>(_outputMessages);
+            }
+            if (messages.Count == 0)
+            {
+                UIBuilder.CreateText(_outputContent, "No messages yet.", 11, new Color(0.6f, 0.6f, 0.6f, 1f));
+                return;
+            }
+            foreach (var msg in messages)
+            {
+                UIBuilder.CreateText(_outputContent, msg, 11, Color.white);
+            }
         }
 
         private void RefreshObjectsList()

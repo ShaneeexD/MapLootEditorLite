@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using Comfort.Common;
@@ -903,7 +904,9 @@ namespace MapLootEditorLite.Client
                 var world = Singleton<GameWorld>.Instance;
                 if (world == null)
                 {
-                    Plugin.Log.LogWarning("DumpDoorIds: no active raid (GameWorld is null).");
+                    var noRaidMsg = "DumpDoorIds: no active raid (GameWorld is null).";
+                    Plugin.Log.LogWarning(noRaidMsg);
+                    CustomEditorUI.LogOutput(noRaidMsg);
                     return;
                 }
 
@@ -927,12 +930,21 @@ namespace MapLootEditorLite.Client
 
                 var suffix = onlyWithKeys ? "_keyed" : "";
                 var path = Path.Combine(Plugin.ModDataDirectory, $"door_ids_dump{suffix}.json");
-                File.WriteAllText(path, JsonConvert.SerializeObject(doorObjects, Formatting.Indented));
-                Plugin.Log.LogInfo($"Dumped {doorObjects.Count} door IDs to {path}");
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                var json = JsonConvert.SerializeObject(doorObjects, Formatting.Indented, new JsonSerializerSettings
+                {
+                    Culture = CultureInfo.InvariantCulture
+                });
+                File.WriteAllText(path, json);
+                var successMsg = $"Dumped {doorObjects.Count} door IDs to {path}";
+                Plugin.Log.LogInfo(successMsg);
+                CustomEditorUI.LogOutput(successMsg);
             }
             catch (System.Exception ex)
             {
-                Plugin.Log.LogWarning($"Failed to dump door IDs: {ex.Message}");
+                var errorMsg = $"Failed to dump door IDs: {ex.Message}";
+                Plugin.Log.LogWarning(errorMsg);
+                CustomEditorUI.LogOutput(errorMsg);
             }
         }
 
@@ -1924,14 +1936,18 @@ namespace MapLootEditorLite.Client
         {
             if (string.IsNullOrEmpty(_currentMapId) || _manager.Data == null)
             {
-                Plugin.Log.LogWarning("Cannot export pack: no map loaded.");
+                var noMapMsg = "Cannot export pack: no map loaded.";
+                Plugin.Log.LogWarning(noMapMsg);
+                CustomEditorUI.LogOutput(noMapMsg);
                 return;
             }
 
             var safeName = SanitizePackName(packName);
             if (string.IsNullOrEmpty(safeName))
             {
-                Plugin.Log.LogWarning("Cannot export pack: name is empty or invalid.");
+                var invalidMsg = "Cannot export pack: name is empty or invalid.";
+                Plugin.Log.LogWarning(invalidMsg);
+                CustomEditorUI.LogOutput(invalidMsg);
                 return;
             }
 
@@ -1944,11 +1960,16 @@ namespace MapLootEditorLite.Client
             {
                 try
                 {
-                    pack = JsonConvert.DeserializeObject<PackData>(File.ReadAllText(path));
+                    pack = JsonConvert.DeserializeObject<PackData>(File.ReadAllText(path), new JsonSerializerSettings
+                    {
+                        Culture = CultureInfo.InvariantCulture
+                    });
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log.LogWarning($"Failed to read existing pack {path}: {ex.Message}");
+                    var readMsg = $"Failed to read existing pack {path}: {ex.Message}";
+                    Plugin.Log.LogWarning(readMsg);
+                    CustomEditorUI.LogOutput(readMsg);
                 }
             }
 
@@ -1966,8 +1987,15 @@ namespace MapLootEditorLite.Client
             pack.name = packName;
             pack.maps[_currentMapId] = _manager.Data;
 
-            File.WriteAllText(path, JsonConvert.SerializeObject(pack, Formatting.Indented));
-            Plugin.Log.LogInfo($"Exported pack '{safeName}' to {path}");
+            var settings = new JsonSerializerSettings
+            {
+                Culture = CultureInfo.InvariantCulture,
+                Formatting = Formatting.Indented
+            };
+            File.WriteAllText(path, JsonConvert.SerializeObject(pack, settings));
+            var successMsg = $"Exported pack '{safeName}' to {path}";
+            Plugin.Log.LogInfo(successMsg);
+            CustomEditorUI.LogOutput(successMsg);
         }
 
         private static string SanitizePackName(string name)

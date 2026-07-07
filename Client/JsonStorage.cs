@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using Newtonsoft.Json;
 
@@ -5,6 +6,11 @@ namespace MapLootEditorLite.Client
 {
     public static class JsonStorage
     {
+        private static readonly JsonSerializerSettings _settings = new JsonSerializerSettings
+        {
+            Culture = CultureInfo.InvariantCulture,
+            Formatting = Formatting.Indented
+        };
         public static string SaveDirectory { get; set; } = string.Empty;
 
         public static void Initialize(string modDataDirectory)
@@ -23,7 +29,7 @@ namespace MapLootEditorLite.Client
                 return;
 
             Directory.CreateDirectory(SaveDirectory);
-            var json = JsonConvert.SerializeObject(data, Formatting.Indented);
+            var json = JsonConvert.SerializeObject(data, _settings);
             File.WriteAllText(GetFilePath(data.map), json);
         }
 
@@ -34,7 +40,7 @@ namespace MapLootEditorLite.Client
                 return new MapData { map = mapId };
 
             var json = File.ReadAllText(path);
-            var data = JsonConvert.DeserializeObject<MapData>(json);
+            var data = JsonConvert.DeserializeObject<MapData>(json, _settings);
             if (data == null)
                 return new MapData { map = mapId };
 
