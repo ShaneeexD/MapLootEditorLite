@@ -183,7 +183,7 @@ namespace MapLootEditorLite.Client
                     if (attempt == 0)
                         Plugin.Log.LogInfo($"Source object '{sourceObj.sourceObjectName}' for {marker.name} not ready, waiting...");
 
-                    yield return new WaitForSeconds(1f);
+                    yield return new WaitForSecondsRealtime(1f);
                 }
 
                 if (source != null)

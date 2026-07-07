@@ -34,7 +34,8 @@ namespace MapLootEditorLite.Client
     public enum InteractiveObjectType
     {
         Door,
-        Container
+        Container,
+        StationaryWeapon
     }
 
     [JsonConverter(typeof(StringEnumConverter))]
@@ -431,6 +432,8 @@ namespace MapLootEditorLite.Client
 
         public string containerId = ""; // Container item id
         public string containerTemplate = "578f87a3245977356274f2cb"; // Container root template id
+
+        public string weaponTemplate = "5cdeb229d7f00c000e7ce174"; // Stationary weapon root template id (NSV Utes)
         public ContainerLootMode lootMode = ContainerLootMode.Default;
         public List<LootItem> items = new List<LootItem>();
         public float spawnChance = 100f;

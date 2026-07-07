@@ -675,7 +675,8 @@ public record WTTStaticObject
 public enum InteractiveObjectType
 {
     Door,
-    Container
+    Container,
+    StationaryWeapon
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -792,6 +793,9 @@ public record InteractiveObject
 
     [JsonPropertyName("containerTemplate")]
     public string ContainerTemplate { get; set; } = "578f87a3245977356274f2cb";
+
+    [JsonPropertyName("weaponTemplate")]
+    public string WeaponTemplate { get; set; } = "5cdeb229d7f00c000e7ce174";
 
     [JsonPropertyName("lootMode")]
     public ContainerLootMode LootMode { get; set; } = ContainerLootMode.Default;

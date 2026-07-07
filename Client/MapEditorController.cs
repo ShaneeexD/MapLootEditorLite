@@ -11,6 +11,7 @@ using HarmonyLib;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 namespace MapLootEditorLite.Client
 {
@@ -30,6 +31,7 @@ namespace MapLootEditorLite.Client
         private GameWorld _currentGameWorld;
         private string _currentMapId;
         private int _lastToggleFrame = -1;
+        private int UnlockCursorButton => Plugin.UnlockCursorMouseButton?.Value ?? 2;
 
         private bool _freeCam;
         private Camera _freeCamCamera;
@@ -52,6 +54,8 @@ namespace MapLootEditorLite.Client
 
         private bool _freeCamCursorLocked = true;
         private bool _menuCursorLocked = true;
+        private bool _gameInputPaused;
+        private readonly List<EventSystem> _disabledEventSystems = new List<EventSystem>();
         private Quaternion _menuUnlockedCameraRotation;
         private bool _menuUnlockedCameraRotationCaptured;
         private Player _freeCamPlayer;
@@ -169,12 +173,22 @@ namespace MapLootEditorLite.Client
             if (Instance == null)
                 return true;
 
-            if ((axisName == "Mouse X" || axisName == "Mouse Y") &&
-                Instance._editorOpen && !Instance._freeCam && !Instance._menuCursorLocked)
+            if (!Instance._editorOpen)
+                return true;
+
+            var cursorUnlocked = Instance._freeCam ? !Instance._freeCamCursorLocked : !Instance._menuCursorLocked;
+            if (!cursorUnlocked)
+                return true;
+
+            if (axisName == "Mouse X" || axisName == "Mouse Y")
             {
+                // Allow mouse look while right-click panning in freecam.
+                if (Instance._freeCam && Input.GetMouseButton(1))
+                    return true;
                 __result = 0f;
                 return false;
             }
+
             return true;
         }
 
@@ -183,7 +197,11 @@ namespace MapLootEditorLite.Client
             if (Instance == null)
                 return true;
 
-            if (Instance._editorOpen && !Instance._freeCam && !Instance._menuCursorLocked && value == CursorLockMode.Locked)
+            if (!Instance._editorOpen || value != CursorLockMode.Locked)
+                return true;
+
+            var cursorUnlocked = Instance._freeCam ? !Instance._freeCamCursorLocked : !Instance._menuCursorLocked;
+            if (cursorUnlocked)
                 return false;
 
             return true;
@@ -194,7 +212,11 @@ namespace MapLootEditorLite.Client
             if (Instance == null)
                 return true;
 
-            if (Instance._editorOpen && !Instance._freeCam && !Instance._menuCursorLocked && !value)
+            if (!Instance._editorOpen || value)
+                return true;
+
+            var cursorUnlocked = Instance._freeCam ? !Instance._freeCamCursorLocked : !Instance._menuCursorLocked;
+            if (cursorUnlocked)
                 return false;
 
             return true;
@@ -282,6 +304,9 @@ namespace MapLootEditorLite.Client
             if (!_editorOpen && _freeCam)
                 ToggleFreeCam();
 
+            if (_editorOpen && !_freeCam)
+                ToggleFreeCam();
+
             if (_editorOpen)
             {
                 if (Input.GetKeyDown(KeyCode.Alpha1))
@@ -312,7 +337,7 @@ namespace MapLootEditorLite.Client
 
                 if (_freeCam)
                 {
-                    if (Input.GetMouseButtonDown(2))
+                    if (Input.GetMouseButtonDown(UnlockCursorButton))
                         ToggleFreeCamCursor();
 
                     bool rightClickPan = Input.GetMouseButton(1) && !IsMouseOverUI();
@@ -339,7 +364,7 @@ namespace MapLootEditorLite.Client
                 }
                 else
                 {
-                    if (Input.GetMouseButtonDown(2))
+                    if (Input.GetMouseButtonDown(UnlockCursorButton))
                         ToggleMenuCursor();
 
                     if (_menuCursorLocked)
@@ -353,12 +378,17 @@ namespace MapLootEditorLite.Client
                         Cursor.lockState = CursorLockMode.None;
                     }
 
-                    HandleSelectionInput();
-                    HandleMovementInput();
+                    if (_menuCursorLocked)
+                    {
+                        HandleSelectionInput();
+                        HandleMovementInput();
+                    }
                     if (!_menuCursorLocked)
                         HandleMouseInput();
                 }
             }
+
+            UpdateGameInputFocus();
 
             _renderer.ShowGizmo = !_freeCam || !_freeCamCursorLocked;
             _renderer.Update();
@@ -796,6 +826,11 @@ namespace MapLootEditorLite.Client
 
         public bool IsFreeCam => _freeCam;
 
+        public void CloseEditor()
+        {
+            _editorOpen = false;
+        }
+
         public void GoToMarker(MarkerBase marker)
         {
             if (marker == null)
@@ -1032,6 +1067,72 @@ namespace MapLootEditorLite.Client
                     _menuUnlockedCameraRotationCaptured = true;
                 }
             }
+        }
+
+        private void UpdateGameInputFocus()
+        {
+            if (!_editorOpen)
+            {
+                if (_gameInputPaused)
+                    ResumeGameInput();
+                return;
+            }
+
+            var cursorUnlocked = _freeCam ? !_freeCamCursorLocked : !_menuCursorLocked;
+            if (cursorUnlocked)
+            {
+                if (!_gameInputPaused)
+                    PauseGameInput();
+
+                var modEventSystem = _ui?.ModEventSystem;
+                if (modEventSystem != null && EventSystem.current != modEventSystem)
+                    EventSystem.current = modEventSystem;
+            }
+            else if (_gameInputPaused)
+            {
+                ResumeGameInput();
+            }
+        }
+
+        private void PauseGameInput()
+        {
+            _gameInputPaused = true;
+
+            var modEventSystem = _ui?.ModEventSystem;
+            if (modEventSystem == null)
+                return;
+
+            foreach (var es in FindObjectsOfType<EventSystem>())
+            {
+                if (es == modEventSystem || !es.enabled)
+                    continue;
+                es.enabled = false;
+                _disabledEventSystems.Add(es);
+            }
+            modEventSystem.gameObject.SetActive(true);
+            modEventSystem.enabled = true;
+            EventSystem.current = modEventSystem;
+        }
+
+        private void ResumeGameInput()
+        {
+            if (_gameInputPaused)
+                _gameInputPaused = false;
+
+            var modEventSystem = _ui?.ModEventSystem;
+            if (modEventSystem != null)
+            {
+                modEventSystem.enabled = false;
+                modEventSystem.gameObject.SetActive(false);
+                if (EventSystem.current == modEventSystem)
+                    EventSystem.current = null;
+            }
+            foreach (var es in _disabledEventSystems)
+            {
+                if (es != null)
+                    es.enabled = true;
+            }
+            _disabledEventSystems.Clear();
         }
 
         private void HandleMouseInput()

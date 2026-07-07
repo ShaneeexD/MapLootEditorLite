@@ -62,6 +62,9 @@ namespace MapLootEditorLite.Client
         private Button _rotateButton;
         private Button _scaleButton;
         private List<Button> _gizmoButtons = new List<Button>();
+        private EventSystem _modEventSystem;
+
+        public EventSystem ModEventSystem => _modEventSystem;
 
         private bool _isVisible;
         private bool _isDeletePending;
@@ -170,7 +173,7 @@ namespace MapLootEditorLite.Client
 
         private void Start()
         {
-            UIBuilder.EnsureEventSystem(transform);
+            _modEventSystem = UIBuilder.EnsureEventSystem(transform);
         }
 
         private void Update()
@@ -378,14 +381,21 @@ namespace MapLootEditorLite.Client
                 new MenuItem("Interactive", subItems: new List<MenuItem>
                 {
                     new MenuItem("Custom Door", () => controller.CreateInteractiveObject(InteractiveObjectType.Door)),
-                    new MenuItem("Custom Container", () => controller.CreateInteractiveObject(InteractiveObjectType.Container))
+                    new MenuItem("Custom Container", () => controller.CreateInteractiveObject(InteractiveObjectType.Container)),
+                    new MenuItem("Custom Stationary Weapon", () => controller.CreateInteractiveObject(InteractiveObjectType.StationaryWeapon))
                 })
             }, 84, 22);
             UIBuilder.CreateButton(row1, "Snap",         () => controller.SnapSelected(),     46, 22);
             UIBuilder.CreateButton(row1, "Duplicate",    () => controller.DuplicateSelected(),68, 22);
             UIBuilder.CreateButton(row1, "Delete",       () => RequestDelete(),               54, 22);
             UIBuilder.CreateButton(row1, "Clear Prev",   () => controller.ClearPreviews(),    76, 22);
-            _editorModeButton = UIBuilder.CreateButton(row1, "Editor Mode", () => controller.ToggleFreeCam(), 92, 22);
+            _editorModeButton = UIBuilder.CreateButton(row1, "Editor Mode", () =>
+            {
+                if (controller.IsFreeCam)
+                    controller.CloseEditor();
+                else
+                    controller.ToggleFreeCam();
+            }, 92, 22);
             _translateButton = UIBuilder.CreateButton(row1, "T", () => controller.SetGizmoMode(GizmoMode.Translate), 24, 22, 10);
             _rotateButton    = UIBuilder.CreateButton(row1, "R", () => controller.SetGizmoMode(GizmoMode.Rotate),    24, 22, 10);
             _scaleButton     = UIBuilder.CreateButton(row1, "S", () => controller.SetGizmoMode(GizmoMode.Scale),     24, 22, 10);
@@ -870,7 +880,7 @@ namespace MapLootEditorLite.Client
                     continue;
                 }
 
-                if (!go.name.StartsWith("MLE_") && go.GetComponent<PreviewLootMarker>() == null)
+                if (!go.name.StartsWith("MLE_", StringComparison.Ordinal) && go.GetComponent<PreviewLootMarker>() == null)
                 {
                     var lod = go.GetComponent<LODGroup>();
                     if (lod != null)
@@ -994,7 +1004,7 @@ namespace MapLootEditorLite.Client
 
             UIBuilder.CreateText(_renderDistanceDialogPanel, "Vanilla Render Distance", 13, Color.white, FontStyle.Bold);
             UIBuilder.CreateText(_renderDistanceDialogPanel, "Max distance to render vanilla gizmos (0 = unlimited):", 11, new Color(0.7f, 0.7f, 0.7f, 1f));
-            _renderDistanceInput = UIBuilder.CreateInputField(_renderDistanceDialogPanel, "meters", (Plugin.VanillaRenderDistance?.Value ?? 50f).ToString("F0"), null, 240, 22);
+            _renderDistanceInput = UIBuilder.CreateInputField(_renderDistanceDialogPanel, "meters", (Plugin.VanillaRenderDistance?.Value ?? 50f).ToString("F0", CultureInfo.InvariantCulture), null, 240, 22);
 
             var row = UIBuilder.CreatePanel("RenderDistanceDialogRow", _renderDistanceDialogPanel, new Color(0, 0, 0, 0));
             UIBuilder.AddHorizontalLayout(row, 8, 8, false, false);
@@ -1010,7 +1020,7 @@ namespace MapLootEditorLite.Client
         {
             CloseAllMenus();
             if (_renderDistanceDialogPanel == null || _renderDistanceInput == null) return;
-            _renderDistanceInput.text = (Plugin.VanillaRenderDistance?.Value ?? 50f).ToString("F0");
+            _renderDistanceInput.text = (Plugin.VanillaRenderDistance?.Value ?? 50f).ToString("F0", CultureInfo.InvariantCulture);
             _renderDistanceDialogPanel.gameObject.SetActive(true);
         }
 
@@ -1642,7 +1652,7 @@ namespace MapLootEditorLite.Client
             if (obj.scale == null)
                 obj.scale = new TransformData { x = 1f, y = 1f, z = 1f };
 
-            BuildDropdownField(_inspectorContent, "Type", obj.interactiveType.ToString(), new[] { "Door", "Container" }, (v) =>
+            BuildDropdownField(_inspectorContent, "Type", obj.interactiveType.ToString(), new[] { "Door", "Container", "StationaryWeapon" }, (v) =>
             {
                 obj.interactiveType = (InteractiveObjectType)System.Enum.Parse(typeof(InteractiveObjectType), v);
                 manager.IsDirty = true;
@@ -1656,7 +1666,7 @@ namespace MapLootEditorLite.Client
             {
                 BuildStringField(_inspectorContent, "Key Template Id", obj.keyId ?? "", (v) => { obj.keyId = v; manager.IsDirty = true; });
             }
-            else
+            else if (obj.interactiveType == InteractiveObjectType.Container)
             {
                 BuildStringFieldWithButton(_inspectorContent, "Container Id", obj.containerId ?? "", (v) => { obj.containerId = v; manager.IsDirty = true; }, "Gen", () =>
                 {
@@ -1679,6 +1689,10 @@ namespace MapLootEditorLite.Client
                     BuildStringField(_inspectorContent, "Quest ID", obj.questId ?? "", (v) => { obj.questId = v; manager.IsDirty = true; });
                 }
                 BuildItemsList(obj.items, false, (i) => { });
+            }
+            else if (obj.interactiveType == InteractiveObjectType.StationaryWeapon)
+            {
+                BuildWeaponTemplateDropdown(obj);
             }
 
             UIBuilder.CreateButton(_inspectorContent, "Preview Object", () => previews.SpawnInteractivePreview(obj), 100, 24);
@@ -1998,6 +2012,12 @@ namespace MapLootEditorLite.Client
             ("578f87ad245977356274f2cc", "Wooden crate")
         };
 
+        public static readonly (string id, string name)[] WeaponTemplates = new (string, string)[]
+        {
+            ("5cdeb229d7f00c000e7ce174", "NSV Utes"),
+            ("5d52cc5ba4b9367408500062", "AGS-30")
+        };
+
         private void BuildContainerTemplateDropdown(InteractiveObject obj)
         {
             var options = LootContainerTemplates.Select(t => t.name).ToArray();
@@ -2009,6 +2029,21 @@ namespace MapLootEditorLite.Client
             {
                 var selected = LootContainerTemplates.FirstOrDefault(t => t.name == v);
                 obj.containerTemplate = selected.id;
+                manager.IsDirty = true;
+            });
+        }
+
+        private void BuildWeaponTemplateDropdown(InteractiveObject obj)
+        {
+            var options = WeaponTemplates.Select(t => t.name).ToArray();
+            var current = WeaponTemplates.FirstOrDefault(t => t.id == obj.weaponTemplate).name;
+            if (string.IsNullOrEmpty(current))
+                current = obj.weaponTemplate;
+
+            BuildDropdownField(_inspectorContent, "Weapon Template", current, options, (v) =>
+            {
+                var selected = WeaponTemplates.FirstOrDefault(t => t.name == v);
+                obj.weaponTemplate = selected.id;
                 manager.IsDirty = true;
             });
         }

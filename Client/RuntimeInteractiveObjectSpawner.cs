@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Comfort.Common;
 using EFT;
 using EFT.Interactive;
@@ -156,7 +157,7 @@ namespace MapLootEditorLite.Client
                 if (attempt == 0)
                     Plugin.Log.LogInfo($"Source object '{obj.sourceObjectName}' for {obj.name} not ready, waiting...");
 
-                yield return new WaitForSeconds(1f);
+                yield return new WaitForSecondsRealtime(1f);
             }
 
             if (source == null)
@@ -226,8 +227,6 @@ namespace MapLootEditorLite.Client
 
             if (wio != null)
             {
-                var gameWorld = Singleton<GameWorld>.Instance;
-
                 wio.Id = obj.id;
 
                 if (obj.interactiveType == InteractiveObjectType.Door)
@@ -256,14 +255,10 @@ namespace MapLootEditorLite.Client
                     if (lootable != null)
                         wio = lootable;
                     wio.Id = obj.containerId;
-                    if (lootable != null && gameWorld != null)
+                    if (lootable != null)
                     {
                         lootable.Template = string.IsNullOrWhiteSpace(obj.containerTemplate) ? "578f87a3245977356274f2cb" : obj.containerTemplate;
-                        StartCoroutine(InitializeContainerLootCoroutine(obj, lootable, gameWorld));
-                    }
-                    else if (gameWorld == null)
-                    {
-                        Plugin.Log.LogWarning($"GameWorld not available for container '{obj.name}'; cannot initialize loot.");
+                        StartCoroutine(InitializeContainerLootCoroutine(obj, lootable));
                     }
                     else
                     {
@@ -271,14 +266,22 @@ namespace MapLootEditorLite.Client
                     }
                 }
 
-                if (gameWorld != null && gameWorld.World_0 != null)
+                RegisterWorldInteractiveObjectWhenReady(wio, obj.name);
+            }
+            else if (obj.interactiveType == InteractiveObjectType.StationaryWeapon)
+            {
+                var stationaryWeapon = instance.GetComponentInChildren<StationaryWeapon>(true);
+                if (stationaryWeapon != null)
                 {
-                    gameWorld.RegisterWorldInteractionObject(wio);
-                    Plugin.Log.LogInfo($"Registered interactive object '{obj.name}' (id={wio.Id}) with world.");
+                    stationaryWeapon.IdEditable = obj.id;
+                    if (!string.IsNullOrEmpty(obj.weaponTemplate))
+                        stationaryWeapon.Template = obj.weaponTemplate;
+                    RecalculateStationaryWeaponLimits(stationaryWeapon);
+                    StartCoroutine(InitializeStationaryWeaponCoroutine(obj, stationaryWeapon));
                 }
                 else
                 {
-                    Plugin.Log.LogWarning($"GameWorld/World not available for '{obj.name}'; interactive object not registered.");
+                    Plugin.Log.LogWarning($"Spawned stationary weapon '{obj.name}' has no StationaryWeapon component; interaction will not work.");
                 }
             }
             else
@@ -289,9 +292,117 @@ namespace MapLootEditorLite.Client
             Plugin.Log.LogInfo($"Spawned interactive object {obj.name} (type={obj.interactiveType})");
         }
 
+        private void RegisterWorldInteractiveObjectWhenReady(WorldInteractiveObject wio, string name)
+        {
+            var gameWorld = Singleton<GameWorld>.Instance;
+            if (gameWorld != null && gameWorld.World_0 != null)
+            {
+                gameWorld.RegisterWorldInteractionObject(wio);
+                Plugin.Log.LogInfo($"Registered interactive object '{name}' (id={wio.Id}) with world.");
+            }
+            else
+            {
+                StartCoroutine(RegisterWorldInteractiveObjectCoroutine(wio, name));
+            }
+        }
+
+        private IEnumerator RegisterWorldInteractiveObjectCoroutine(WorldInteractiveObject wio, string name)
+        {
+            while (true)
+            {
+                var gameWorld = Singleton<GameWorld>.Instance;
+                if (gameWorld != null && gameWorld.World_0 != null)
+                {
+                    gameWorld.RegisterWorldInteractionObject(wio);
+                    Plugin.Log.LogInfo($"Registered interactive object '{name}' (id={wio.Id}) with world.");
+                    yield break;
+                }
+                yield return new WaitForSecondsRealtime(0.5f);
+            }
+        }
+
         private static string GenerateItemId()
         {
             return Guid.NewGuid().ToString("N").Substring(0, 24);
+        }
+
+        private IEnumerator InitializeStationaryWeaponCoroutine(InteractiveObject obj, StationaryWeapon stationaryWeapon)
+        {
+            var timeout = 60f;
+            var elapsed = 0f;
+            LootItemPositionClass lootData = null;
+            while (elapsed < timeout)
+            {
+                var gameWorld = Singleton<GameWorld>.Instance;
+                if (gameWorld != null && gameWorld.AllLoot != null)
+                {
+                    lootData = gameWorld.AllLoot.FirstOrDefault(x => x.Id == obj.id);
+                    if (lootData != null)
+                        break;
+                }
+                yield return new WaitForSecondsRealtime(0.5f);
+                elapsed += 0.5f;
+            }
+
+            var finalGameWorld = Singleton<GameWorld>.Instance;
+            if (finalGameWorld == null)
+            {
+                Plugin.Log.LogWarning($"GameWorld not available for stationary weapon '{obj.name}'; cannot initialize.");
+                yield break;
+            }
+
+            if (lootData == null)
+            {
+                Plugin.Log.LogWarning($"Stationary weapon '{obj.name}' not found in AllLoot after {timeout}s.");
+                yield break;
+            }
+
+            var item = lootData.Item;
+            if (item == null)
+            {
+                Plugin.Log.LogWarning($"Stationary weapon '{obj.name}' loot entry has no item.");
+                yield break;
+            }
+
+            if (stationaryWeapon.ItemController != null)
+            {
+                Plugin.Log.LogInfo($"Stationary weapon '{obj.name}' already initialized by the game; skipping manual init.");
+                yield break;
+            }
+
+            var controller = new TraderControllerClass(item, item.Id, item.ShortName.Localized(null), true, EOwnerType.Profile);
+            stationaryWeapon.Init(controller);
+            finalGameWorld.RegisterLoot<StationaryWeapon>(stationaryWeapon);
+            Plugin.Log.LogInfo($"Initialized stationary weapon '{obj.name}' id={obj.id}.");
+        }
+
+        private static void RecalculateStationaryWeaponLimits(StationaryWeapon stationaryWeapon)
+        {
+            var hinge = stationaryWeapon.Hinge;
+            if (hinge == null)
+                return;
+
+            var orientation = stationaryWeapon.Orientation;
+            var pitchLimit = new Vector2(orientation.y - stationaryWeapon.PitchToleranceUp, orientation.y + stationaryWeapon.PitchToleranceDown);
+            pitchLimit.x = NormalizeAngle(pitchLimit.x);
+            pitchLimit.y = NormalizeAngle(pitchLimit.y);
+            var yawLimit = new Vector2(orientation.x - stationaryWeapon.YawTolerance, orientation.x + stationaryWeapon.YawTolerance);
+            if (yawLimit.x > 360f || yawLimit.y > 360f)
+                yawLimit -= 360f * Vector2.one;
+
+            var type = typeof(StationaryWeapon);
+            type.GetField("_initialOrientation", BindingFlags.NonPublic | BindingFlags.Instance)?.SetValue(stationaryWeapon, orientation);
+            type.GetField("_pitchLimit", BindingFlags.NonPublic | BindingFlags.Instance)?.SetValue(stationaryWeapon, pitchLimit);
+            type.GetField("_yawLimit", BindingFlags.NonPublic | BindingFlags.Instance)?.SetValue(stationaryWeapon, yawLimit);
+        }
+
+        private static float NormalizeAngle(float angle)
+        {
+            if (angle > 180f)
+                return angle - 360f;
+            if (angle < -180f)
+                return angle + 360f;
+            return angle;
         }
 
         private bool QuestConditionsMet(bool questOnly, bool questCompleted, string questId)
@@ -319,7 +430,7 @@ namespace MapLootEditorLite.Client
             return (questOnly && active) || (questCompleted && completed);
         }
 
-        private IEnumerator InitializeContainerLootCoroutine(InteractiveObject obj, LootableContainer lootable, GameWorld gameWorld)
+        private IEnumerator InitializeContainerLootCoroutine(InteractiveObject obj, LootableContainer lootable)
         {
             var itemFactory = Singleton<ItemFactoryClass>.Instance;
             if (itemFactory == null)
@@ -343,10 +454,14 @@ namespace MapLootEditorLite.Client
                 LootItemPositionClass lootData = null;
                 while (elapsed < timeout)
                 {
-                    lootData = gameWorld.AllLoot?.FirstOrDefault(x => x.Id == obj.containerId);
-                    if (lootData != null)
-                        break;
-                    yield return new WaitForSeconds(0.5f);
+                    var currentWorld = Singleton<GameWorld>.Instance;
+                    if (currentWorld != null && currentWorld.AllLoot != null)
+                    {
+                        lootData = currentWorld.AllLoot.FirstOrDefault(x => x.Id == obj.containerId);
+                        if (lootData != null)
+                            break;
+                    }
+                    yield return new WaitForSecondsRealtime(0.5f);
                     elapsed += 0.5f;
                 }
 
@@ -388,7 +503,11 @@ namespace MapLootEditorLite.Client
 
             var controller = new TraderControllerClass(item, item.Id, item.ShortName.Localized(null), true, EOwnerType.Profile);
             lootable.Init(controller);
-            gameWorld.RegisterLoot<LootableContainer>(lootable);
+            var finalGameWorld = Singleton<GameWorld>.Instance;
+            if (finalGameWorld != null)
+                finalGameWorld.RegisterLoot<LootableContainer>(lootable);
+            else
+                Plugin.Log.LogWarning($"GameWorld not available for container '{obj.name}' loot registration; container initialized but not registered with world.");
             Plugin.Log.LogInfo($"Initialized lootable container '{obj.name}' id={obj.containerId}, template={lootable.Template}, itemId={item.Id}, source={source}, injectedItems={addedItems}");
         }
 

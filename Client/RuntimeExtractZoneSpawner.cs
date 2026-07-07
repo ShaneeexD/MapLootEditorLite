@@ -177,7 +177,7 @@ namespace MapLootEditorLite.Client
             }
 
             var player = world?.MainPlayer;
-            var entryPoint = player?.Profile?.Info?.EntryPoint?.ToLower() ?? "";
+            var entryPoint = player?.Profile?.Info?.EntryPoint?.ToLowerInvariant() ?? "";
             var rng = new System.Random();
 
             Plugin.Log.LogInfo($"Spawning {zones.Count} custom extract zones for map {mapId}.");

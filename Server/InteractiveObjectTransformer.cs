@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using SPTarkov.Server.Core.Models.Common;
 using SPTarkov.Server.Core.Models.Eft.Common;
 using SPTarkov.Server.Core.Models.Eft.Common.Tables;
@@ -16,6 +17,7 @@ public static class InteractiveObjectTransformer
     // Tracks which StaticLoot/StaticContainers instances have already had transformers attached, so Register() can be safely called again when locations are regenerated.
     private static readonly ConditionalWeakTable<object, object> RegisteredStaticLoot = new ConditionalWeakTable<object, object>();
     private static readonly ConditionalWeakTable<object, object> RegisteredStaticContainers = new ConditionalWeakTable<object, object>();
+    private static readonly Dictionary<string, SpawnpointTemplate> _weaponDonors = new(StringComparer.OrdinalIgnoreCase);
     private static DatabaseService? _databaseService;
 
     public static void Register(DatabaseService databaseService)
@@ -39,6 +41,9 @@ public static class InteractiveObjectTransformer
 
         var databaseService = _databaseService;
         var locations = databaseService!.GetLocations().GetDictionary();
+
+        PreloadWeaponDonors(locations.Select(x => new KeyValuePair<string, object>(x.Key, x.Value)));
+
         var registered = 0;
 
         foreach (var (locationId, location) in locations)
@@ -49,17 +54,25 @@ public static class InteractiveObjectTransformer
                 continue;
             }
 
-            var containers = maps.SelectMany(m => m.InteractiveObjects ?? new List<InteractiveObject>())
-                .Where(o => o.InteractiveType == InteractiveObjectType.Container && ShouldSpawnObject(o))
+            var interactiveObjects = maps.SelectMany(m => m.InteractiveObjects ?? new List<InteractiveObject>())
+                .Where(ShouldSpawnObject)
                 .ToList();
 
-            if (containers.Count == 0)
+            var containers = interactiveObjects
+                .Where(o => o.InteractiveType == InteractiveObjectType.Container && !string.IsNullOrWhiteSpace(o.ContainerId))
+                .ToList();
+
+            var weapons = interactiveObjects
+                .Where(o => o.InteractiveType == InteractiveObjectType.StationaryWeapon && !string.IsNullOrWhiteSpace(o.WeaponTemplate))
+                .ToList();
+
+            if (containers.Count == 0 && weapons.Count == 0)
             {
                 continue;
             }
 
             RegisterStaticLoot(location, containers, locationId);
-            RegisterStaticContainers(location, containers, locationId);
+            RegisterStaticContainers(location, containers, weapons, locationId);
             registered++;
         }
 
@@ -251,28 +264,28 @@ public static class InteractiveObjectTransformer
         return instance;
     }
 
-    private static void RegisterStaticContainers(object location, List<InteractiveObject> containers, string locationId)
+    private static void RegisterStaticContainers(object location, List<InteractiveObject> containers, List<InteractiveObject> weapons, string locationId)
     {
         try
         {
             var staticContainersProp = location.GetType().GetProperty("StaticContainers", BindingFlags.Public | BindingFlags.Instance);
             if (staticContainersProp == null)
             {
-                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' has no StaticContainers property; custom containers will not be registered.");
+                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' has no StaticContainers property; custom containers/weapons will not be registered.");
                 return;
             }
 
             var staticContainers = staticContainersProp.GetValue(location);
             if (staticContainers == null)
             {
-                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' StaticContainers is null; custom containers will not be registered.");
+                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' StaticContainers is null; custom containers/weapons will not be registered.");
                 return;
             }
 
             var addTransformer = staticContainers.GetType().GetMethod("AddTransformer", BindingFlags.Public | BindingFlags.Instance);
             if (addTransformer == null)
             {
-                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' StaticContainers has no AddTransformer method; custom containers will not be registered.");
+                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' StaticContainers has no AddTransformer method; custom containers/weapons will not be registered.");
                 return;
             }
 
@@ -287,7 +300,7 @@ public static class InteractiveObjectTransformer
             var genericArg = parameterType.GetGenericArguments().FirstOrDefault();
             if (genericArg == null)
             {
-                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' StaticContainers transformer argument is not a Func<T>; custom containers will not be registered.");
+                ServerPlugin.Logger?.Warning($"[MEL] Location '{locationId}' StaticContainers transformer argument is not a Func<T>; custom containers/weapons will not be registered.");
                 return;
             }
 
@@ -295,49 +308,57 @@ public static class InteractiveObjectTransformer
                 .Where(c => !string.IsNullOrWhiteSpace(c.ContainerId))
                 .ToList();
 
-            if (transformedContainers.Count == 0)
+            var transformedWeapons = weapons
+                .Where(w => !string.IsNullOrWhiteSpace(w.WeaponTemplate))
+                .ToList();
+
+            if (transformedContainers.Count == 0 && transformedWeapons.Count == 0)
             {
                 return;
             }
 
             var createMethod = typeof(InteractiveObjectTransformer).GetMethod(nameof(CreateStaticContainersTransform), BindingFlags.NonPublic | BindingFlags.Static)!;
             var createGeneric = createMethod.MakeGenericMethod(genericArg);
-            var del = createGeneric.Invoke(null, new object[] { transformedContainers });
+            var del = createGeneric.Invoke(null, new object[] { transformedContainers, transformedWeapons });
 
             addTransformer.Invoke(staticContainers, new object[] { del });
-            ServerPlugin.Logger?.Info($"[MEL] Registered {transformedContainers.Count} custom static containers for {locationId}");
+            var containerLog = transformedContainers.Count > 0 ? $"{transformedContainers.Count} custom static containers" : "";
+            var weaponLog = transformedWeapons.Count > 0 ? $"{transformedWeapons.Count} custom stationary weapons" : "";
+            var logParts = new[] { containerLog, weaponLog }.Where(s => !string.IsNullOrEmpty(s)).ToList();
+            ServerPlugin.Logger?.Info($"[MEL] Registered {string.Join(" and ", logParts)} for {locationId}");
         }
         catch (Exception ex)
         {
-            ServerPlugin.Logger?.Error($"[MEL] Failed to register static containers for {locationId}: {ex.Message}");
+            ServerPlugin.Logger?.Error($"[MEL] Failed to register static containers/weapons for {locationId}: {ex.Message}");
         }
     }
 
-    private static Func<T, T> CreateStaticContainersTransform<T>(List<InteractiveObject> containers) where T : class
+    private static Func<T, T> CreateStaticContainersTransform<T>(List<InteractiveObject> containers, List<InteractiveObject> weapons) where T : class
     {
-        return data => TransformStaticContainers(data, containers);
+        return data => TransformStaticContainers(data, containers, weapons);
     }
 
-    private static T TransformStaticContainers<T>(T data, List<InteractiveObject> containers) where T : class
+    private static T TransformStaticContainers<T>(T data, List<InteractiveObject> containers, List<InteractiveObject> weapons) where T : class
     {
         var dataType = data.GetType();
         var containerDetailsType = AppDomain.CurrentDomain.GetAssemblies()
             .SelectMany(a => a.GetTypes())
             .FirstOrDefault(t => t.Name == "StaticContainerDetails");
 
-        if (containerDetailsType != null && containerDetailsType.IsAssignableFrom(dataType))
+        if (containerDetailsType == null || !containerDetailsType.IsAssignableFrom(dataType))
         {
-            var staticContainersProp = dataType.GetProperty("StaticContainers", BindingFlags.Public | BindingFlags.Instance);
-            if (staticContainersProp == null)
-            {
-                ServerPlugin.Logger?.Warning("[MEL] StaticContainerDetails has no StaticContainers property.");
-                return data;
-            }
+            ServerPlugin.Logger?.Warning($"[MEL] StaticContainers data type is {dataType.FullName}; expected StaticContainerDetails.");
+            return data;
+        }
 
+        var staticContainersProp = dataType.GetProperty("StaticContainers", BindingFlags.Public | BindingFlags.Instance);
+        if (staticContainersProp != null)
+        {
             var existingEnumerable = staticContainersProp.GetValue(data) as IEnumerable<object>;
             var existingList = existingEnumerable?.ToList() ?? new List<object>();
             var itemType = GetEnumerableElementType(staticContainersProp.PropertyType) ?? typeof(object);
 
+            var addedContainers = 0;
             foreach (var container in containers)
             {
                 if (existingList.Any(x => GetStaticContainerId(x) == container.ContainerId))
@@ -348,7 +369,10 @@ public static class InteractiveObjectTransformer
 
                 var containerData = CreateStaticContainerData(container, itemType);
                 if (containerData != null)
+                {
                     existingList.Add(containerData);
+                    addedContainers++;
+                }
             }
 
             var listType = typeof(List<>).MakeGenericType(itemType);
@@ -356,10 +380,41 @@ public static class InteractiveObjectTransformer
             foreach (var item in existingList)
                 newList.Add(item);
             staticContainersProp.SetValue(data, newList);
-            return data;
+            ServerPlugin.Logger?.Info($"[MEL] StaticContainers transformer added {addedContainers} custom containers.");
         }
 
-        ServerPlugin.Logger?.Warning($"[MEL] StaticContainers data type is {dataType.FullName}; expected StaticContainerDetails.");
+        var staticWeaponsProp = dataType.GetProperty("StaticWeapons", BindingFlags.Public | BindingFlags.Instance);
+        if (staticWeaponsProp != null)
+        {
+            var existingEnumerable = staticWeaponsProp.GetValue(data) as IEnumerable<object>;
+            var existingList = existingEnumerable?.ToList() ?? new List<object>();
+            var itemType = GetEnumerableElementType(staticWeaponsProp.PropertyType) ?? typeof(SpawnpointTemplate);
+
+            var addedWeapons = 0;
+            foreach (var weapon in weapons)
+            {
+                if (existingList.Any(x => GetStaticWeaponId(x) == weapon.Id))
+                {
+                    ServerPlugin.Logger?.Debug($"[MEL] Weapon {weapon.Id} already exists in static weapons; skipping.");
+                    continue;
+                }
+
+                var weaponData = CreateStaticWeaponData(weapon, itemType);
+                if (weaponData != null)
+                {
+                    existingList.Add(weaponData);
+                    addedWeapons++;
+                }
+            }
+
+            var listType = typeof(List<>).MakeGenericType(itemType);
+            var newList = (System.Collections.IList)Activator.CreateInstance(listType)!;
+            foreach (var item in existingList)
+                newList.Add(item);
+            staticWeaponsProp.SetValue(data, newList);
+            ServerPlugin.Logger?.Info($"[MEL] StaticWeapons transformer added {addedWeapons} custom stationary weapons.");
+        }
+
         return data;
     }
 
@@ -429,6 +484,145 @@ public static class InteractiveObjectTransformer
         staticContainerDataType.GetProperty("Template", BindingFlags.Public | BindingFlags.Instance)?.SetValue(containerData, template);
 
         return containerData;
+    }
+
+    private static string? GetStaticWeaponId(object weaponData)
+    {
+        return weaponData.GetType().GetProperty("Id", BindingFlags.Public | BindingFlags.Instance)?.GetValue(weaponData) as string;
+    }
+
+    private static object? CreateStaticWeaponData(InteractiveObject weapon, Type weaponDataType)
+    {
+        var donor = FindWeaponDonor(weapon.WeaponTemplate);
+        if (donor == null)
+        {
+            ServerPlugin.Logger?.Warning($"[MEL] No donor stationary weapon found for template {weapon.WeaponTemplate}; cannot create weapon entry.");
+            return null;
+        }
+
+        ServerPlugin.Logger?.Info($"[MEL] Found donor stationary weapon for template {weapon.WeaponTemplate}; cloning for id {weapon.Id}.");
+
+        var spawnpoint = CloneAndRemapSpawnpoint(donor, weapon.Id, weapon.Position, weapon.Rotation);
+        if (spawnpoint == null)
+        {
+            ServerPlugin.Logger?.Warning($"[MEL] Failed to clone donor spawnpoint for weapon {weapon.Id}.");
+            return null;
+        }
+
+        ServerPlugin.Logger?.Info($"[MEL] Created static weapon data for {weapon.Id} (template {weapon.WeaponTemplate}).");
+        return spawnpoint;
+    }
+
+    private static void PreloadWeaponDonors(IEnumerable<KeyValuePair<string, object>> locations)
+    {
+        try
+        {
+            _weaponDonors.Clear();
+            foreach (var (locationId, location) in locations)
+            {
+                var staticContainersProp = location.GetType().GetProperty("StaticContainers", BindingFlags.Public | BindingFlags.Instance);
+                if (staticContainersProp == null)
+                    continue;
+
+                var lazyLoad = staticContainersProp.GetValue(location);
+                if (lazyLoad == null)
+                    continue;
+
+                var valueProp = lazyLoad.GetType().GetProperty("Value");
+                if (valueProp == null)
+                    continue;
+
+                var data = valueProp.GetValue(lazyLoad);
+                if (data == null)
+                    continue;
+
+                var staticWeaponsProp = data.GetType().GetProperty("StaticWeapons", BindingFlags.Public | BindingFlags.Instance);
+                if (staticWeaponsProp == null)
+                    continue;
+
+                var weapons = staticWeaponsProp.GetValue(data) as IEnumerable<SpawnpointTemplate>;
+                if (weapons == null)
+                    continue;
+
+                foreach (var weapon in weapons)
+                {
+                    if (weapon == null)
+                        continue;
+
+                    var rootItem = weapon.Items?.FirstOrDefault();
+                    if (rootItem == null)
+                        continue;
+
+                    var template = rootItem.Template.ToString();
+                    if (string.IsNullOrWhiteSpace(template))
+                        continue;
+
+                    if (!_weaponDonors.ContainsKey(template))
+                    {
+                        _weaponDonors[template] = weapon;
+                        ServerPlugin.Logger?.Info($"[MEL] Cached donor stationary weapon for template {template} from location {locationId}.");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ServerPlugin.Logger?.Error($"[MEL] Failed to preload weapon donors: {ex.Message}");
+        }
+    }
+
+    private static SpawnpointTemplate? FindWeaponDonor(string weaponTemplate)
+    {
+        if (_weaponDonors.TryGetValue(weaponTemplate, out var donor))
+        {
+            ServerPlugin.Logger?.Info($"[MEL] Found donor stationary weapon for template {weaponTemplate}.");
+            return donor;
+        }
+
+        ServerPlugin.Logger?.Warning($"[MEL] No donor stationary weapon found for template {weaponTemplate}; cannot create weapon entry.");
+        return null;
+    }
+
+    private static SpawnpointTemplate? CloneAndRemapSpawnpoint(SpawnpointTemplate donor, string sceneId, TransformData position, TransformData rotation)
+    {
+        var json = JsonSerializer.Serialize(donor);
+        var spawnpoint = JsonSerializer.Deserialize<SpawnpointTemplate>(json);
+        if (spawnpoint == null)
+            return null;
+
+        var idMap = new Dictionary<string, string>();
+        foreach (var item in spawnpoint.Items ?? Enumerable.Empty<SptLootItem>())
+        {
+            var newId = new MongoId().ToString();
+            idMap[item.Id.ToString()] = newId;
+            item.Id = new MongoId(newId);
+        }
+
+        foreach (var item in spawnpoint.Items ?? Enumerable.Empty<SptLootItem>())
+        {
+            if (!string.IsNullOrEmpty(item.ParentId) && idMap.TryGetValue(item.ParentId, out var newParentId))
+                item.ParentId = newParentId;
+        }
+
+        var donorRootId = donor.Root ?? donor.Items?.FirstOrDefault()?.Id.ToString();
+        if (string.IsNullOrEmpty(donorRootId) || !idMap.TryGetValue(donorRootId, out var rootId))
+        {
+            ServerPlugin.Logger?.Warning("[MEL] Could not remap root id for stationary weapon clone.");
+            return null;
+        }
+
+        spawnpoint.Id = sceneId;
+        spawnpoint.Root = rootId;
+        spawnpoint.Position = new XYZ { X = position.X, Y = position.Y, Z = position.Z };
+        spawnpoint.Rotation = new XYZ { X = rotation.X, Y = rotation.Y, Z = rotation.Z };
+        spawnpoint.IsAlwaysSpawn = true;
+        spawnpoint.IsContainer = true;
+        spawnpoint.UseGravity = false;
+        spawnpoint.RandomRotation = false;
+        spawnpoint.IsGroupPosition = false;
+        spawnpoint.GroupPositions = Array.Empty<GroupPosition>();
+
+        return spawnpoint;
     }
 
     private static void SetDistributionProperty(PropertyInfo? prop, object target, string templateId)

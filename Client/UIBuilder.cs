@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.EventSystems;
@@ -39,7 +40,7 @@ namespace MapLootEditorLite.Client
 
         public static EventSystem EnsureEventSystem(Transform parent)
         {
-            var existing = EventSystem.current;
+            var existing = parent.GetComponentsInChildren<EventSystem>(true).FirstOrDefault();
             if (existing != null)
                 return existing;
 
