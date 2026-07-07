@@ -952,7 +952,6 @@ namespace MapLootEditorLite.Client
             go.name = "MLE_FreeCam";
             go.transform.position = _gameCamera.transform.position;
             go.transform.rotation = _gameCamera.transform.rotation;
-            RemovePlayerVisionComponents(go);
             _freeCamCamera = go.GetComponent<Camera>();
             if (_freeCamCamera == null)
             {
@@ -1019,18 +1018,6 @@ namespace MapLootEditorLite.Client
             Cursor.visible = false;
             Cursor.lockState = CursorLockMode.Locked;
             _editorModeActive = true;
-        }
-
-        private static void RemovePlayerVisionComponents(GameObject cameraObject)
-        {
-            string[] names = { "ThermalVision", "NightVision", "VisorEffect", "HysteresisFilter" };
-            foreach (var name in names)
-            {
-                var component = cameraObject.GetComponents<MonoBehaviour>()
-                    .FirstOrDefault(mb => mb != null && mb.GetType().Name == name);
-                if (component != null)
-                    UnityEngine.Object.DestroyImmediate(component);
-            }
         }
 
         private void ExitFreeCam()
