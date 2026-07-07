@@ -579,6 +579,18 @@ public static class InteractiveObjectTransformer
             return donor;
         }
 
+        if (_databaseService is not null)
+        {
+            var databaseService = _databaseService;
+            ServerPlugin.Logger?.Info($"[MEL] Donor not cached for {weaponTemplate}; reloading weapon donors from database.");
+            PreloadWeaponDonors(databaseService.GetLocations().GetDictionary().Select(x => new KeyValuePair<string, object>(x.Key, x.Value)));
+            if (_weaponDonors.TryGetValue(weaponTemplate, out var reloaded))
+            {
+                ServerPlugin.Logger?.Info($"[MEL] Found donor stationary weapon for template {weaponTemplate} after reload.");
+                return reloaded;
+            }
+        }
+
         ServerPlugin.Logger?.Warning($"[MEL] No donor stationary weapon found for template {weaponTemplate}; cannot create weapon entry.");
         return null;
     }
@@ -590,7 +602,7 @@ public static class InteractiveObjectTransformer
         if (spawnpoint == null)
             return null;
 
-        var idMap = new Dictionary<string, string>();
+        var idMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in spawnpoint.Items ?? Enumerable.Empty<SptLootItem>())
         {
             var newId = new MongoId().ToString();
@@ -604,10 +616,26 @@ public static class InteractiveObjectTransformer
                 item.ParentId = newParentId;
         }
 
+        string? rootId = null;
         var donorRootId = donor.Root ?? donor.Items?.FirstOrDefault()?.Id.ToString();
-        if (string.IsNullOrEmpty(donorRootId) || !idMap.TryGetValue(donorRootId, out var rootId))
+        if (!string.IsNullOrEmpty(donorRootId) && idMap.TryGetValue(donorRootId, out var mappedRootId))
         {
-            ServerPlugin.Logger?.Warning("[MEL] Could not remap root id for stationary weapon clone.");
+            rootId = mappedRootId;
+        }
+        else
+        {
+            // Fallback: the root item is the one with no parent id.
+            var rootItem = spawnpoint.Items?.FirstOrDefault(i => string.IsNullOrEmpty(i.ParentId));
+            if (rootItem != null)
+            {
+                rootId = rootItem.Id.ToString();
+                ServerPlugin.Logger?.Info($"[MEL] Remapped root id for stationary weapon clone via item with no parent (original root={donorRootId}).");
+            }
+        }
+
+        if (string.IsNullOrEmpty(rootId))
+        {
+            ServerPlugin.Logger?.Warning($"[MEL] Could not remap root id for stationary weapon clone; original root={donorRootId}, items={(spawnpoint.Items?.Count() ?? 0)}.");
             return null;
         }
 
@@ -616,11 +644,6 @@ public static class InteractiveObjectTransformer
         spawnpoint.Position = new XYZ { X = position.X, Y = position.Y, Z = position.Z };
         spawnpoint.Rotation = new XYZ { X = rotation.X, Y = rotation.Y, Z = rotation.Z };
         spawnpoint.IsAlwaysSpawn = true;
-        spawnpoint.IsContainer = true;
-        spawnpoint.UseGravity = false;
-        spawnpoint.RandomRotation = false;
-        spawnpoint.IsGroupPosition = false;
-        spawnpoint.GroupPositions = Array.Empty<GroupPosition>();
 
         return spawnpoint;
     }

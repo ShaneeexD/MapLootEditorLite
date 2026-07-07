@@ -63,6 +63,7 @@ namespace MapLootEditorLite.Client
         private const float _gizmoSize = 0.5f;
         private const float _gizmoHandleSize = 0.08f;
         private const int _gizmoRingSegments = 32;
+        private const float _gizmoScreenSize = 50f;
 
         public MarkerRenderer(MarkerManager manager, GameObject root)
         {
@@ -1041,6 +1042,7 @@ namespace MapLootEditorLite.Client
 
             var pos = GetGizmoPosition();
             var rot = GetGizmoRotation();
+            var scale = GetGizmoDynamicScale(camera);
             GizmoAxis best = GizmoAxis.None;
             float bestDist = maxPx;
 
@@ -1060,11 +1062,11 @@ namespace MapLootEditorLite.Client
                         case GizmoAxis.Z: tangent = GetGizmoAxisDirection(GizmoAxis.X, rot); break;
                         default: tangent = dir; break;
                     }
-                    targetPoint = pos + tangent * _gizmoSize;
+                    targetPoint = pos + tangent * _gizmoSize * scale;
                 }
                 else
                 {
-                    targetPoint = pos + dir * _gizmoSize;
+                    targetPoint = pos + dir * _gizmoSize * scale;
                 }
 
                 var projected = camera.WorldToScreenPoint(targetPoint);
@@ -1112,11 +1114,12 @@ namespace MapLootEditorLite.Client
             EnsureGizmo();
             var pos = GetGizmoPosition();
             var rot = GetGizmoRotation();
+            var gizmoScale = GetGizmoDynamicScale(Camera.main);
 
             foreach (var axis in new[] { GizmoAxis.X, GizmoAxis.Y, GizmoAxis.Z })
             {
                 var dir = GetGizmoAxisDirection(axis, rot);
-                var end = pos + dir * _gizmoSize;
+                var end = pos + dir * _gizmoSize * gizmoScale;
                 var color = GetGizmoColor(axis);
                 var isActive = ActiveAxis == axis || HoveredAxis == axis;
 
@@ -1125,8 +1128,8 @@ namespace MapLootEditorLite.Client
                     line.material.color = color;
                 line.startColor = Color.white;
                 line.endColor = Color.white;
-                line.startWidth = isActive ? 0.04f : 0.025f;
-                line.endWidth = isActive ? 0.04f : 0.025f;
+                line.startWidth = (isActive ? 0.04f : 0.025f) * gizmoScale;
+                line.endWidth = (isActive ? 0.04f : 0.025f) * gizmoScale;
 
                 if (GizmoMode == GizmoMode.Rotate)
                 {
@@ -1153,7 +1156,7 @@ namespace MapLootEditorLite.Client
                         case GizmoAxis.Z: tangent = GetGizmoAxisDirection(GizmoAxis.X, rot); break;
                         default: tangent = dir; break;
                     }
-                    handlePos = pos + tangent * _gizmoSize;
+                    handlePos = pos + tangent * _gizmoSize * gizmoScale;
                 }
                 else
                 {
@@ -1162,8 +1165,8 @@ namespace MapLootEditorLite.Client
 
                 handle.transform.position = handlePos;
                 handle.transform.rotation = Quaternion.identity;
-                var scale = isActive ? _gizmoHandleSize * 1.5f : _gizmoHandleSize;
-                handle.transform.localScale = Vector3.one * scale;
+                var handleScale = (isActive ? _gizmoHandleSize * 1.5f : _gizmoHandleSize) * gizmoScale;
+                handle.transform.localScale = Vector3.one * handleScale;
 
                 var renderer = handle.GetComponent<MeshRenderer>();
                 if (renderer != null && renderer.material != null)
@@ -1178,9 +1181,9 @@ namespace MapLootEditorLite.Client
                             ring.material.color = color;
                         ring.startColor = Color.white;
                         ring.endColor = Color.white;
-                        ring.startWidth = isActive ? 0.04f : 0.025f;
-                        ring.endWidth = isActive ? 0.04f : 0.025f;
-                        DrawGizmoRing(ring, pos, dir, _gizmoSize);
+                        ring.startWidth = (isActive ? 0.04f : 0.025f) * gizmoScale;
+                        ring.endWidth = (isActive ? 0.04f : 0.025f) * gizmoScale;
+                        DrawGizmoRing(ring, pos, dir, _gizmoSize * gizmoScale);
                     }
                     else
                     {
@@ -1188,6 +1191,21 @@ namespace MapLootEditorLite.Client
                     }
                 }
             }
+        }
+
+        private float GetGizmoDynamicScale(Camera camera)
+        {
+            if (camera == null)
+                return 1f;
+
+            var position = GetGizmoPosition();
+            var distance = Vector3.Distance(camera.transform.position, position);
+            if (distance <= 0.001f)
+                return 1f;
+
+            var worldHeight = 2f * distance * Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            var targetWorldSize = _gizmoScreenSize / Mathf.Max(1f, camera.pixelHeight) * worldHeight;
+            return Mathf.Max(targetWorldSize / _gizmoSize, 1f);
         }
 
         private void EnsureGizmo()
