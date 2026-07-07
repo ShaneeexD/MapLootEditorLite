@@ -47,8 +47,13 @@ namespace MapLootEditorLite.Client
         private static float _editorModeInvincibleEndTime;
         private static readonly Harmony _freecamHarmony = new Harmony("com.shane.mapeditorlite.freecam");
         private static bool _freecamPatchesApplied;
+        private static readonly Harmony _inputHarmony = new Harmony("com.shane.mapeditorlite.input");
+        private static bool _inputPatchesApplied;
 
         private bool _freeCamCursorLocked = true;
+        private bool _menuCursorLocked = true;
+        private Quaternion _menuUnlockedCameraRotation;
+        private bool _menuUnlockedCameraRotationCaptured;
         private Player _freeCamPlayer;
         private CharacterController _freeCamPlayerController;
         private Vector3 _freeCamPlayerStartPosition;
@@ -85,7 +90,9 @@ namespace MapLootEditorLite.Client
             _ui = gameObject.AddComponent<CustomEditorUI>();
             _ui.Init(this, _manager, _renderer, _previews);
             Plugin.Log.LogInfo($"MapEditorController awake: enabled={enabled} active={gameObject.activeInHierarchy} key={_toggleKey}");
+            Camera.onPreRender += OnCameraPreRender;
             TryApplyFreeCamPatches();
+            TryApplyInputPatches();
         }
 
         private void TryApplyFreeCamPatches()
@@ -97,6 +104,100 @@ namespace MapLootEditorLite.Client
             PatchMethod(typeof(ActiveHealthController), "ApplyDamage", nameof(ApplyDamagePrefix));
             PatchMethod(typeof(ActiveHealthController), "ChangeHealth", nameof(ChangeHealthPrefix));
             PatchMethod(typeof(Player), "ReceiveDamage", nameof(ReceiveDamagePrefix));
+        }
+
+        private void TryApplyInputPatches()
+        {
+            if (_inputPatchesApplied)
+                return;
+            _inputPatchesApplied = true;
+
+            try
+            {
+                var getAxis = AccessTools.Method(typeof(Input), "GetAxis", new[] { typeof(string) });
+                if (getAxis != null)
+                {
+                    _inputHarmony.Patch(getAxis, prefix: new HarmonyMethod(typeof(MapEditorController), nameof(InputGetAxisPrefix)));
+                    Plugin.Log.LogInfo("Patched Input.GetAxis to suppress game mouse look while menu cursor is unlocked.");
+                }
+                else
+                {
+                    Plugin.Log.LogWarning("Could not find Input.GetAxis to patch.");
+                }
+
+                var getAxisRaw = AccessTools.Method(typeof(Input), "GetAxisRaw", new[] { typeof(string) });
+                if (getAxisRaw != null)
+                {
+                    _inputHarmony.Patch(getAxisRaw, prefix: new HarmonyMethod(typeof(MapEditorController), nameof(InputGetAxisPrefix)));
+                    Plugin.Log.LogInfo("Patched Input.GetAxisRaw to suppress game mouse look while menu cursor is unlocked.");
+                }
+                else
+                {
+                    Plugin.Log.LogWarning("Could not find Input.GetAxisRaw to patch.");
+                }
+
+                var setLockState = AccessTools.Method(typeof(Cursor), "set_lockState", new[] { typeof(CursorLockMode) });
+                if (setLockState != null)
+                {
+                    _inputHarmony.Patch(setLockState, prefix: new HarmonyMethod(typeof(MapEditorController), nameof(CursorSetLockStatePrefix)));
+                    Plugin.Log.LogInfo("Patched Cursor.lockState setter to keep cursor unlocked while menu cursor is unlocked.");
+                }
+                else
+                {
+                    Plugin.Log.LogWarning("Could not find Cursor.lockState setter to patch.");
+                }
+
+                var setVisible = AccessTools.Method(typeof(Cursor), "set_visible", new[] { typeof(bool) });
+                if (setVisible != null)
+                {
+                    _inputHarmony.Patch(setVisible, prefix: new HarmonyMethod(typeof(MapEditorController), nameof(CursorSetVisiblePrefix)));
+                    Plugin.Log.LogInfo("Patched Cursor.visible setter to keep cursor visible while menu cursor is unlocked.");
+                }
+                else
+                {
+                    Plugin.Log.LogWarning("Could not find Cursor.visible setter to patch.");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogWarning($"Failed to patch input/cursor methods: {ex.Message}");
+            }
+        }
+
+        private static bool InputGetAxisPrefix(string axisName, ref float __result)
+        {
+            if (Instance == null)
+                return true;
+
+            if ((axisName == "Mouse X" || axisName == "Mouse Y") &&
+                Instance._editorOpen && !Instance._freeCam && !Instance._menuCursorLocked)
+            {
+                __result = 0f;
+                return false;
+            }
+            return true;
+        }
+
+        private static bool CursorSetLockStatePrefix(CursorLockMode value)
+        {
+            if (Instance == null)
+                return true;
+
+            if (Instance._editorOpen && !Instance._freeCam && !Instance._menuCursorLocked && value == CursorLockMode.Locked)
+                return false;
+
+            return true;
+        }
+
+        private static bool CursorSetVisiblePrefix(bool value)
+        {
+            if (Instance == null)
+                return true;
+
+            if (Instance._editorOpen && !Instance._freeCam && !Instance._menuCursorLocked && !value)
+                return false;
+
+            return true;
         }
 
         private void PatchMethod(System.Type type, string methodName, string prefixName)
@@ -171,7 +272,6 @@ namespace MapLootEditorLite.Client
             {
                 _editorOpen = !_editorOpen;
                 _lastToggleFrame = Time.frameCount;
-                Plugin.Log.LogInfo($"Toggle key pressed via Input: editor open = {_editorOpen}");
             }
 
             if (_editorOpen && _ui != null && !_ui.IsVisible)
@@ -239,11 +339,24 @@ namespace MapLootEditorLite.Client
                 }
                 else
                 {
-                    Cursor.visible = true;
-                    Cursor.lockState = CursorLockMode.None;
+                    if (Input.GetMouseButtonDown(2))
+                        ToggleMenuCursor();
+
+                    if (_menuCursorLocked)
+                    {
+                        Cursor.visible = false;
+                        Cursor.lockState = CursorLockMode.Locked;
+                    }
+                    else
+                    {
+                        Cursor.visible = true;
+                        Cursor.lockState = CursorLockMode.None;
+                    }
+
                     HandleSelectionInput();
                     HandleMovementInput();
-                    HandleMouseInput();
+                    if (!_menuCursorLocked)
+                        HandleMouseInput();
                 }
             }
 
@@ -265,9 +378,18 @@ namespace MapLootEditorLite.Client
 
         private void OnDestroy()
         {
+            Camera.onPreRender -= OnCameraPreRender;
             Instance = null;
             _previews?.ClearAll(true);
             _renderer?.Clear();
+        }
+
+        private void OnCameraPreRender(Camera cam)
+        {
+            if (!_editorOpen || _freeCam || _menuCursorLocked || !_menuUnlockedCameraRotationCaptured)
+                return;
+            if (cam == Camera.main)
+                cam.transform.rotation = _menuUnlockedCameraRotation;
         }
 
         public void ResetState()
@@ -805,7 +927,6 @@ namespace MapLootEditorLite.Client
             Cursor.visible = false;
             Cursor.lockState = CursorLockMode.Locked;
             _editorModeActive = true;
-            Plugin.Log.LogInfo("Entered editor mode.");
         }
 
         private void ExitFreeCam()
@@ -843,7 +964,6 @@ namespace MapLootEditorLite.Client
             Cursor.lockState = CursorLockMode.None;
             _editorModeActive = false;
             _editorModeInvincibleEndTime = Time.time + 5f;
-            Plugin.Log.LogInfo("Exited editor mode.");
         }
 
         private void UpdateFreeCam()
@@ -889,7 +1009,20 @@ namespace MapLootEditorLite.Client
         private void ToggleFreeCamCursor()
         {
             _freeCamCursorLocked = !_freeCamCursorLocked;
-            Plugin.Log.LogInfo($"Freecam cursor {(_freeCamCursorLocked ? "locked" : "unlocked")}.");
+        }
+
+        private void ToggleMenuCursor()
+        {
+            _menuCursorLocked = !_menuCursorLocked;
+            if (!_menuCursorLocked)
+            {
+                var cam = Camera.main;
+                if (cam != null)
+                {
+                    _menuUnlockedCameraRotation = cam.transform.rotation;
+                    _menuUnlockedCameraRotationCaptured = true;
+                }
+            }
         }
 
         private void HandleMouseInput()
@@ -1305,7 +1438,6 @@ namespace MapLootEditorLite.Client
         {
             _gizmoMode = mode;
             _renderer.GizmoMode = mode;
-            Plugin.Log.LogInfo($"Gizmo mode: {mode}");
         }
 
         private bool IsMouseOverUI()

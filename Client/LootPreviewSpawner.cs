@@ -121,7 +121,6 @@ namespace MapLootEditorLite.Client
             meta.markerName = marker.name;
 
             _effectPreviews.Add(go);
-            Plugin.Log.LogInfo($"Spawned light preview for {marker.name}");
         }
 
         private void DrawLightDirection(LineRenderer lr, LightZone lz)
@@ -347,7 +346,6 @@ namespace MapLootEditorLite.Client
             var fallback = CreateFallbackPreview(itemTpl, position, rotation);
             AttachMeta(fallback, itemTpl, markerName, markerId, true, position - markerPosition, Quaternion.Inverse(markerRotation) * rotation, syncRotation);
             _previews.Add(fallback);
-            Plugin.Log.LogInfo($"Spawned fallback preview for {markerName} using tpl {itemTpl}; loading real asset...");
 
             _runner.StartCoroutine(LoadRealPreviewCoroutine(itemTpl, position, rotation, markerPosition, markerRotation, syncRotation, markerName, markerId, fallback));
         }
@@ -419,14 +417,12 @@ namespace MapLootEditorLite.Client
                     real.transform.position = currentPos;
                     real.transform.rotation = currentRot;
                     _previews.Add(real);
-                    Plugin.Log.LogInfo($"Real preview loaded for {markerName} using tpl {itemTpl}");
                     yield break;
                 }
 
                 yield return null;
             }
 
-            Plugin.Log.LogInfo($"Keeping fallback preview for {markerName} using tpl {itemTpl}");
         }
 
         private async Task PreloadBundles(string itemTpl)
@@ -832,7 +828,6 @@ namespace MapLootEditorLite.Client
 
             // Bundle mode: load the bundle from the mod's bundles folder.
             string path = Path.Combine(Application.streamingAssetsPath, "Windows", "bundles", "staticspawns", $"{marker.bundleName}.bundle");
-            Plugin.Log.LogInfo($"Loading WTT static object bundle: {path}");
 
             AssetBundle bundle = null;
             bool bundleOwned = false;
@@ -841,7 +836,6 @@ namespace MapLootEditorLite.Client
                 if (b.name == marker.bundleName || b.name == $"{marker.bundleName}.bundle")
                 {
                     bundle = b;
-                    Plugin.Log.LogInfo($"Using already loaded WTT bundle: {b.name}");
                     break;
                 }
             }
@@ -924,7 +918,6 @@ namespace MapLootEditorLite.Client
             var sourceKey = GetStaticSourceKey(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
             if (!string.IsNullOrEmpty(marker.sourceObjectName) && _staticSources.TryGetValue(sourceKey, out source) && source != null)
             {
-                Plugin.Log.LogInfo($"Using cached source for static preview: {marker.name} ({source.name})");
                 SpawnStaticInstance(source, marker, true);
                 yield break;
             }
@@ -934,7 +927,6 @@ namespace MapLootEditorLite.Client
                 source = FindSourceObject(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
                 if (source != null)
                 {
-                    Plugin.Log.LogInfo($"Found source by name/position for static preview: {marker.name} ({source.name})");
                     _staticSources[sourceKey] = source;
                     SpawnStaticInstance(source, marker, true);
                     yield break;
@@ -945,7 +937,6 @@ namespace MapLootEditorLite.Client
             if (!string.IsNullOrEmpty(marker.prefabPath))
             {
                 string path = Path.Combine(Application.streamingAssetsPath, "Windows", marker.prefabPath.TrimStart('/'));
-                Plugin.Log.LogInfo($"Loading static object bundle: {path}");
 
                 AssetBundle bundle = null;
                 bool bundleOwned = false;
@@ -955,8 +946,7 @@ namespace MapLootEditorLite.Client
                     if (b.name == fileName || b.name == marker.prefabPath)
                     {
                         bundle = b;
-                        Plugin.Log.LogInfo($"Using already loaded bundle: {b.name}");
-                        break;
+                            break;
                     }
                 }
 
@@ -1032,7 +1022,6 @@ namespace MapLootEditorLite.Client
 
             if (best != null)
             {
-                Plugin.Log.LogInfo($"Found source object '{name}' at {best.transform.position} (distance {(float)Math.Sqrt(bestDist):F2}, candidates {candidates}).");
                 return best;
             }
 
@@ -1050,7 +1039,6 @@ namespace MapLootEditorLite.Client
                     {
                         if (string.Equals(t.name, name, StringComparison.OrdinalIgnoreCase))
                         {
-                            Plugin.Log.LogInfo($"Found source object '{name}' by name fallback at {t.position} (recorded position was {position}).");
                             return t.gameObject;
                         }
                     }
@@ -1076,7 +1064,6 @@ namespace MapLootEditorLite.Client
             meta.isFallback = isFallback;
 
             _staticPreviews.Add(instance);
-            Plugin.Log.LogInfo($"Spawned static object preview for {marker.name} (fallback={isFallback})");
         }
 
         private void SpawnWTTStaticInstance(GameObject source, WTTStaticObject marker, bool isFallback)
@@ -1094,7 +1081,6 @@ namespace MapLootEditorLite.Client
             meta.isFallback = isFallback;
 
             _staticPreviews.Add(instance);
-            Plugin.Log.LogInfo($"Spawned WTT static object preview for {marker.name} (fallback={isFallback})");
         }
 
         private void SpawnInteractiveInstance(GameObject source, InteractiveObject marker, bool isFallback)
@@ -1120,7 +1106,6 @@ namespace MapLootEditorLite.Client
             meta.isFallback = isFallback;
 
             _staticPreviews.Add(instance);
-            Plugin.Log.LogInfo($"Spawned interactive object preview for {marker.name} (fallback={isFallback})");
         }
 
         private void DestroyPreview(GameObject preview)
