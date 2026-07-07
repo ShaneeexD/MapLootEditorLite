@@ -349,6 +349,13 @@ namespace MapLootEditorLite.Client
                 }),
                 new MenuItem("Vanilla Render Distance", () => ShowRenderDistanceDialog())
             }, 40, 22);
+            BuildMenuButton(row1, "Tools", new List<MenuItem>
+            {
+                new MenuItem("Debug", subItems: new List<MenuItem>
+                {
+                    new MenuItem("Dump door IDs", () => controller.DumpDoorIds())
+                })
+            }, 40, 22);
             BuildMenuButton(row1, "Add Spawn", new List<MenuItem>
             {
                 new MenuItem("Common", subItems: new List<MenuItem>

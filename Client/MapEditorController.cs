@@ -5,6 +5,7 @@ using System.Linq;
 using Comfort.Common;
 using EFT;
 using EFT.Ballistics;
+using EFT.Interactive;
 using EFT.HealthSystem;
 using HarmonyLib;
 using Newtonsoft.Json;
@@ -708,6 +709,44 @@ namespace MapLootEditorLite.Client
                 return;
             _renderer.ShowPackGizmos = !_renderer.ShowPackGizmos;
             Plugin.Log.LogInfo($"Pack gizmos: {(_renderer.ShowPackGizmos ? "ON" : "OFF")}");
+        }
+
+        public void DumpDoorIds()
+        {
+            try
+            {
+                var world = Singleton<GameWorld>.Instance;
+                if (world == null)
+                {
+                    Plugin.Log.LogWarning("DumpDoorIds: no active raid (GameWorld is null).");
+                    return;
+                }
+
+                var doorObjects = FindObjectsOfType<WorldInteractiveObject>()
+                    .Where(o => o != null && o.GetComponent<Door>() != null)
+                    .OrderBy(o => o.name)
+                    .Select(o => new
+                    {
+                        id = o.Id,
+                        keyId = o.KeyId,
+                        name = o.name,
+                        position = new
+                        {
+                            x = o.transform.position.x,
+                            y = o.transform.position.y,
+                            z = o.transform.position.z
+                        }
+                    })
+                    .ToList();
+
+                var path = Path.Combine(Plugin.ModDataDirectory, "door_ids_dump.json");
+                File.WriteAllText(path, JsonConvert.SerializeObject(doorObjects, Formatting.Indented));
+                Plugin.Log.LogInfo($"Dumped {doorObjects.Count} door IDs to {path}");
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogWarning($"Failed to dump door IDs: {ex.Message}");
+            }
         }
 
         private void EnterFreeCam()

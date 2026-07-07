@@ -5,12 +5,17 @@
 ## What It Does
 
 - **In-raid editor**: press `F8` while in a raid to place markers, preview items, and build custom map packs.
-- **Custom markers**: loot spawns, loot zones, static objects, interactive objects, bot spawn points, extract zones, and light zones.
+- **Custom markers**: loot spawns, loot zones, static objects, interactive objects (doors & containers), bot spawn points, extract zones, and light zones.
 - **Pack system**: export your map edits as shareable JSON packs.
 - **Web tool**: import and tune exported packs, adjust spawn chances, mark quest/forced items, and finalize them for release.
 - **Server injection**: the server mod reads pack JSON and injects the content into SPT raid loot tables, exfiltration points, bot zones, and lighting.
 - **Forced spawns**: quest and guaranteed spawns are registered through **WTT-CommonLib**.
 - **Modder friendly**: other mods can ship pack JSON files in their own `MapLoot/` folders; the server mod loads them automatically.
+
+## Images
+
+![alt text](image.png)
+![alt text](image-1.png)
 
 ## Installation
 
