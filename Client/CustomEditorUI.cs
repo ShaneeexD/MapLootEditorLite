@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using Comfort.Common;
+using EFT.Interactive;
 using EFT.InventoryLogic;
 using Newtonsoft.Json;
 using UnityEngine;
@@ -29,6 +30,7 @@ namespace MapLootEditorLite.Client
         private RectTransform _hierarchyPanel;
         private RectTransform _inspectorPanel;
         private RectTransform _bottomPanel;
+        private RectTransform _bottomTabContent;
         private RectTransform _deleteConfirmPanel;
         private RectTransform _exportDialogPanel;
         private RectTransform _renderDistanceDialogPanel;
@@ -118,6 +120,19 @@ namespace MapLootEditorLite.Client
         private bool _scanning;
         private Text _goPreviewNameText;
         private RectTransform _goActionBtnRow;
+        private RectTransform _goPickRow;
+        private Text _goDetailsText;
+        private bool _isPickingSceneGO;
+
+        // Removed vanilla objects tab
+        private RectTransform _removedTab;
+        private Button _removedTabButton;
+        private RectTransform _removedContent;
+        private readonly Dictionary<string, GameObject> _removedObjectInstances = new Dictionary<string, GameObject>();
+
+        // Scene object picker notice
+        private RectTransform _scenePickerNotice;
+        private RectTransform _scenePickerCursorTooltip;
 
         // Output tab
         private RectTransform _outputTab;
@@ -147,10 +162,31 @@ namespace MapLootEditorLite.Client
 
         public bool IsPickingSource => _isPickingSource;
         public bool IsPickingScatter => _isPickingScatter;
+        public bool IsPickingSceneGO => _isPickingSceneGO;
         public bool IsDeletePending => _isDeletePending;
         public bool IsDeleteConfirmed => _isDeleteConfirmed;
         public bool IsVisible => _isVisible;
         public string PackName => _packName;
+
+        public void SetPickingSceneGO(bool picking)
+        {
+            _isPickingSceneGO = picking;
+            if (_scenePickerNotice != null)
+                _scenePickerNotice.gameObject.SetActive(picking);
+            RefreshGOPickRow();
+        }
+
+        public void SelectSceneGO(GameObject go)
+        {
+            if (go != null && manager != null)
+                manager.ClearSelection();
+            _selectedSceneGO = go;
+            if (_goPreviewNameText != null)
+                _goPreviewNameText.text = go != null ? go.name : "No selection";
+            RefreshObjectsList();
+            RefreshGOActionRow();
+            RequestInspectorRefresh();
+        }
 
         public bool IsAnyInputFocused
         {
@@ -175,8 +211,15 @@ namespace MapLootEditorLite.Client
 
         private void Awake()
         {
-            _outputInstance = this;
-            BuildUI();
+            try
+            {
+                BuildUI();
+                _outputInstance = this;
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogError($"CustomEditorUI BuildUI failed: {ex}");
+            }
             Hide();
         }
 
@@ -195,6 +238,7 @@ namespace MapLootEditorLite.Client
             UpdateCanvasScale();
             UpdateGizmoButtons();
             UpdateEditorModeButton();
+            UpdateScenePickerCursorTooltip();
 
             if (_contextMenuPanel != null && _contextMenuPanel.gameObject.activeSelf)
             {
@@ -220,22 +264,29 @@ namespace MapLootEditorLite.Client
             if (manager == null || controller == null)
                 return;
 
-            if (_refreshPending || _lastMarkerCount != manager.GetAllMarkers().Count())
+            try
             {
-                _refreshPending = false;
-                RefreshAll();
+                if (_refreshPending || _lastMarkerCount != manager.GetAllMarkers().Count())
+                {
+                    _refreshPending = false;
+                    RefreshAll();
+                }
+                else if (_hierarchyRefreshPending)
+                {
+                    _hierarchyRefreshPending = false;
+                    RefreshHierarchy();
+                }
+                else if (_inspectorRefreshPending || _lastSelected != manager.Selected || _lastSelectedCount != manager.SelectedIds.Count)
+                {
+                    _inspectorRefreshPending = false;
+                    _hierarchyRefreshPending = false;
+                    RefreshHierarchy();
+                    RefreshInspector();
+                }
             }
-            else if (_hierarchyRefreshPending)
+            catch (System.Exception ex)
             {
-                _hierarchyRefreshPending = false;
-                RefreshHierarchy();
-            }
-            else if (_inspectorRefreshPending || _lastSelected != manager.Selected || _lastSelectedCount != manager.SelectedIds.Count)
-            {
-                _inspectorRefreshPending = false;
-                _hierarchyRefreshPending = false;
-                RefreshHierarchy();
-                RefreshInspector();
+                Plugin.Log.LogError($"CustomEditorUI Update refresh failed: {ex}");
             }
         }
 
@@ -296,6 +347,7 @@ namespace MapLootEditorLite.Client
                 while (_outputMessages.Count > MaxOutputMessages)
                     _outputMessages.RemoveAt(0);
             }
+            _outputInstance?.EnsureOutputTab();
             _outputInstance?.RefreshOutput();
         }
 
@@ -342,15 +394,29 @@ namespace MapLootEditorLite.Client
             _mainWindow.GetComponent<Image>().raycastTarget = false;
             // No layout group — each panel is independently anchored
 
-            BuildTopPanel();
-            BuildHierarchyPanel();
-            BuildInspectorPanel();
-            BuildBottomPanel();
-            BuildDeleteConfirm();
-            BuildExportDialog();
-            BuildRenderDistanceDialog();
-            BuildContextMenu();
-            BuildResizeHandles();
+            void SafeBuild(string name, System.Action step)
+            {
+                try
+                {
+                    step();
+                    Plugin.Log.LogInfo($"CustomEditorUI built {name}");
+                }
+                catch (System.Exception ex)
+                {
+                    Plugin.Log.LogError($"CustomEditorUI failed to build {name}: {ex}");
+                }
+            }
+
+            SafeBuild("TopPanel", BuildTopPanel);
+            SafeBuild("HierarchyPanel", BuildHierarchyPanel);
+            SafeBuild("InspectorPanel", BuildInspectorPanel);
+            SafeBuild("BottomPanel", BuildBottomPanel);
+            SafeBuild("ScenePickerNotice", BuildScenePickerNotice);
+            SafeBuild("DeleteConfirm", BuildDeleteConfirm);
+            SafeBuild("ExportDialog", BuildExportDialog);
+            SafeBuild("RenderDistanceDialog", BuildRenderDistanceDialog);
+            SafeBuild("ContextMenu", BuildContextMenu);
+            SafeBuild("ResizeHandles", BuildResizeHandles);
 
             if (manager != null && controller != null)
                 RefreshAll();
@@ -396,6 +462,7 @@ namespace MapLootEditorLite.Client
             }, 40, 22);
             BuildMenuButton(row1, "Tools", new List<MenuItem>
             {
+                new MenuItem("Pick Scene Object", () => OpenSceneObjectPicker()),
                 new MenuItem("Debug", subItems: new List<MenuItem>
                 {
                     new MenuItem("Dump door IDs", () => controller.DumpDoorIds()),
@@ -604,38 +671,96 @@ namespace MapLootEditorLite.Client
             _scatterTabButton  = UIBuilder.CreateButton(tabBar, "Scatter",      () => SelectBottomTab(1), 60, 22);
             _groupsTabButton   = UIBuilder.CreateButton(tabBar, "Groups",       () => SelectBottomTab(2), 60, 22);
             _objectsTabButton  = UIBuilder.CreateButton(tabBar, "GameObjects",  () => SelectBottomTab(3), 76, 22);
-            _outputTabButton   = UIBuilder.CreateButton(tabBar, "Output",       () => SelectBottomTab(4), 60, 22);
+            _removedTabButton  = UIBuilder.CreateButton(tabBar, "Removed",      () => SelectBottomTab(4), 60, 22);
+            _outputTabButton   = UIBuilder.CreateButton(tabBar, "Output",       () => SelectBottomTab(5), 60, 22);
 
-            var tabContent = UIBuilder.CreatePanel("TabContent", _bottomPanel, new Color(0, 0, 0, 0));
-            tabContent.anchorMin = Vector2.zero;
-            tabContent.anchorMax = Vector2.one;
-            tabContent.offsetMin = Vector2.zero;
-            tabContent.offsetMax = Vector2.zero;
-            UIBuilder.AddLayoutElement(tabContent, null, null, null, null, null, 1);
+            _bottomTabContent = UIBuilder.CreatePanel("TabContent", _bottomPanel, new Color(0, 0, 0, 0));
+            _bottomTabContent.anchorMin = Vector2.zero;
+            _bottomTabContent.anchorMax = Vector2.one;
+            _bottomTabContent.offsetMin = Vector2.zero;
+            _bottomTabContent.offsetMax = Vector2.zero;
+            UIBuilder.AddLayoutElement(_bottomTabContent, null, null, null, null, null, 1);
 
-            BuildPrefabsTab(tabContent);
-            BuildScatterTab(tabContent);
-            BuildGroupsTab(tabContent);
-            BuildObjectsTab(tabContent);
-            BuildOutputTab(tabContent);
+            BuildPrefabsTab(_bottomTabContent);
+            BuildScatterTab(_bottomTabContent);
+            BuildGroupsTab(_bottomTabContent);
+            BuildObjectsTab(_bottomTabContent);
+            BuildRemovedTab(_bottomTabContent);
+            BuildOutputTab(_bottomTabContent);
 
             SelectBottomTab(0);
         }
 
         private void SelectBottomTab(int index)
         {
+            if (index == 5)
+                EnsureOutputTab();
             _activeBottomTab = index;
             _prefabsTab.gameObject.SetActive(index == 0);
             _scatterTab.gameObject.SetActive(index == 1);
             _groupsTab.gameObject.SetActive(index == 2);
             if (_objectsTab != null) _objectsTab.gameObject.SetActive(index == 3);
-            if (_outputTab != null) _outputTab.gameObject.SetActive(index == 4);
+            if (_removedTab != null) _removedTab.gameObject.SetActive(index == 4);
+            if (_outputTab != null) _outputTab.gameObject.SetActive(index == 5);
 
             UpdateTabButton(_prefabsTabButton, index == 0);
             UpdateTabButton(_scatterTabButton, index == 1);
             UpdateTabButton(_groupsTabButton, index == 2);
             if (_objectsTabButton != null) UpdateTabButton(_objectsTabButton, index == 3);
-            if (_outputTabButton != null) UpdateTabButton(_outputTabButton, index == 4);
+            if (_removedTabButton != null) UpdateTabButton(_removedTabButton, index == 4);
+            if (_outputTabButton != null) UpdateTabButton(_outputTabButton, index == 5);
+        }
+
+        private void BuildScenePickerNotice()
+        {
+            _scenePickerNotice = UIBuilder.CreatePanel("ScenePickerNotice", _mainWindow, new Color(0.1f, 0.1f, 0.1f, 0.95f));
+            _scenePickerNotice.anchorMin = new Vector2(0.5f, 1f);
+            _scenePickerNotice.anchorMax = new Vector2(0.5f, 1f);
+            _scenePickerNotice.pivot = new Vector2(0.5f, 1f);
+            _scenePickerNotice.offsetMin = new Vector2(-180, -48);
+            _scenePickerNotice.offsetMax = new Vector2(180, 0);
+            UIBuilder.AddHorizontalLayout(_scenePickerNotice, 4, 4, false, false);
+            UIBuilder.CreateText(_scenePickerNotice, "Click an object in the world", 11, Color.white);
+            UIBuilder.CreateToggle(_scenePickerNotice, "Use Parent", _pickUseParent, (v) => _pickUseParent = v, 18);
+            UIBuilder.CreateButton(_scenePickerNotice, "Cancel", () => CloseSceneObjectPicker(), 60, 22);
+            _scenePickerNotice.gameObject.SetActive(false);
+
+            // Small label that follows the mouse cursor while picking
+            _scenePickerCursorTooltip = UIBuilder.CreatePanel("ScenePickerCursorTooltip", _canvas.transform, new Color(0.08f, 0.08f, 0.08f, 0.92f));
+            _scenePickerCursorTooltip.anchorMin = new Vector2(0f, 0f);
+            _scenePickerCursorTooltip.anchorMax = new Vector2(0f, 0f);
+            _scenePickerCursorTooltip.pivot = new Vector2(0f, 0f);
+            _scenePickerCursorTooltip.sizeDelta = new Vector2(190, 22);
+            UIBuilder.AddHorizontalLayout(_scenePickerCursorTooltip, 4, 2, false, false);
+            UIBuilder.CreateText(_scenePickerCursorTooltip, "Click an object to select it", 11, Color.white);
+            _scenePickerCursorTooltip.gameObject.SetActive(false);
+        }
+
+        private void UpdateScenePickerCursorTooltip()
+        {
+            if (_scenePickerCursorTooltip == null)
+                return;
+            bool picking = _isPickingSceneGO;
+            if (_scenePickerCursorTooltip.gameObject.activeSelf != picking)
+            {
+                _scenePickerCursorTooltip.gameObject.SetActive(picking);
+                if (picking)
+                    _scenePickerCursorTooltip.SetAsLastSibling();
+            }
+            if (picking)
+                _scenePickerCursorTooltip.anchoredPosition = (Vector2)Input.mousePosition + new Vector2(12f, 12f);
+        }
+
+        public void OpenSceneObjectPicker()
+        {
+            if (_objectsTabButton != null)
+                SelectBottomTab(3);
+            SetPickingSceneGO(true);
+        }
+
+        public void CloseSceneObjectPicker()
+        {
+            SetPickingSceneGO(false);
         }
 
         private void UpdateTabButton(Button btn, bool active)
@@ -761,6 +886,11 @@ namespace MapLootEditorLite.Client
                 (v) => { _objectsSearchText = v; RefreshObjectsList(); }, 110, 22);
             UIBuilder.CreateButton(searchRow, "Scan Scene", () => { ScanSceneObjects(); RefreshObjectsList(); }, 80, 22);
 
+            _goPickRow = UIBuilder.CreatePanel("GOPick", leftCol, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(_goPickRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(_goPickRow, null, 22, null, 22, null, 0);
+            RefreshGOPickRow();
+
             var scroll = UIBuilder.CreateScrollView(leftCol, out _objectsContent, out _, 0, 0, 14);
             UIBuilder.AddLayoutElement(scroll.gameObject, null, null, null, null, null, 1);
             UIBuilder.AddVerticalLayout(_objectsContent, 1, 2, true, true);
@@ -781,6 +911,41 @@ namespace MapLootEditorLite.Client
             UIBuilder.AddHorizontalLayout(_goActionBtnRow, 2, 2, false, false);
             UIBuilder.AddLayoutElement(_goActionBtnRow, null, 22, null, 22, null, 0);
             RefreshGOActionRow();
+
+            _goDetailsText = UIBuilder.CreateText(rightCol, "Select an object to view details.", 10, new Color(0.7f, 0.7f, 0.7f, 1f));
+            if (_goDetailsText != null)
+            {
+                _goDetailsText.alignment = TextAnchor.UpperLeft;
+                _goDetailsText.horizontalOverflow = HorizontalWrapMode.Wrap;
+                _goDetailsText.verticalOverflow = VerticalWrapMode.Overflow;
+                var detailsRt = _goDetailsText.GetComponent<RectTransform>();
+                if (detailsRt != null)
+                    detailsRt.sizeDelta = new Vector2(110, 0);
+                UIBuilder.AddLayoutElement(_goDetailsText.gameObject, null, null, null, null, 1, 1);
+            }
+        }
+
+        private void BuildRemovedTab(RectTransform parent)
+        {
+            _removedTab = UIBuilder.CreatePanel("RemovedTab", parent, new Color(0.14f, 0.14f, 0.14f, 1f));
+            _removedTab.anchorMin = Vector2.zero;
+            _removedTab.anchorMax = Vector2.one;
+            _removedTab.offsetMin = Vector2.zero;
+            _removedTab.offsetMax = Vector2.zero;
+            UIBuilder.AddVerticalLayout(_removedTab, 4, 4, true, true);
+
+            var header = UIBuilder.CreatePanel("RemovedHeader", _removedTab, new Color(0, 0, 0, 0));
+            header.GetComponent<Image>().raycastTarget = false;
+            UIBuilder.AddHorizontalLayout(header, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(header, null, 22, null, 22, null, 0);
+            UIBuilder.CreateButton(header, "Apply Preview", () => ApplyRemovedObjectsPreview(), 90, 22);
+            UIBuilder.CreateButton(header, "Restore All", () => RestoreAllRemovedObjects(), 80, 22);
+
+            var scroll = UIBuilder.CreateScrollView(_removedTab, out _removedContent, out _, 0, 0, 14);
+            UIBuilder.AddLayoutElement(scroll.gameObject, null, null, null, null, null, 1);
+            UIBuilder.AddVerticalLayout(_removedContent, 2, 2, true, true);
+
+            RefreshRemovedObjectsList();
         }
 
         private void BuildOutputTab(RectTransform parent)
@@ -804,6 +969,21 @@ namespace MapLootEditorLite.Client
             UIBuilder.AddVerticalLayout(_outputContent, 2, 2, true, true);
 
             RefreshOutput();
+        }
+
+        private void EnsureOutputTab()
+        {
+            if (_outputTab != null || _bottomTabContent == null)
+                return;
+            try
+            {
+                BuildOutputTab(_bottomTabContent);
+                Plugin.Log.LogInfo("CustomEditorUI rebuilt OutputTab on demand");
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogError($"CustomEditorUI failed to rebuild OutputTab: {ex}");
+            }
         }
 
         private void RefreshOutput()
@@ -896,10 +1076,29 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        private void RefreshGOPickRow()
+        {
+            if (_goPickRow == null) return;
+            ClearChildren(_goPickRow);
+            if (_isPickingSceneGO)
+            {
+                UIBuilder.CreateLabel(_goPickRow, "Click object in world...", 11, 136, 22);
+                UIBuilder.CreateButton(_goPickRow, "Cancel", () => { _isPickingSceneGO = false; RefreshGOPickRow(); }, 54, 22);
+            }
+            else
+            {
+                UIBuilder.CreateButton(_goPickRow, "Pick from Scene", () => { _isPickingSceneGO = true; RefreshGOPickRow(); }, 100, 22);
+                UIBuilder.CreateToggle(_goPickRow, "Use Parent", _pickUseParent, (v) => _pickUseParent = v, 18);
+            }
+        }
+
         private void RefreshGOActionRow()
         {
             if (_goActionBtnRow == null) return;
             ClearChildren(_goActionBtnRow);
+
+            if (_goDetailsText != null)
+                _goDetailsText.text = FormatSceneGODetails(_selectedSceneGO);
 
             if (_selectedSceneGO == null)
             {
@@ -930,6 +1129,207 @@ namespace MapLootEditorLite.Client
                 {
                     controller?.PlaceStaticFromSceneGO(_selectedSceneGO);
                 }, 80, 22);
+                UIBuilder.CreateButton(_goActionBtnRow, "Remove", () =>
+                {
+                    RemoveSelectedSceneGO();
+                }, 50, 22);
+            }
+        }
+
+        private string FormatSceneGODetails(GameObject go)
+        {
+            if (go == null)
+                return "Select an object to view details.";
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Name: {go.name}");
+            sb.AppendLine($"Path: {GetFullPath(go.transform)}");
+            sb.AppendLine($"Pos: {go.transform.position}");
+            sb.AppendLine($"Rot: {go.transform.rotation.eulerAngles}");
+            sb.AppendLine($"Scale: {go.transform.localScale}");
+
+            var wio = go.GetComponentInChildren<WorldInteractiveObject>(true);
+            if (wio != null)
+            {
+                sb.AppendLine("--- WorldInteractiveObject ---");
+                sb.AppendLine($"Id: {wio.Id}");
+                sb.AppendLine($"KeyId: {wio.KeyId}");
+                sb.AppendLine($"DoorState: {wio.DoorState}");
+                sb.AppendLine($"Initial: {wio.InitialDoorState}");
+                sb.AppendLine($"Fallback: {wio.FallbackState}");
+            }
+
+            var container = wio as LootableContainer ?? go.GetComponentInChildren<LootableContainer>(true);
+            if (container != null)
+            {
+                sb.AppendLine("--- LootableContainer ---");
+                sb.AppendLine($"Id: {container.Id}");
+                sb.AppendLine($"Template: {container.Template}");
+            }
+
+            var sw = go.GetComponentInChildren<StationaryWeapon>(true);
+            if (sw != null)
+            {
+                sb.AppendLine("--- StationaryWeapon ---");
+                sb.AppendLine($"IdEditable: {sw.IdEditable}");
+                sb.AppendLine($"Template: {sw.Template}");
+            }
+
+            return sb.ToString();
+        }
+
+        private static string GetFullPath(Transform t)
+        {
+            var path = t.name;
+            while (t.parent != null)
+            {
+                t = t.parent;
+                path = t.name + "/" + path;
+            }
+            return path;
+        }
+
+        private void RemoveSelectedSceneGO()
+        {
+            if (_selectedSceneGO == null || manager.Data == null) return;
+            if (IsEditorObject(_selectedSceneGO))
+            {
+                Plugin.Log.LogWarning($"Cannot remove editor-owned object '{_selectedSceneGO.name}'.");
+                return;
+            }
+            var go = _selectedSceneGO;
+            var removed = new RemovedObject
+            {
+                id = System.Guid.NewGuid().ToString("N"),
+                name = go.name,
+                path = GetFullPath(go.transform),
+                position = TransformData.FromVector3(go.transform.position),
+                rotation = TransformData.FromVector3(go.transform.rotation.eulerAngles),
+                scale = TransformData.FromVector3(go.transform.localScale)
+            };
+            _removedObjectInstances[removed.id] = go;
+            manager.Data.removedObjects.Add(removed);
+            go.SetActive(false);
+            _sceneObjectCache.Remove(go);
+            _selectedSceneGO = null;
+            manager.IsDirty = true;
+            if (_goPreviewNameText != null)
+                _goPreviewNameText.text = "No selection";
+            RefreshObjectsList();
+            RefreshGOActionRow();
+            RefreshRemovedObjectsList();
+            Plugin.Log.LogInfo($"Marked scene object for removal: {removed.name} at {removed.position}");
+        }
+
+        private void RestoreRemovedObject(string id)
+        {
+            var removed = manager.Data?.removedObjects?.FirstOrDefault(r => r.id == id);
+            if (removed == null) return;
+            if (_removedObjectInstances.TryGetValue(id, out var go) && go != null)
+                go.SetActive(true);
+            _removedObjectInstances.Remove(id);
+            manager.Data.removedObjects.Remove(removed);
+            manager.IsDirty = true;
+            RefreshObjectsList();
+            RefreshGOActionRow();
+            RefreshRemovedObjectsList();
+            Plugin.Log.LogInfo($"Restored scene object: {removed.name}");
+        }
+
+        private void RestoreAllRemovedObjects()
+        {
+            if (manager.Data?.removedObjects == null) return;
+            foreach (var removed in manager.Data.removedObjects.ToList())
+            {
+                if (_removedObjectInstances.TryGetValue(removed.id, out var go) && go != null)
+                    go.SetActive(true);
+            }
+            _removedObjectInstances.Clear();
+            manager.Data.removedObjects.Clear();
+            manager.IsDirty = true;
+            RefreshObjectsList();
+            RefreshGOActionRow();
+            RefreshRemovedObjectsList();
+            Plugin.Log.LogInfo("Restored all removed scene objects.");
+        }
+
+        private void ApplyRemovedObjectsPreview()
+        {
+            if (manager.Data?.removedObjects == null) return;
+            foreach (var removed in manager.Data.removedObjects)
+            {
+                if (_removedObjectInstances.ContainsKey(removed.id)) continue;
+                var go = FindSceneObjectByNameAndPosition(removed.name, removed.position.ToVector3());
+                if (go != null && !IsEditorObject(go))
+                {
+                    _removedObjectInstances[removed.id] = go;
+                    go.SetActive(false);
+                }
+                else if (go == null)
+                {
+                    Plugin.Log.LogWarning($"Could not find scene object to preview removal: {removed.name}");
+                }
+                else
+                {
+                    Plugin.Log.LogWarning($"Skipping preview removal of editor-owned object '{removed.name}'.");
+                }
+            }
+            RefreshObjectsList();
+            RefreshGOActionRow();
+            RefreshRemovedObjectsList();
+        }
+
+        private GameObject FindSceneObjectByNameAndPosition(string name, Vector3 position)
+        {
+            GameObject best = null;
+            float bestDist = float.MaxValue;
+            var sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
+            for (int i = 0; i < sceneCount; i++)
+            {
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
+                if (!scene.isLoaded) continue;
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                    {
+                        if (t.name != name) continue;
+                        var dist = (t.position - position).sqrMagnitude;
+                        if (dist < bestDist)
+                        {
+                            bestDist = dist;
+                            best = t.gameObject;
+                        }
+                    }
+                }
+            }
+            return best;
+        }
+
+        private void RefreshRemovedObjectsList()
+        {
+            if (_removedContent == null) return;
+            ClearChildren(_removedContent);
+            var list = manager.Data?.removedObjects;
+            if (list == null || list.Count == 0)
+            {
+                UIBuilder.CreateText(_removedContent, "No vanilla objects marked for removal.", 11, new Color(0.5f, 0.5f, 0.5f, 1f));
+                return;
+            }
+            foreach (var removed in list)
+            {
+                if (removed == null) continue;
+                var row = UIBuilder.CreatePanel("RemovedRow", _removedContent, new Color(0.13f, 0.13f, 0.13f, 0.3f));
+                UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
+                UIBuilder.AddLayoutElement(row, null, 18, null, 18, null, 0);
+                var label = UIBuilder.CreateText(row, removed.name, 10, new Color(0.72f, 0.72f, 0.72f, 1f));
+                if (label != null)
+                {
+                    label.alignment = TextAnchor.MiddleLeft;
+                    var rt = label.GetComponent<RectTransform>();
+                    if (rt != null) rt.sizeDelta = new Vector2(180, 18);
+                }
+                var captured = removed;
+                UIBuilder.CreateButton(row, "Restore", () => RestoreRemovedObject(captured.id), 60, 18);
             }
         }
 
@@ -1028,6 +1428,21 @@ namespace MapLootEditorLite.Client
             UIBuilder.CreateButton(row, "Cancel", () => CancelDelete(), 100, 28);
 
             _deleteConfirmPanel.gameObject.SetActive(false);
+        }
+
+        private void EnsureDeleteConfirm()
+        {
+            if (_deleteConfirmPanel != null || _canvas == null)
+                return;
+            try
+            {
+                BuildDeleteConfirm();
+                Plugin.Log.LogInfo("CustomEditorUI rebuilt DeleteConfirm on demand");
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogError($"CustomEditorUI failed to rebuild DeleteConfirm: {ex}");
+            }
         }
 
         private void BuildExportDialog()
@@ -1188,14 +1603,22 @@ namespace MapLootEditorLite.Client
         {
             if (manager == null || controller == null)
                 return;
-            RefreshTitle();
-            RefreshHierarchy();
-            RefreshInspector();
-            RefreshPrefabs();
-            RefreshGroups();
-            UpdateGizmoButtons();
-            UpdateEditorModeButton();
-            _lastMarkerCount = manager.GetAllMarkers().Count();
+            try
+            {
+                RefreshTitle();
+                RefreshHierarchy();
+                RefreshInspector();
+                RefreshPrefabs();
+                RefreshGroups();
+                UpdateGizmoButtons();
+                UpdateEditorModeButton();
+                _lastMarkerCount = manager.GetAllMarkers().Count();
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogError($"CustomEditorUI RefreshAll failed: {ex}");
+                LogOutput($"UI refresh error: {ex.Message}");
+            }
         }
 
         private void RefreshTitle()
@@ -1383,7 +1806,15 @@ namespace MapLootEditorLite.Client
             var selected = manager.Selected;
             if (selected == null)
             {
-                UIBuilder.CreateText(_inspectorContent, "No marker selected.", 12, new Color(0.6f, 0.6f, 0.6f, 1f));
+                if (_selectedSceneGO != null)
+                {
+                    UIBuilder.CreateText(_inspectorContent, "Scene Object", 12, Color.white, FontStyle.Bold);
+                    UIBuilder.CreateText(_inspectorContent, FormatSceneGODetails(_selectedSceneGO), 10, new Color(0.7f, 0.7f, 0.7f, 1f));
+                }
+                else
+                {
+                    UIBuilder.CreateText(_inspectorContent, "No marker selected.", 12, new Color(0.6f, 0.6f, 0.6f, 1f));
+                }
                 return;
             }
 
@@ -2574,9 +3005,12 @@ namespace MapLootEditorLite.Client
         {
             if (manager == null || manager.Selected == null)
                 return;
+            EnsureDeleteConfirm();
+            if (_deleteConfirmPanel == null)
+                return;
             _isDeletePending = true;
-            if (_deleteConfirmPanel != null)
-                _deleteConfirmPanel.gameObject.SetActive(true);
+            _deleteConfirmPanel.gameObject.SetActive(true);
+            _deleteConfirmPanel.SetAsLastSibling();
             if (_deleteConfirmText != null)
                 _deleteConfirmText.text = $"Delete {manager.SelectedIds.Count} marker(s)?";
         }
@@ -2680,12 +3114,42 @@ namespace MapLootEditorLite.Client
             {
                 var picked = hit.transform.gameObject;
                 if (_pickUseParent && picked.transform.parent != null)
-                    picked = picked.transform.parent.gameObject;
+                {
+                    var parent = picked.transform.parent.gameObject;
+                    if (!IsEditorObject(parent))
+                        picked = parent;
+                }
+
+                if (IsEditorObject(picked))
+                {
+                    Plugin.Log.LogInfo($"Scene picker ignored editor-owned object '{picked.name}'.");
+                    return null;
+                }
+
                 Plugin.Log.LogInfo($"Picked scene object: {picked.name} at {picked.transform.position}");
                 return picked;
             }
             Plugin.Log.LogWarning("Scene picker raycast did not hit anything.");
             return null;
+        }
+
+        public static bool IsEditorObject(GameObject go)
+        {
+            if (go == null)
+                return true;
+            var t = go.transform;
+            while (t != null)
+            {
+                var name = t.name;
+                if (name.StartsWith("MLE_", StringComparison.Ordinal))
+                    return true;
+                if (name.Equals("Player", StringComparison.OrdinalIgnoreCase))
+                    return true;
+                if (t.GetComponent<PreviewLootMarker>() != null)
+                    return true;
+                t = t.parent;
+            }
+            return false;
         }
 
         public void UpdateGizmoButtons()

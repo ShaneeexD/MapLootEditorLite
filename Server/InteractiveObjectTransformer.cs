@@ -626,6 +626,11 @@ public static class InteractiveObjectTransformer
         {
             // Fallback: the root item is the one with no parent id.
             var rootItem = spawnpoint.Items?.FirstOrDefault(i => string.IsNullOrEmpty(i.ParentId));
+            if (rootItem == null && (spawnpoint.Items?.Any() ?? false))
+            {
+                rootItem = spawnpoint.Items!.First();
+                ServerPlugin.Logger?.Info($"[MEL] Donor root fallback: using first item ({rootItem.Id}) as root because no item had an empty ParentId (original root={donorRootId}).");
+            }
             if (rootItem != null)
             {
                 rootId = rootItem.Id.ToString();

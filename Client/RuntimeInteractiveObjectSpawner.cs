@@ -112,13 +112,18 @@ namespace MapLootEditorLite.Client
         private void SpawnForMap(string mapId)
         {
             var objects = new List<InteractiveObject>();
+            var removedObjects = new List<RemovedObject>();
             foreach (var pack in _packs)
             {
                 if (pack.maps.TryGetValue(mapId, out var map))
                 {
                     objects.AddRange(map.interactiveObjects ?? new List<InteractiveObject>());
+                    removedObjects.AddRange(map.removedObjects ?? new List<RemovedObject>());
                 }
             }
+
+            if (removedObjects.Count > 0)
+                StartCoroutine(RemoveObjectsCoroutine(removedObjects));
 
             if (objects.Count == 0)
             {
@@ -136,6 +141,29 @@ namespace MapLootEditorLite.Client
                 }
 
                 StartCoroutine(SpawnObjectCoroutine(obj));
+            }
+        }
+
+        private IEnumerator RemoveObjectsCoroutine(List<RemovedObject> removedObjects)
+        {
+            yield return new WaitForSecondsRealtime(2f);
+            foreach (var removed in removedObjects)
+            {
+                if (removed == null) continue;
+                var target = FindSourceObject(removed.name, removed.position.ToVector3());
+                if (target != null && !CustomEditorUI.IsEditorObject(target))
+                {
+                    Destroy(target);
+                    Plugin.Log.LogInfo($"Removed vanilla object '{removed.name}' at {removed.position.ToVector3()} per pack.");
+                }
+                else if (target == null)
+                {
+                    Plugin.Log.LogWarning($"Could not find vanilla object '{removed.name}' to remove.");
+                }
+                else
+                {
+                    Plugin.Log.LogWarning($"Skipping removal of editor-owned object '{removed.name}'.");
+                }
             }
         }
 
@@ -208,6 +236,8 @@ namespace MapLootEditorLite.Client
             instance.transform.localScale = obj.scale.ToVector3();
 
             var wio = instance.GetComponentInChildren<WorldInteractiveObject>(true);
+            var stationaryWeapon = instance.GetComponentInChildren<StationaryWeapon>(true);
+
             if (wio != null && wio.transform.parent == null)
             {
                 // EFT requires a parent for CurrentAngle rotation, so wrap the root WIO in a frame.
@@ -227,10 +257,9 @@ namespace MapLootEditorLite.Client
 
             if (wio != null)
             {
-                wio.Id = obj.id;
-
                 if (obj.interactiveType == InteractiveObjectType.Door)
                 {
+                    wio.Id = obj.id;
                     if (!string.IsNullOrEmpty(obj.keyId))
                     {
                         wio.KeyId = obj.keyId;
@@ -265,24 +294,34 @@ namespace MapLootEditorLite.Client
                         Plugin.Log.LogWarning($"Container '{obj.name}' has no LootableContainer component; loot interface will not work.");
                     }
                 }
-
-                RegisterWorldInteractiveObjectWhenReady(wio, obj.name);
-            }
-            else if (obj.interactiveType == InteractiveObjectType.StationaryWeapon)
-            {
-                var stationaryWeapon = instance.GetComponentInChildren<StationaryWeapon>(true);
-                if (stationaryWeapon != null)
+                else if (obj.interactiveType == InteractiveObjectType.StationaryWeapon && stationaryWeapon != null)
                 {
+                    wio.Id = obj.id;
                     stationaryWeapon.IdEditable = obj.id;
                     if (!string.IsNullOrEmpty(obj.weaponTemplate))
                         stationaryWeapon.Template = obj.weaponTemplate;
                     RecalculateStationaryWeaponLimits(stationaryWeapon);
                     StartCoroutine(InitializeStationaryWeaponCoroutine(obj, stationaryWeapon));
                 }
-                else
+                else if (obj.interactiveType == InteractiveObjectType.StationaryWeapon)
                 {
                     Plugin.Log.LogWarning($"Spawned stationary weapon '{obj.name}' has no StationaryWeapon component; interaction will not work.");
                 }
+                else
+                {
+                    wio.Id = obj.id;
+                }
+
+                RegisterWorldInteractiveObjectWhenReady(wio, obj.name);
+            }
+            else if (stationaryWeapon != null)
+            {
+                stationaryWeapon.IdEditable = obj.id;
+                if (!string.IsNullOrEmpty(obj.weaponTemplate))
+                    stationaryWeapon.Template = obj.weaponTemplate;
+                RecalculateStationaryWeaponLimits(stationaryWeapon);
+                StartCoroutine(InitializeStationaryWeaponCoroutine(obj, stationaryWeapon));
+                Plugin.Log.LogWarning($"Stationary weapon '{obj.name}' has no WorldInteractiveObject; it may not be interactable until one exists.");
             }
             else
             {
@@ -370,8 +409,36 @@ namespace MapLootEditorLite.Client
                 yield break;
             }
 
-            var controller = new TraderControllerClass(item, item.Id, item.ShortName.Localized(null), true, EOwnerType.Profile);
-            stationaryWeapon.Init(controller);
+            // Wait for the local player so the controller has a valid player owner.
+            // Init calls into MagVisualController which expects a non-null IPlayer.
+            var playerWait = 30f;
+            var playerElapsed = 0f;
+            while (finalGameWorld.MainPlayer == null && playerElapsed < playerWait)
+            {
+                yield return new WaitForSecondsRealtime(0.5f);
+                playerElapsed += 0.5f;
+            }
+
+            var player = finalGameWorld.MainPlayer;
+            TraderControllerClass controller = null;
+            if (player != null)
+                controller = player.InventoryController as TraderControllerClass;
+
+            if (controller == null)
+            {
+                Plugin.Log.LogWarning($"Stationary weapon '{obj.name}' cannot initialize: no player inventory controller available.");
+                yield break;
+            }
+
+            try
+            {
+                stationaryWeapon.Init(controller);
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogWarning($"Stationary weapon '{obj.name}' Init threw an exception: {ex.Message}. The weapon may still be usable if already partially initialized.");
+            }
+
             finalGameWorld.RegisterLoot<StationaryWeapon>(stationaryWeapon);
             Plugin.Log.LogInfo($"Initialized stationary weapon '{obj.name}' id={obj.id}.");
         }

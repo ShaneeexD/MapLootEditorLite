@@ -52,6 +52,30 @@ public record MapData
 
     [JsonPropertyName("triggerZones")]
     public List<TriggerZone> TriggerZones { get; set; } = [];
+
+    [JsonPropertyName("removedObjects")]
+    public List<RemovedObject> RemovedObjects { get; set; } = [];
+}
+
+public record RemovedObject
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = string.Empty;
+
+    [JsonPropertyName("position")]
+    public TransformData Position { get; set; } = new();
+
+    [JsonPropertyName("rotation")]
+    public TransformData Rotation { get; set; } = new();
+
+    [JsonPropertyName("scale")]
+    public TransformData Scale { get; set; } = new() { X = 1, Y = 1, Z = 1 };
 }
 
 public record ExtractZoneRequirement

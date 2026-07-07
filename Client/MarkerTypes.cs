@@ -254,6 +254,17 @@ namespace MapLootEditorLite.Client
         public List<BotSpawnZone> botSpawnZones = new List<BotSpawnZone>();
         public List<LightZone> lightZones = new List<LightZone>();
         public List<TriggerZone> triggerZones = new List<TriggerZone>();
+        public List<RemovedObject> removedObjects = new List<RemovedObject>();
+    }
+
+    public class RemovedObject
+    {
+        public string id = System.Guid.NewGuid().ToString("N");
+        public string name = "";
+        public string path = "";
+        public TransformData position = new TransformData();
+        public TransformData rotation = new TransformData();
+        public TransformData scale = new TransformData() { x = 1, y = 1, z = 1 };
     }
 
     public class PackData

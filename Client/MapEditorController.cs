@@ -1251,6 +1251,18 @@ namespace MapLootEditorLite.Client
                 return;
             }
 
+            if (_ui?.IsPickingSceneGO == true)
+            {
+                if (Input.GetMouseButtonDown(0))
+                {
+                    var picked = _ui.TryPickSourceSceneObject();
+                    if (picked != null)
+                        _ui.SelectSceneGO(picked);
+                    _ui.SetPickingSceneGO(false);
+                }
+                return;
+            }
+
             var camera = Camera.main;
             if (camera == null)
                 return;
