@@ -713,6 +713,16 @@ namespace MapLootEditorLite.Client
 
         public void DumpDoorIds()
         {
+            DumpDoorIdsInternal(false);
+        }
+
+        public void DumpKeyedDoorIds()
+        {
+            DumpDoorIdsInternal(true);
+        }
+
+        private void DumpDoorIdsInternal(bool onlyWithKeys)
+        {
             try
             {
                 var world = Singleton<GameWorld>.Instance;
@@ -724,6 +734,7 @@ namespace MapLootEditorLite.Client
 
                 var doorObjects = FindObjectsOfType<WorldInteractiveObject>()
                     .Where(o => o != null && o.GetComponent<Door>() != null)
+                    .Where(o => !onlyWithKeys || !string.IsNullOrEmpty(o.KeyId))
                     .OrderBy(o => o.name)
                     .Select(o => new
                     {
@@ -739,7 +750,8 @@ namespace MapLootEditorLite.Client
                     })
                     .ToList();
 
-                var path = Path.Combine(Plugin.ModDataDirectory, "door_ids_dump.json");
+                var suffix = onlyWithKeys ? "_keyed" : "";
+                var path = Path.Combine(Plugin.ModDataDirectory, $"door_ids_dump{suffix}.json");
                 File.WriteAllText(path, JsonConvert.SerializeObject(doorObjects, Formatting.Indented));
                 Plugin.Log.LogInfo($"Dumped {doorObjects.Count} door IDs to {path}");
             }

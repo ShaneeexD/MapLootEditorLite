@@ -353,7 +353,8 @@ namespace MapLootEditorLite.Client
             {
                 new MenuItem("Debug", subItems: new List<MenuItem>
                 {
-                    new MenuItem("Dump door IDs", () => controller.DumpDoorIds())
+                    new MenuItem("Dump door IDs", () => controller.DumpDoorIds()),
+                    new MenuItem("Dump keyed door IDs", () => controller.DumpKeyedDoorIds())
                 })
             }, 40, 22);
             BuildMenuButton(row1, "Add Spawn", new List<MenuItem>
