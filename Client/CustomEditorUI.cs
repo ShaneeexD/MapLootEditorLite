@@ -576,8 +576,7 @@ namespace MapLootEditorLite.Client
                     new MenuItem("Bot Spawn Point", () => controller.CreateBotSpawnPoint()),
                     new MenuItem("Bot Spawn Zone", () => controller.CreateBotSpawnZone()),
                     new MenuItem("Light Zone", () => controller.CreateLightZone()),
-                    new MenuItem("Trigger Zone", () => controller.CreateTriggerZone()),
-                    new MenuItem("Occlusion Repair Volume", () => controller.CreateOcclusionRepairVolume())
+                    new MenuItem("Trigger Zone", () => controller.CreateTriggerZone())
                 }),
                 new MenuItem("WTT", subItems: new List<MenuItem>
                 {
