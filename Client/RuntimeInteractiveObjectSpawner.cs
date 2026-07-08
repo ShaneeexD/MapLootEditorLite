@@ -79,11 +79,9 @@ namespace MapLootEditorLite.Client
             if (!string.IsNullOrEmpty(Plugin.ServerModPacksDirectory) && Directory.Exists(Plugin.ServerModPacksDirectory))
                 directories.Add(Plugin.ServerModPacksDirectory);
 
-            // Interactive objects should only spawn from published packs, not from exports used for editing.
-
             if (directories.Count == 0)
             {
-                Plugin.Log.LogWarning($"No pack directories found; interactive objects will not be spawned.");
+                Plugin.Log.LogWarning($"No pack directories found; interactive objects and object removals will not be applied.");
                 return;
             }
 
@@ -98,7 +96,8 @@ namespace MapLootEditorLite.Client
                         if (pack?.maps != null)
                         {
                             _packs.Add(pack);
-                            Plugin.Log.LogInfo($"Loaded pack '{pack.name}' from {file}");
+                            var removedCount = pack.maps.Values.Sum(m => m.removedObjects?.Count ?? 0);
+                            Plugin.Log.LogInfo($"Loaded pack '{pack.name}' from {file} ({removedCount} removedObjects across {pack.maps.Count} maps).");
                         }
                     }
                     catch (Exception ex)
@@ -123,7 +122,10 @@ namespace MapLootEditorLite.Client
             }
 
             if (removedObjects.Count > 0)
+            {
+                Plugin.Log.LogInfo($"Queuing {removedObjects.Count} removed objects for map {mapId}.");
                 StartCoroutine(RemoveObjectsCoroutine(removedObjects));
+            }
 
             if (objects.Count == 0)
             {
@@ -147,24 +149,35 @@ namespace MapLootEditorLite.Client
         private IEnumerator RemoveObjectsCoroutine(List<RemovedObject> removedObjects)
         {
             yield return new WaitForSecondsRealtime(2f);
+            Plugin.Log.LogInfo($"RemoveObjectsCoroutine starting for {removedObjects.Count} removed objects.");
             foreach (var removed in removedObjects)
             {
                 if (removed == null) continue;
-                var target = FindSourceObject(removed.name, removed.position.ToVector3());
+                GameObject target = null;
+                for (int attempt = 0; attempt < 5; attempt++)
+                {
+                    target = FindSourceObject(removed.name, removed.position.ToVector3());
+                    if (target != null) break;
+                    if (attempt == 0)
+                        Plugin.Log.LogInfo($"Removed object '{removed.name}' not found yet, waiting...");
+                    yield return new WaitForSecondsRealtime(1f);
+                }
                 if (target != null && !CustomEditorUI.IsEditorObject(target))
                 {
-                    Destroy(target);
-                    Plugin.Log.LogInfo($"Removed vanilla object '{removed.name}' at {removed.position.ToVector3()} per pack.");
+                    var state = RemovedObjectHelper.SoftRemove(target);
+                    removed.originalDoorState = state.OriginalDoorState;
+                    Plugin.Log.LogInfo($"Soft-removed vanilla object '{removed.name}' at {removed.position.ToVector3()} per pack (renderers/colliders disabled, culling group turned off).");
                 }
                 else if (target == null)
                 {
-                    Plugin.Log.LogWarning($"Could not find vanilla object '{removed.name}' to remove.");
+                    Plugin.Log.LogWarning($"Could not find vanilla object '{removed.name}' at {removed.position.ToVector3()} after multiple attempts.");
                 }
                 else
                 {
                     Plugin.Log.LogWarning($"Skipping removal of editor-owned object '{removed.name}'.");
                 }
             }
+            Plugin.Log.LogInfo("RemoveObjectsCoroutine finished.");
         }
 
         private IEnumerator SpawnObjectCoroutine(InteractiveObject obj)

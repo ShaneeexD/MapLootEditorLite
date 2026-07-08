@@ -265,6 +265,7 @@ namespace MapLootEditorLite.Client
         public TransformData position = new TransformData();
         public TransformData rotation = new TransformData();
         public TransformData scale = new TransformData() { x = 1, y = 1, z = 1 };
+        public int originalDoorState = -1; // -1 = not a door, otherwise EFT.Interactive.EDoorState value
     }
 
     public class PackData

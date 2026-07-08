@@ -8,6 +8,7 @@ using System.Text;
 using Comfort.Common;
 using EFT.Interactive;
 using EFT.InventoryLogic;
+using Koenigz.PerfectCulling.EFT;
 using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Events;
@@ -16,6 +17,205 @@ using UnityEngine.UI;
 
 namespace MapLootEditorLite.Client
 {
+    public static class RemovedObjectHelper
+    {
+        [Serializable]
+        public class RemovalState
+        {
+            public GameObject GameObject;
+            public bool WasActive;
+            public readonly List<Component> DisabledComponents = new List<Component>();
+            public readonly List<PerfectCullingCrossSceneGroup> DisabledGroups = new List<PerfectCullingCrossSceneGroup>();
+            public readonly List<MonoBehaviour> DisabledCullingObjects = new List<MonoBehaviour>();
+            public readonly List<(Renderer renderer, bool previousForceRenderingOff)> ForceOffRenderers = new List<(Renderer, bool)>();
+            public int OriginalDoorState = -1;
+        }
+
+        public static RemovalState SoftRemove(GameObject go)
+        {
+            var state = new RemovalState { GameObject = go, WasActive = go.activeSelf };
+
+            var wio = go.GetComponentInChildren<WorldInteractiveObject>(true);
+            if (wio != null)
+            {
+                state.OriginalDoorState = (int)wio.DoorState;
+                try { wio.SetDoorState(EDoorState.Open, true); }
+                catch (Exception ex) { Plugin.Log.LogWarning($"Could not open door before removal: {ex.Message}"); }
+            }
+
+            string GetPath(Transform t)
+            {
+                var sb = new StringBuilder(t.name);
+                while (t.parent != null) { t = t.parent; sb.Insert(0, t.name + "/"); }
+                return sb.ToString();
+            }
+
+            var groups = new HashSet<PerfectCullingCrossSceneGroup>();
+            foreach (var g in go.GetComponentsInParent<PerfectCullingCrossSceneGroup>(true)) if (g != null) groups.Add(g);
+            foreach (var g in go.GetComponentsInChildren<PerfectCullingCrossSceneGroup>(true)) if (g != null) groups.Add(g);
+
+            try
+            {
+                var allGroups = UnityEngine.Object.FindObjectsOfType<PerfectCullingCrossSceneGroup>();
+                foreach (var g in allGroups)
+                {
+                    if (g == null) continue;
+                    bool contains = false;
+                    if (g.sharedOccluders != null)
+                        foreach (var o in g.sharedOccluders) if (o == go) { contains = true; break; }
+                    if (!contains && g.sharedOccludeeOccluders != null)
+                        foreach (var o in g.sharedOccludeeOccluders) if (o == go) { contains = true; break; }
+                    if (contains) groups.Add(g);
+                }
+            }
+            catch (Exception ex) { Plugin.Log.LogWarning($"Could not scan PerfectCulling groups: {ex.Message}"); }
+
+            foreach (var g in groups)
+            {
+                if (g == null) continue;
+                if (g.allowGroupCulling)
+                {
+                    g.allowGroupCulling = false;
+                    state.DisabledGroups.Add(g);
+                }
+            }
+
+            var cullingObjects = new HashSet<MonoBehaviour>();
+
+            FieldInfo GetFieldOnType(Type t, string name)
+            {
+                while (t != null)
+                {
+                    var f = t.GetField(name, BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (f != null) return f;
+                    t = t.BaseType;
+                }
+                return null;
+            }
+
+            void CollectCullingObjects<T>() where T : MonoBehaviour
+            {
+                foreach (var cull in go.GetComponentsInParent<T>(true)) if (cull != null) cullingObjects.Add(cull);
+                foreach (var cull in go.GetComponentsInChildren<T>(true)) if (cull != null) cullingObjects.Add(cull);
+                try
+                {
+                    foreach (var cull in UnityEngine.Object.FindObjectsOfType<T>())
+                    {
+                        if (cull == null || cullingObjects.Contains(cull)) continue;
+                        var compField = GetFieldOnType(cull.GetType(), "_componentsToTurnOff");
+                        var goField = GetFieldOnType(cull.GetType(), "_gameObjectsToTurnOff");
+                        bool affects = false;
+                        if (compField != null)
+                        {
+                            var comps = compField.GetValue(cull) as List<Component>;
+                            if (comps != null)
+                            {
+                                foreach (var c in comps)
+                                {
+                                    if (c == null) continue;
+                                    if (c.gameObject == go || c.transform.IsChildOf(go.transform)) { affects = true; break; }
+                                }
+                            }
+                        }
+                        if (!affects && goField != null)
+                        {
+                            var gos = goField.GetValue(cull) as List<GameObject>;
+                            if (gos != null)
+                            {
+                                foreach (var g in gos)
+                                {
+                                    if (g == null) continue;
+                                    if (g == go || g.transform.IsChildOf(go.transform)) { affects = true; break; }
+                                }
+                            }
+                        }
+                        if (affects) cullingObjects.Add(cull);
+                    }
+                }
+                catch (Exception ex) { Plugin.Log.LogWarning($"Could not scan {typeof(T).Name} instances: {ex.Message}"); }
+            }
+
+            CollectCullingObjects<DisablerCullingObjectBase>();
+            CollectCullingObjects<CullingObject>();
+
+            foreach (var cull in cullingObjects)
+            {
+                if (cull == null || state.DisabledCullingObjects.Contains(cull)) continue;
+                if (cull is DisablerCullingObjectBase dcb) { try { dcb.SetComponentsEnabled(false); } catch { } }
+                else if (cull is CullingObject co) { try { co.SetVisibility(false); } catch { } }
+                cull.enabled = false;
+                state.DisabledCullingObjects.Add(cull);
+            }
+
+            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r == null) continue;
+                bool wasForceOff = r.forceRenderingOff;
+                if (r.enabled) { r.enabled = false; state.DisabledComponents.Add(r); }
+                r.forceRenderingOff = true;
+                state.ForceOffRenderers.Add((renderer: r, previousForceRenderingOff: wasForceOff));
+            }
+            foreach (var c in go.GetComponentsInChildren<Collider>(true))
+            {
+                if (c != null && c.enabled) { c.enabled = false; state.DisabledComponents.Add(c); }
+            }
+            foreach (var lod in go.GetComponentsInChildren<LODGroup>(true))
+            {
+                if (lod != null && lod.enabled) { lod.enabled = false; state.DisabledComponents.Add(lod); }
+            }
+
+            int rendererCount = state.DisabledComponents.Count(c => c is Renderer);
+            int colliderCount = state.DisabledComponents.Count(c => c is Collider);
+            int lodCount = state.DisabledComponents.Count(c => c is LODGroup);
+            Plugin.Log.LogInfo($"SoftRemove '{go.name}' ({GetPath(go.transform)}): disabled {rendererCount} renderers, {colliderCount} colliders, {lodCount} LODGroups, {state.DisabledGroups.Count} culling groups, {state.DisabledCullingObjects.Count} culling objects.");
+
+            return state;
+        }
+
+        public static void Restore(RemovalState state)
+        {
+            if (state == null || state.GameObject == null) return;
+
+            foreach (var c in state.DisabledComponents)
+            {
+                if (c == null) continue;
+                if (c is Renderer r) r.enabled = true;
+                else if (c is Collider col) col.enabled = true;
+                else if (c is Behaviour b) b.enabled = true;
+            }
+
+            foreach (var entry in state.ForceOffRenderers)
+            {
+                if (entry.renderer != null) entry.renderer.forceRenderingOff = entry.previousForceRenderingOff;
+            }
+
+            foreach (var g in state.DisabledGroups)
+            {
+                if (g != null) g.allowGroupCulling = true;
+            }
+
+            foreach (var cull in state.DisabledCullingObjects)
+            {
+                if (cull == null) continue;
+                if (cull is DisablerCullingObjectBase dcb) { try { dcb.SetComponentsEnabled(true); } catch { } }
+                else if (cull is CullingObject co) { try { co.SetVisibility(true); } catch { } }
+                cull.enabled = true;
+            }
+
+            if (state.OriginalDoorState >= 0)
+            {
+                var wio = state.GameObject.GetComponentInChildren<WorldInteractiveObject>(true);
+                if (wio != null)
+                {
+                    try { wio.SetDoorState((EDoorState)state.OriginalDoorState, true); }
+                    catch (Exception ex) { Plugin.Log.LogWarning($"Could not restore door state: {ex.Message}"); }
+                }
+            }
+
+            state.GameObject.SetActive(state.WasActive);
+        }
+    }
+
     public class CustomEditorUI : MonoBehaviour
     {
         public MapEditorController controller;
@@ -128,7 +328,7 @@ namespace MapLootEditorLite.Client
         private RectTransform _removedTab;
         private Button _removedTabButton;
         private RectTransform _removedContent;
-        private readonly Dictionary<string, GameObject> _removedObjectInstances = new Dictionary<string, GameObject>();
+        private readonly Dictionary<string, RemovedObjectHelper.RemovalState> _removedObjectInstances = new Dictionary<string, RemovedObjectHelper.RemovalState>();
 
         // Scene object picker notice
         private RectTransform _scenePickerNotice;
@@ -937,6 +1137,7 @@ namespace MapLootEditorLite.Client
             header.GetComponent<Image>().raycastTarget = false;
             UIBuilder.AddHorizontalLayout(header, 2, 2, false, false);
             UIBuilder.AddLayoutElement(header, null, 22, null, 22, null, 0);
+            UIBuilder.CreateButton(header, "Refresh", () => RefreshRemovedObjectsList(), 70, 22);
             UIBuilder.CreateButton(header, "Apply Preview", () => ApplyRemovedObjectsPreview(), 90, 22);
             UIBuilder.CreateButton(header, "Restore All", () => RestoreAllRemovedObjects(), 80, 22);
 
@@ -1201,9 +1402,10 @@ namespace MapLootEditorLite.Client
                 rotation = TransformData.FromVector3(go.transform.rotation.eulerAngles),
                 scale = TransformData.FromVector3(go.transform.localScale)
             };
-            _removedObjectInstances[removed.id] = go;
+            var state = RemovedObjectHelper.SoftRemove(go);
+            removed.originalDoorState = state.OriginalDoorState;
+            _removedObjectInstances[removed.id] = state;
             manager.Data.removedObjects.Add(removed);
-            go.SetActive(false);
             _sceneObjectCache.Remove(go);
             _selectedSceneGO = null;
             manager.IsDirty = true;
@@ -1219,8 +1421,10 @@ namespace MapLootEditorLite.Client
         {
             var removed = manager.Data?.removedObjects?.FirstOrDefault(r => r.id == id);
             if (removed == null) return;
-            if (_removedObjectInstances.TryGetValue(id, out var go) && go != null)
-                go.SetActive(true);
+            if (_removedObjectInstances.TryGetValue(id, out var state) && state != null)
+            {
+                RemovedObjectHelper.Restore(state);
+            }
             _removedObjectInstances.Remove(id);
             manager.Data.removedObjects.Remove(removed);
             manager.IsDirty = true;
@@ -1233,10 +1437,9 @@ namespace MapLootEditorLite.Client
         private void RestoreAllRemovedObjects()
         {
             if (manager.Data?.removedObjects == null) return;
-            foreach (var removed in manager.Data.removedObjects.ToList())
+            foreach (var state in _removedObjectInstances.Values)
             {
-                if (_removedObjectInstances.TryGetValue(removed.id, out var go) && go != null)
-                    go.SetActive(true);
+                if (state != null) RemovedObjectHelper.Restore(state);
             }
             _removedObjectInstances.Clear();
             manager.Data.removedObjects.Clear();
@@ -1256,8 +1459,9 @@ namespace MapLootEditorLite.Client
                 var go = FindSceneObjectByNameAndPosition(removed.name, removed.position.ToVector3());
                 if (go != null && !IsEditorObject(go))
                 {
-                    _removedObjectInstances[removed.id] = go;
-                    go.SetActive(false);
+                    var state = RemovedObjectHelper.SoftRemove(go);
+                    removed.originalDoorState = state.OriginalDoorState;
+                    _removedObjectInstances[removed.id] = state;
                 }
                 else if (go == null)
                 {
@@ -1806,7 +2010,7 @@ namespace MapLootEditorLite.Client
 
                     var detailsPanel = UIBuilder.CreatePanel("SceneGODetails", _inspectorContent, new Color(0, 0, 0, 0));
                     detailsPanel.GetComponent<Image>().raycastTarget = false;
-                    UIBuilder.AddVerticalLayout(detailsPanel, 2, 4, true, true);
+                    UIBuilder.AddVerticalLayout(detailsPanel, 2, 6, true, false);
                     UIBuilder.AddLayoutElement(detailsPanel.gameObject, null, null, null, null, null, 1);
 
                     var details = FormatSceneGODetails(_selectedSceneGO);
@@ -1818,8 +2022,18 @@ namespace MapLootEditorLite.Client
                         {
                             t.horizontalOverflow = HorizontalWrapMode.Wrap;
                             t.verticalOverflow = VerticalWrapMode.Overflow;
+                            t.lineSpacing = 1.2f;
                             var rt = t.GetComponent<RectTransform>();
-                            if (rt != null) rt.sizeDelta = new Vector2(0, 14);
+                            if (rt != null)
+                            {
+                                rt.anchorMin = new Vector2(0f, 1f);
+                                rt.anchorMax = new Vector2(1f, 1f);
+                                rt.pivot = new Vector2(0.5f, 1f);
+                                rt.sizeDelta = Vector2.zero;
+                            }
+                            var csf = t.gameObject.AddComponent<ContentSizeFitter>();
+                            csf.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+                            csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
                         }
                     }
 
