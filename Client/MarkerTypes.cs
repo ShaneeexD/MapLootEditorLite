@@ -19,7 +19,8 @@ namespace MapLootEditorLite.Client
         BotSpawnZone,
         LightZone,
         TriggerZone,
-        OcclusionRepairVolume
+        OcclusionRepairVolume,
+        CutVolume
     }
 
     public enum ExtractZoneRequirementType
@@ -256,6 +257,7 @@ namespace MapLootEditorLite.Client
         public List<LightZone> lightZones = new List<LightZone>();
         public List<TriggerZone> triggerZones = new List<TriggerZone>();
         public List<OcclusionRepairVolume> occlusionRepairVolumes = new List<OcclusionRepairVolume>();
+        public List<CutVolume> cutVolumes = new List<CutVolume>();
         public List<RemovedObject> removedObjects = new List<RemovedObject>();
     }
 
@@ -616,5 +618,16 @@ namespace MapLootEditorLite.Client
         public float cullingObjectRadius = 60f;
 
         public override MarkerKind Kind => MarkerKind.OcclusionRepairVolume;
+    }
+
+    public class CutVolume : MarkerBase, IHasSourceObject
+    {
+        public string sourceObjectName { get; set; } = "";
+        public TransformData sourceObjectPosition { get; set; } = new TransformData();
+        public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
+        public ZoneShape shape = ZoneShape.Box;
+        public bool invert = false; // keep geometry inside instead of removing it
+
+        public override MarkerKind Kind => MarkerKind.CutVolume;
     }
 }

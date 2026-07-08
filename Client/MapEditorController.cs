@@ -844,6 +844,15 @@ namespace MapLootEditorLite.Client
             _renderer.Rebuild();
         }
 
+        public void CreateCutVolume()
+        {
+            if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
+            var marker = _manager.CreateCutVolume(GetLookPosition());
+            _manager.Selected = marker;
+            _renderer.Rebuild();
+        }
+
         public bool IsFreeCam => _freeCam;
         public bool IsFreeCamCursorLocked => _freeCamCursorLocked;
 

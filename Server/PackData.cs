@@ -56,6 +56,9 @@ public record MapData
     [JsonPropertyName("occlusionRepairVolumes")]
     public List<OcclusionRepairVolume> OcclusionRepairVolumes { get; set; } = [];
 
+    [JsonPropertyName("cutVolumes")]
+    public List<CutVolume> CutVolumes { get; set; } = [];
+
     [JsonPropertyName("removedObjects")]
     public List<RemovedObject> RemovedObjects { get; set; } = [];
 }
@@ -346,6 +349,39 @@ public record OcclusionRepairVolume
 
     [JsonPropertyName("cullingObjectRadius")]
     public double CullingObjectRadius { get; set; } = 60;
+}
+
+public record CutVolume
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("group")]
+    public string Group { get; set; } = string.Empty;
+
+    [JsonPropertyName("position")]
+    public TransformData Position { get; set; } = new();
+
+    [JsonPropertyName("rotation")]
+    public TransformData Rotation { get; set; } = new();
+
+    [JsonPropertyName("sourceObjectName")]
+    public string SourceObjectName { get; set; } = string.Empty;
+
+    [JsonPropertyName("sourceObjectPosition")]
+    public TransformData SourceObjectPosition { get; set; } = new();
+
+    [JsonPropertyName("scale")]
+    public TransformData Scale { get; set; } = new() { X = 1, Y = 1, Z = 1 };
+
+    [JsonPropertyName("shape")]
+    public ZoneShape Shape { get; set; } = ZoneShape.Box;
+
+    [JsonPropertyName("invert")]
+    public bool Invert { get; set; } = false;
 }
 
 public record BotSpawnZone

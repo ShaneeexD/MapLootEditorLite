@@ -92,6 +92,9 @@ namespace MapLootEditorLite.Client
             if (VanillaData.occlusionRepairVolumes != null)
                 foreach (var m in VanillaData.occlusionRepairVolumes)
                     yield return m;
+            if (VanillaData.cutVolumes != null)
+                foreach (var m in VanillaData.cutVolumes)
+                    yield return m;
         }
 
         public IEnumerable<MarkerBase> GetAllMarkersIncludingVanilla()
@@ -225,6 +228,9 @@ namespace MapLootEditorLite.Client
             if (Data.occlusionRepairVolumes != null)
                 foreach (var m in Data.occlusionRepairVolumes)
                     yield return m;
+            if (Data.cutVolumes != null)
+                foreach (var m in Data.cutVolumes)
+                    yield return m;
         }
 
         public MarkerBase FindById(string id)
@@ -342,6 +348,10 @@ namespace MapLootEditorLite.Client
                     Data.occlusionRepairVolumes ??= new List<OcclusionRepairVolume>();
                     Data.occlusionRepairVolumes.Add(orv);
                     break;
+                case CutVolume cv:
+                    Data.cutVolumes ??= new List<CutVolume>();
+                    Data.cutVolumes.Add(cv);
+                    break;
             }
             IsDirty = true;
         }
@@ -405,6 +415,7 @@ namespace MapLootEditorLite.Client
                 case LightZone lz: Data.lightZones.Remove(lz); break;
                 case TriggerZone tz: Data.triggerZones.Remove(tz); break;
                 case OcclusionRepairVolume orv: Data.occlusionRepairVolumes.Remove(orv); break;
+                case CutVolume cv: Data.cutVolumes.Remove(cv); break;
                 }
             }
             ClearSelection();
@@ -471,6 +482,10 @@ namespace MapLootEditorLite.Client
                     case OcclusionRepairVolume orv:
                         copy = JsonConvert.DeserializeObject<OcclusionRepairVolume>(json);
                         Data.occlusionRepairVolumes.Add((OcclusionRepairVolume)copy);
+                        break;
+                    case CutVolume cv:
+                        copy = JsonConvert.DeserializeObject<CutVolume>(json);
+                        Data.cutVolumes.Add((CutVolume)copy);
                         break;
                     default:
                         continue;
@@ -710,6 +725,22 @@ namespace MapLootEditorLite.Client
             return marker;
         }
 
+        public CutVolume CreateCutVolume(Vector3 position)
+        {
+            Data.cutVolumes ??= new List<CutVolume>();
+            var marker = new CutVolume
+            {
+                name = "cut_volume",
+                position = TransformData.FromVector3(position),
+                rotation = TransformData.FromVector3(Vector3.zero),
+                scale = new TransformData { x = 1f, y = 1f, z = 1f },
+                shape = ZoneShape.Box
+            };
+            Data.cutVolumes.Add(marker);
+            IsDirty = true;
+            return marker;
+        }
+
         public void DeleteSelected()
         {
             if (Selected == null || Data == null || IsVanilla(Selected))
@@ -729,6 +760,7 @@ namespace MapLootEditorLite.Client
                 case LightZone lz: Data.lightZones.Remove(lz); break;
                 case TriggerZone tz: Data.triggerZones.Remove(tz); break;
                 case OcclusionRepairVolume orv: Data.occlusionRepairVolumes.Remove(orv); break;
+                case CutVolume cv: Data.cutVolumes.Remove(cv); break;
             }
 
             Selected = null;
@@ -788,6 +820,10 @@ namespace MapLootEditorLite.Client
                 case OcclusionRepairVolume orv:
                     copy = JsonConvert.DeserializeObject<OcclusionRepairVolume>(json);
                     Data.occlusionRepairVolumes.Add((OcclusionRepairVolume)copy);
+                    break;
+                case CutVolume cv:
+                    copy = JsonConvert.DeserializeObject<CutVolume>(json);
+                    Data.cutVolumes.Add((CutVolume)copy);
                     break;
                 default:
                     return null;

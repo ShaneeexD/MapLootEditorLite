@@ -577,6 +577,7 @@ namespace MapLootEditorLite.Client
                     new MenuItem("Bot Spawn Zone", () => controller.CreateBotSpawnZone()),
                     new MenuItem("Light Zone", () => controller.CreateLightZone()),
                     new MenuItem("Trigger Zone", () => controller.CreateTriggerZone())
+                    // new MenuItem("Cut Volume", () => controller.CreateCutVolume()) // disabled until mesh cutting is fully reliable
                 }),
                 new MenuItem("WTT", subItems: new List<MenuItem>
                 {
@@ -2010,6 +2011,9 @@ namespace MapLootEditorLite.Client
                 case OcclusionRepairVolume orv:
                     BuildOcclusionRepairVolume(orv);
                     break;
+                case CutVolume cv:
+                    BuildCutVolume(cv);
+                    break;
             }
 
             var previewRow = UIBuilder.CreatePanel("PreviewRow", _inspectorContent, new Color(0, 0, 0, 0));
@@ -2669,6 +2673,31 @@ namespace MapLootEditorLite.Client
             BuildStringField(_inspectorContent, "Raycast Mask", orv.raycastMask ?? "", (v) => { orv.raycastMask = v; manager.IsDirty = true; });
             BuildToggleField(_inspectorContent, "Disable Culling Objects", orv.disableCullingObjects, (v) => { orv.disableCullingObjects = v; manager.IsDirty = true; });
             BuildFloatField(_inspectorContent, "Culling Object Radius", orv.cullingObjectRadius, (v) => { orv.cullingObjectRadius = v; manager.IsDirty = true; });
+        }
+
+        private void BuildCutVolume(CutVolume cv)
+        {
+            if (cv.scale == null)
+                cv.scale = new TransformData { x = 1f, y = 1f, z = 1f };
+
+            BuildStringField(_inspectorContent, "Cut Volume Name", cv.name ?? "", (v) => { cv.name = v; manager.IsDirty = true; });
+            BuildSourceObjectControls(cv);
+
+            var shapeRow = UIBuilder.CreatePanel("ShapeRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(shapeRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(shapeRow, null, 20, null, 20, null, 0);
+            UIBuilder.CreateLabel(shapeRow, "Shape", 11, 44, 20);
+            var shapes = new[] { "Sphere", "Box", "Cylinder", "Capsule" };
+            for (int i = 0; i < shapes.Length; i++)
+            {
+                int idx = i;
+                var btn = UIBuilder.CreateButton(shapeRow, shapes[idx], () => { cv.shape = (ZoneShape)idx; manager.IsDirty = true; RefreshInspector(); }, 52, 20, 10);
+                if ((int)cv.shape == idx)
+                    btn.GetComponent<Image>().color = new Color(0.25f, 0.45f, 0.75f, 1f);
+            }
+
+            BuildVector3Field(_inspectorContent, "Scale", cv.scale.ToVector3(), (v) => { cv.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
+            BuildToggleField(_inspectorContent, "Invert (keep inside)", cv.invert, (v) => { cv.invert = v; manager.IsDirty = true; });
         }
 
         public static readonly (string id, string name)[] LootContainerTemplates = new (string, string)[]
