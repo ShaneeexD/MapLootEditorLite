@@ -53,6 +53,9 @@ public record MapData
     [JsonPropertyName("triggerZones")]
     public List<TriggerZone> TriggerZones { get; set; } = [];
 
+    [JsonPropertyName("occlusionRepairVolumes")]
+    public List<OcclusionRepairVolume> OcclusionRepairVolumes { get; set; } = [];
+
     [JsonPropertyName("removedObjects")]
     public List<RemovedObject> RemovedObjects { get; set; } = [];
 }
@@ -292,6 +295,57 @@ public record TriggerZone
 
     [JsonPropertyName("lightZoneNames")]
     public List<string> LightZoneNames { get; set; } = [];
+}
+
+public record OcclusionRepairVolume
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("group")]
+    public string Group { get; set; } = string.Empty;
+
+    [JsonPropertyName("position")]
+    public TransformData Position { get; set; } = new();
+
+    [JsonPropertyName("rotation")]
+    public TransformData Rotation { get; set; } = new();
+
+    [JsonPropertyName("scale")]
+    public TransformData Scale { get; set; } = new() { X = 10, Y = 10, Z = 10 };
+
+    [JsonPropertyName("shape")]
+    public ZoneShape Shape { get; set; } = ZoneShape.Box;
+
+    [JsonPropertyName("disableCameraOcclusion")]
+    public bool DisableCameraOcclusion { get; set; } = true;
+
+    [JsonPropertyName("manageRenderers")]
+    public bool ManageRenderers { get; set; } = true;
+
+    [JsonPropertyName("rendererRadius")]
+    public double RendererRadius { get; set; } = 60;
+
+    [JsonPropertyName("maxVisibleDistance")]
+    public double MaxVisibleDistance { get; set; } = 80;
+
+    [JsonPropertyName("checkInterval")]
+    public double CheckInterval { get; set; } = 0.25;
+
+    [JsonPropertyName("raycastCull")]
+    public bool RaycastCull { get; set; } = false;
+
+    [JsonPropertyName("raycastMask")]
+    public string RaycastMask { get; set; } = "Default";
+
+    [JsonPropertyName("disableCullingObjects")]
+    public bool DisableCullingObjects { get; set; } = true;
+
+    [JsonPropertyName("cullingObjectRadius")]
+    public double CullingObjectRadius { get; set; } = 60;
 }
 
 public record BotSpawnZone

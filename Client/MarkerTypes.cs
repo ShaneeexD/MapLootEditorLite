@@ -18,7 +18,8 @@ namespace MapLootEditorLite.Client
         BotSpawnPoint,
         BotSpawnZone,
         LightZone,
-        TriggerZone
+        TriggerZone,
+        OcclusionRepairVolume
     }
 
     public enum ExtractZoneRequirementType
@@ -254,6 +255,7 @@ namespace MapLootEditorLite.Client
         public List<BotSpawnZone> botSpawnZones = new List<BotSpawnZone>();
         public List<LightZone> lightZones = new List<LightZone>();
         public List<TriggerZone> triggerZones = new List<TriggerZone>();
+        public List<OcclusionRepairVolume> occlusionRepairVolumes = new List<OcclusionRepairVolume>();
         public List<RemovedObject> removedObjects = new List<RemovedObject>();
     }
 
@@ -596,5 +598,23 @@ namespace MapLootEditorLite.Client
         public float shadowNormalBias = 0.4f;
 
         public override MarkerKind Kind => MarkerKind.LightZone;
+    }
+
+    public class OcclusionRepairVolume : MarkerBase
+    {
+        public TransformData scale = new TransformData { x = 10f, y = 10f, z = 10f };
+        public ZoneShape shape = ZoneShape.Box;
+
+        public bool disableCameraOcclusion = true;
+        public bool manageRenderers = true;
+        public float rendererRadius = 60f;
+        public float maxVisibleDistance = 80f;
+        public float checkInterval = 0.25f;
+        public bool raycastCull = false;
+        public string raycastMask = "Default"; // comma-separated layer names
+        public bool disableCullingObjects = true;
+        public float cullingObjectRadius = 60f;
+
+        public override MarkerKind Kind => MarkerKind.OcclusionRepairVolume;
     }
 }

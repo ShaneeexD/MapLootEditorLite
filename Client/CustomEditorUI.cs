@@ -50,108 +50,10 @@ namespace MapLootEditorLite.Client
                 return sb.ToString();
             }
 
-            var groups = new HashSet<PerfectCullingCrossSceneGroup>();
-            foreach (var g in go.GetComponentsInParent<PerfectCullingCrossSceneGroup>(true)) if (g != null) groups.Add(g);
-            foreach (var g in go.GetComponentsInChildren<PerfectCullingCrossSceneGroup>(true)) if (g != null) groups.Add(g);
-
-            try
-            {
-                var allGroups = UnityEngine.Object.FindObjectsOfType<PerfectCullingCrossSceneGroup>();
-                foreach (var g in allGroups)
-                {
-                    if (g == null) continue;
-                    bool contains = false;
-                    if (g.sharedOccluders != null)
-                        foreach (var o in g.sharedOccluders) if (o == go) { contains = true; break; }
-                    if (!contains && g.sharedOccludeeOccluders != null)
-                        foreach (var o in g.sharedOccludeeOccluders) if (o == go) { contains = true; break; }
-                    if (contains) groups.Add(g);
-                }
-            }
-            catch (Exception ex) { Plugin.Log.LogWarning($"Could not scan PerfectCulling groups: {ex.Message}"); }
-
-            foreach (var g in groups)
-            {
-                if (g == null) continue;
-                if (g.allowGroupCulling)
-                {
-                    g.allowGroupCulling = false;
-                    state.DisabledGroups.Add(g);
-                }
-            }
-
-            var cullingObjects = new HashSet<MonoBehaviour>();
-
-            FieldInfo GetFieldOnType(Type t, string name)
-            {
-                while (t != null)
-                {
-                    var f = t.GetField(name, BindingFlags.NonPublic | BindingFlags.Instance);
-                    if (f != null) return f;
-                    t = t.BaseType;
-                }
-                return null;
-            }
-
-            void CollectCullingObjects<T>() where T : MonoBehaviour
-            {
-                foreach (var cull in go.GetComponentsInParent<T>(true)) if (cull != null) cullingObjects.Add(cull);
-                foreach (var cull in go.GetComponentsInChildren<T>(true)) if (cull != null) cullingObjects.Add(cull);
-                try
-                {
-                    foreach (var cull in UnityEngine.Object.FindObjectsOfType<T>())
-                    {
-                        if (cull == null || cullingObjects.Contains(cull)) continue;
-                        var compField = GetFieldOnType(cull.GetType(), "_componentsToTurnOff");
-                        var goField = GetFieldOnType(cull.GetType(), "_gameObjectsToTurnOff");
-                        bool affects = false;
-                        if (compField != null)
-                        {
-                            var comps = compField.GetValue(cull) as List<Component>;
-                            if (comps != null)
-                            {
-                                foreach (var c in comps)
-                                {
-                                    if (c == null) continue;
-                                    if (c.gameObject == go || c.transform.IsChildOf(go.transform)) { affects = true; break; }
-                                }
-                            }
-                        }
-                        if (!affects && goField != null)
-                        {
-                            var gos = goField.GetValue(cull) as List<GameObject>;
-                            if (gos != null)
-                            {
-                                foreach (var g in gos)
-                                {
-                                    if (g == null) continue;
-                                    if (g == go || g.transform.IsChildOf(go.transform)) { affects = true; break; }
-                                }
-                            }
-                        }
-                        if (affects) cullingObjects.Add(cull);
-                    }
-                }
-                catch (Exception ex) { Plugin.Log.LogWarning($"Could not scan {typeof(T).Name} instances: {ex.Message}"); }
-            }
-
-            CollectCullingObjects<DisablerCullingObjectBase>();
-            CollectCullingObjects<CullingObject>();
-
-            foreach (var cull in cullingObjects)
-            {
-                if (cull == null || state.DisabledCullingObjects.Contains(cull)) continue;
-                if (cull is DisablerCullingObjectBase dcb) { try { dcb.SetComponentsEnabled(false); } catch { } }
-                else if (cull is CullingObject co) { try { co.SetVisibility(false); } catch { } }
-                cull.enabled = false;
-                state.DisabledCullingObjects.Add(cull);
-            }
-
             foreach (var r in go.GetComponentsInChildren<Renderer>(true))
             {
                 if (r == null) continue;
                 bool wasForceOff = r.forceRenderingOff;
-                if (r.enabled) { r.enabled = false; state.DisabledComponents.Add(r); }
                 r.forceRenderingOff = true;
                 state.ForceOffRenderers.Add((renderer: r, previousForceRenderingOff: wasForceOff));
             }
@@ -159,15 +61,10 @@ namespace MapLootEditorLite.Client
             {
                 if (c != null && c.enabled) { c.enabled = false; state.DisabledComponents.Add(c); }
             }
-            foreach (var lod in go.GetComponentsInChildren<LODGroup>(true))
-            {
-                if (lod != null && lod.enabled) { lod.enabled = false; state.DisabledComponents.Add(lod); }
-            }
 
-            int rendererCount = state.DisabledComponents.Count(c => c is Renderer);
+            int rendererCount = state.ForceOffRenderers.Count;
             int colliderCount = state.DisabledComponents.Count(c => c is Collider);
-            int lodCount = state.DisabledComponents.Count(c => c is LODGroup);
-            Plugin.Log.LogInfo($"SoftRemove '{go.name}' ({GetPath(go.transform)}): disabled {rendererCount} renderers, {colliderCount} colliders, {lodCount} LODGroups, {state.DisabledGroups.Count} culling groups, {state.DisabledCullingObjects.Count} culling objects.");
+            Plugin.Log.LogInfo($"SoftRemove '{go.name}' ({GetPath(go.transform)}): force-off {rendererCount} renderers, disabled {colliderCount} colliders, culling left intact.");
 
             return state;
         }
@@ -679,7 +576,8 @@ namespace MapLootEditorLite.Client
                     new MenuItem("Bot Spawn Point", () => controller.CreateBotSpawnPoint()),
                     new MenuItem("Bot Spawn Zone", () => controller.CreateBotSpawnZone()),
                     new MenuItem("Light Zone", () => controller.CreateLightZone()),
-                    new MenuItem("Trigger Zone", () => controller.CreateTriggerZone())
+                    new MenuItem("Trigger Zone", () => controller.CreateTriggerZone()),
+                    new MenuItem("Occlusion Repair Volume", () => controller.CreateOcclusionRepairVolume())
                 }),
                 new MenuItem("WTT", subItems: new List<MenuItem>
                 {
@@ -2110,6 +2008,9 @@ namespace MapLootEditorLite.Client
                 case TriggerZone zone:
                     BuildTriggerZone(zone);
                     break;
+                case OcclusionRepairVolume orv:
+                    BuildOcclusionRepairVolume(orv);
+                    break;
             }
 
             var previewRow = UIBuilder.CreatePanel("PreviewRow", _inspectorContent, new Color(0, 0, 0, 0));
@@ -2736,6 +2637,39 @@ namespace MapLootEditorLite.Client
                 manager.IsDirty = true;
             });
             BuildStringList(_inspectorContent, "Light Zone Names", zone.lightZoneNames, "light_zone");
+        }
+
+        private void BuildOcclusionRepairVolume(OcclusionRepairVolume orv)
+        {
+            if (orv.scale == null)
+                orv.scale = new TransformData { x = 10f, y = 10f, z = 10f };
+
+            BuildStringField(_inspectorContent, "Volume Name", orv.name ?? "", (v) => { orv.name = v; manager.IsDirty = true; });
+
+            var shapeRow = UIBuilder.CreatePanel("ShapeRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(shapeRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(shapeRow, null, 20, null, 20, null, 0);
+            UIBuilder.CreateLabel(shapeRow, "Shape", 11, 44, 20);
+            var shapes = new[] { "Sphere", "Box", "Cylinder", "Capsule" };
+            for (int i = 0; i < shapes.Length; i++)
+            {
+                int idx = i;
+                var btn = UIBuilder.CreateButton(shapeRow, shapes[idx], () => { orv.shape = (ZoneShape)idx; manager.IsDirty = true; RefreshInspector(); }, 52, 20, 10);
+                if ((int)orv.shape == idx)
+                    btn.GetComponent<Image>().color = new Color(0.25f, 0.45f, 0.75f, 1f);
+            }
+
+            BuildVector3Field(_inspectorContent, "Scale", orv.scale.ToVector3(), (v) => { orv.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
+
+            BuildToggleField(_inspectorContent, "Disable Camera Occlusion", orv.disableCameraOcclusion, (v) => { orv.disableCameraOcclusion = v; manager.IsDirty = true; });
+            BuildToggleField(_inspectorContent, "Manage Renderers", orv.manageRenderers, (v) => { orv.manageRenderers = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Renderer Radius", orv.rendererRadius, (v) => { orv.rendererRadius = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Max Visible Distance", orv.maxVisibleDistance, (v) => { orv.maxVisibleDistance = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Check Interval", orv.checkInterval, (v) => { orv.checkInterval = v; manager.IsDirty = true; });
+            BuildToggleField(_inspectorContent, "Raycast Cull", orv.raycastCull, (v) => { orv.raycastCull = v; manager.IsDirty = true; });
+            BuildStringField(_inspectorContent, "Raycast Mask", orv.raycastMask ?? "", (v) => { orv.raycastMask = v; manager.IsDirty = true; });
+            BuildToggleField(_inspectorContent, "Disable Culling Objects", orv.disableCullingObjects, (v) => { orv.disableCullingObjects = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Culling Object Radius", orv.cullingObjectRadius, (v) => { orv.cullingObjectRadius = v; manager.IsDirty = true; });
         }
 
         public static readonly (string id, string name)[] LootContainerTemplates = new (string, string)[]

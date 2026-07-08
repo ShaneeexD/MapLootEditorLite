@@ -87,6 +87,8 @@ namespace MapLootEditorLite.Client
             Log.LogInfo("Runtime bot spawn spawner attached");
             gameObject.AddComponent<RuntimeLightZoneSpawner>();
             Log.LogInfo("Runtime light zone spawner attached");
+            gameObject.AddComponent<RuntimeOcclusionRepairSpawner>();
+            Log.LogInfo("Runtime occlusion repair spawner attached");
 
             var raidResetHarmony = new Harmony("com.shane.mapeditorlite.raidreset");
             raidResetHarmony.PatchAll();

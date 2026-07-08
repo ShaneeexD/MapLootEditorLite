@@ -35,6 +35,8 @@ namespace MapLootEditorLite.Client
         private readonly Color _lightZoneWireColor = new Color(1f, 1f, 0.2f, 1.0f);
         private readonly Color _triggerZoneColor = new Color(1f, 0.2f, 1f, 0.15f);
         private readonly Color _triggerZoneWireColor = new Color(1f, 0.2f, 1f, 1.0f);
+        private readonly Color _occlusionRepairColor = new Color(0.2f, 1f, 1f, 0.15f);
+        private readonly Color _occlusionRepairWireColor = new Color(0.2f, 1f, 1f, 1.0f);
         private readonly Color _selectedColor = new Color(0.2f, 0.6f, 1f, 0.25f);
         private readonly Color _selectedWireColor = new Color(0.2f, 0.6f, 1f, 1.0f);
         private readonly Color _vanillaColor = new Color(0.8f, 0.8f, 0.8f, 0.35f);
@@ -176,6 +178,15 @@ namespace MapLootEditorLite.Client
                     }
                 }
 
+                if (marker is OcclusionRepairVolume currentOrv && _visuals.TryGetValue(marker.id, out GameObject existingOrvVisual))
+                {
+                    if (_zoneShapeCache.TryGetValue(marker.id, out ZoneShape cachedOrvShape) && cachedOrvShape != currentOrv.shape)
+                    {
+                        UnityEngine.Object.Destroy(existingOrvVisual);
+                        _visuals.Remove(marker.id);
+                    }
+                }
+
                 if (!_visuals.TryGetValue(marker.id, out GameObject visual))
                 {
                     visual = CreateVisual(marker);
@@ -232,6 +243,11 @@ namespace MapLootEditorLite.Client
                     {
                         ApplyZoneScale(visual, tz);
                         _zoneShapeCache[marker.id] = tz.shape;
+                    }
+                    else if (marker is OcclusionRepairVolume orv)
+                    {
+                        ApplyZoneScale(visual, orv);
+                        _zoneShapeCache[marker.id] = orv.shape;
                     }
 
                     bool isSelected = _manager.IsSelected(marker);
@@ -354,6 +370,9 @@ namespace MapLootEditorLite.Client
                     break;
                 case TriggerZone tz:
                     visual = CreateTriggerZoneVisual(tz);
+                    break;
+                case OcclusionRepairVolume orv:
+                    visual = CreateOcclusionRepairVisual(orv);
                     break;
                 default:
                     return null;
@@ -554,6 +573,11 @@ namespace MapLootEditorLite.Client
         private GameObject CreateTriggerZoneVisual(TriggerZone tz)
         {
             return CreateZoneVisualWithColor(tz.shape, _triggerZoneWireColor);
+        }
+
+        private GameObject CreateOcclusionRepairVisual(OcclusionRepairVolume orv)
+        {
+            return CreateZoneVisualWithColor(orv.shape, _occlusionRepairWireColor);
         }
 
         private GameObject CreateZoneVisualWithColor(ZoneShape shape, Color wireColor)
@@ -869,6 +893,26 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        private void ApplyZoneScale(GameObject visual, OcclusionRepairVolume zone)
+        {
+            var scale = zone.scale ?? new TransformData { x = 1f, y = 1f, z = 1f };
+            switch (zone.shape)
+            {
+                case ZoneShape.Box:
+                    visual.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
+                    break;
+                case ZoneShape.Cylinder:
+                    visual.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
+                    break;
+                case ZoneShape.Capsule:
+                    visual.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
+                    break;
+                default:
+                    visual.transform.localScale = Vector3.one * scale.x;
+                    break;
+            }
+        }
+
         private void ApplyColor(GameObject visual, MarkerBase marker, bool selected)
         {
             var renderer = visual.GetComponent<Renderer>();
@@ -932,6 +976,10 @@ namespace MapLootEditorLite.Client
             {
                 color = _triggerZoneColor;
             }
+            else if (marker is OcclusionRepairVolume)
+            {
+                color = _occlusionRepairColor;
+            }
             else
             {
                 color = _objectColor;
@@ -968,6 +1016,8 @@ namespace MapLootEditorLite.Client
                         wireColor = _lightZoneWireColor;
                     else if (marker is TriggerZone)
                         wireColor = _triggerZoneWireColor;
+                    else if (marker is OcclusionRepairVolume)
+                        wireColor = _occlusionRepairWireColor;
                     else
                         wireColor = _zoneWireColor;
 

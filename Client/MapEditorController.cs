@@ -835,6 +835,15 @@ namespace MapLootEditorLite.Client
             _renderer.Rebuild();
         }
 
+        public void CreateOcclusionRepairVolume()
+        {
+            if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
+            var marker = _manager.CreateOcclusionRepairVolume(GetLookPosition());
+            _manager.Selected = marker;
+            _renderer.Rebuild();
+        }
+
         public bool IsFreeCam => _freeCam;
         public bool IsFreeCamCursorLocked => _freeCamCursorLocked;
 
@@ -1446,6 +1455,8 @@ namespace MapLootEditorLite.Client
                                 mbz.scale = TransformData.FromVector3(startScale + centerScaleDelta);
                             else if (m is TriggerZone mtz)
                                 mtz.scale = TransformData.FromVector3(startScale + centerScaleDelta);
+                            else if (m is OcclusionRepairVolume morv)
+                                morv.scale = TransformData.FromVector3(startScale + centerScaleDelta);
                         }
                         _renderer.Rebuild();
                     }
@@ -1498,6 +1509,11 @@ namespace MapLootEditorLite.Client
                             tz.scale = TransformData.FromVector3(newScale);
                             _renderer.Rebuild();
                         }
+                        else if (_manager.Selected is OcclusionRepairVolume orv)
+                        {
+                            orv.scale = TransformData.FromVector3(newScale);
+                            _renderer.Rebuild();
+                        }
                     }
                     break;
             }
@@ -1548,6 +1564,8 @@ namespace MapLootEditorLite.Client
                 _gizmoDragStartMarkerScale = bz.scale?.ToVector3() ?? Vector3.one;
             else if (_manager.Selected is TriggerZone tz)
                 _gizmoDragStartMarkerScale = tz.scale?.ToVector3() ?? Vector3.one;
+            else if (_manager.Selected is OcclusionRepairVolume orv)
+                _gizmoDragStartMarkerScale = orv.scale?.ToVector3() ?? Vector3.one;
 
             _gizmoDragStartCenter = _manager.SelectedIds.Count > 1 ? _manager.SelectionCenter : _gizmoDragStartMarkerPos;
             _gizmoDragStartCenterRot = _manager.SelectedIds.Count > 1 ? Quaternion.identity : _manager.Selected.rotation.ToQuaternion();
@@ -1578,6 +1596,8 @@ namespace MapLootEditorLite.Client
                     _gizmoDragStartScales[id] = mbz.scale?.ToVector3() ?? Vector3.one;
                 else if (m is TriggerZone mtz)
                     _gizmoDragStartScales[id] = mtz.scale?.ToVector3() ?? Vector3.one;
+                else if (m is OcclusionRepairVolume morv)
+                    _gizmoDragStartScales[id] = morv.scale?.ToVector3() ?? Vector3.one;
                 else
                     _gizmoDragStartScales[id] = Vector3.one;
             }
@@ -1795,6 +1815,9 @@ namespace MapLootEditorLite.Client
                     case "TriggerZone":
                         copy = entry.data.ToObject<TriggerZone>();
                         break;
+                    case "OcclusionRepairVolume":
+                        copy = entry.data.ToObject<OcclusionRepairVolume>();
+                        break;
                     default:
                         continue;
                 }
@@ -1947,6 +1970,7 @@ namespace MapLootEditorLite.Client
                 case "BotSpawnZone": return entry.data.ToObject<BotSpawnZone>();
                 case "LightZone": return entry.data.ToObject<LightZone>();
                 case "TriggerZone": return entry.data.ToObject<TriggerZone>();
+                case "OcclusionRepairVolume": return entry.data.ToObject<OcclusionRepairVolume>();
                 default: return null;
             }
         }

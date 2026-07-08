@@ -89,6 +89,9 @@ namespace MapLootEditorLite.Client
             if (VanillaData.triggerZones != null)
                 foreach (var m in VanillaData.triggerZones)
                     yield return m;
+            if (VanillaData.occlusionRepairVolumes != null)
+                foreach (var m in VanillaData.occlusionRepairVolumes)
+                    yield return m;
         }
 
         public IEnumerable<MarkerBase> GetAllMarkersIncludingVanilla()
@@ -219,6 +222,9 @@ namespace MapLootEditorLite.Client
             if (Data.triggerZones != null)
                 foreach (var m in Data.triggerZones)
                     yield return m;
+            if (Data.occlusionRepairVolumes != null)
+                foreach (var m in Data.occlusionRepairVolumes)
+                    yield return m;
         }
 
         public MarkerBase FindById(string id)
@@ -332,6 +338,10 @@ namespace MapLootEditorLite.Client
                     Data.triggerZones ??= new List<TriggerZone>();
                     Data.triggerZones.Add(tz);
                     break;
+                case OcclusionRepairVolume orv:
+                    Data.occlusionRepairVolumes ??= new List<OcclusionRepairVolume>();
+                    Data.occlusionRepairVolumes.Add(orv);
+                    break;
             }
             IsDirty = true;
         }
@@ -394,6 +404,7 @@ namespace MapLootEditorLite.Client
                 case BotSpawnZone bz: Data.botSpawnZones.Remove(bz); break;
                 case LightZone lz: Data.lightZones.Remove(lz); break;
                 case TriggerZone tz: Data.triggerZones.Remove(tz); break;
+                case OcclusionRepairVolume orv: Data.occlusionRepairVolumes.Remove(orv); break;
                 }
             }
             ClearSelection();
@@ -456,6 +467,10 @@ namespace MapLootEditorLite.Client
                     case TriggerZone tz:
                         copy = JsonConvert.DeserializeObject<TriggerZone>(json);
                         Data.triggerZones.Add((TriggerZone)copy);
+                        break;
+                    case OcclusionRepairVolume orv:
+                        copy = JsonConvert.DeserializeObject<OcclusionRepairVolume>(json);
+                        Data.occlusionRepairVolumes.Add((OcclusionRepairVolume)copy);
                         break;
                     default:
                         continue;
@@ -679,6 +694,22 @@ namespace MapLootEditorLite.Client
             return marker;
         }
 
+        public OcclusionRepairVolume CreateOcclusionRepairVolume(Vector3 position)
+        {
+            Data.occlusionRepairVolumes ??= new List<OcclusionRepairVolume>();
+            var marker = new OcclusionRepairVolume
+            {
+                name = "occlusion_repair_volume",
+                position = TransformData.FromVector3(position),
+                rotation = TransformData.FromVector3(Vector3.zero),
+                scale = new TransformData { x = 10f, y = 10f, z = 10f },
+                shape = ZoneShape.Box
+            };
+            Data.occlusionRepairVolumes.Add(marker);
+            IsDirty = true;
+            return marker;
+        }
+
         public void DeleteSelected()
         {
             if (Selected == null || Data == null || IsVanilla(Selected))
@@ -697,6 +728,7 @@ namespace MapLootEditorLite.Client
                 case BotSpawnZone bz: Data.botSpawnZones.Remove(bz); break;
                 case LightZone lz: Data.lightZones.Remove(lz); break;
                 case TriggerZone tz: Data.triggerZones.Remove(tz); break;
+                case OcclusionRepairVolume orv: Data.occlusionRepairVolumes.Remove(orv); break;
             }
 
             Selected = null;
@@ -752,6 +784,10 @@ namespace MapLootEditorLite.Client
                 case LightZone lz:
                     copy = JsonConvert.DeserializeObject<LightZone>(json);
                     Data.lightZones.Add((LightZone)copy);
+                    break;
+                case OcclusionRepairVolume orv:
+                    copy = JsonConvert.DeserializeObject<OcclusionRepairVolume>(json);
+                    Data.occlusionRepairVolumes.Add((OcclusionRepairVolume)copy);
                     break;
                 default:
                     return null;
