@@ -18,6 +18,9 @@ namespace MapLootEditorLite.Client
     {
         public static RuntimeInteractiveObjectSpawner Instance { get; private set; }
 
+        // Track custom stationary weapons for on-demand spawning
+        public static Dictionary<string, InteractiveObject> CustomStationaryWeapons = new Dictionary<string, InteractiveObject>();
+
         private List<PackData> _packs = new List<PackData>();
         private GameWorld _currentWorld;
         private string _currentMapId;
@@ -69,7 +72,7 @@ namespace MapLootEditorLite.Client
                 _currentMapId = mapId;
                 ClearSpawned();
                 Plugin.Log.LogInfo($"Map detected: {mapId}, spawning interactive objects");
-                SpawnForMap(mapId);
+                SpawnForMap(mapId, world);
             }
         }
 
@@ -108,7 +111,7 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        private void SpawnForMap(string mapId)
+        private void SpawnForMap(string mapId, GameWorld world)
         {
             var objects = new List<InteractiveObject>();
             var removedObjects = new List<RemovedObject>();
@@ -142,7 +145,7 @@ namespace MapLootEditorLite.Client
                     continue;
                 }
 
-                StartCoroutine(SpawnObjectCoroutine(obj));
+                StartCoroutine(SpawnObjectCoroutine(obj, world));
             }
         }
 
@@ -180,7 +183,7 @@ namespace MapLootEditorLite.Client
             Plugin.Log.LogInfo("RemoveObjectsCoroutine finished.");
         }
 
-        private IEnumerator SpawnObjectCoroutine(InteractiveObject obj)
+        private IEnumerator SpawnObjectCoroutine(InteractiveObject obj, GameWorld world)
         {
             if (string.IsNullOrEmpty(obj.sourceObjectName))
             {
@@ -207,7 +210,7 @@ namespace MapLootEditorLite.Client
                 yield break;
             }
 
-            SpawnObjectInstance(source, obj);
+            SpawnObjectInstance(source, obj, world);
         }
 
         private GameObject FindSourceObject(string name, Vector3 position)
@@ -240,7 +243,7 @@ namespace MapLootEditorLite.Client
             return best;
         }
 
-        private void SpawnObjectInstance(GameObject source, InteractiveObject obj)
+        private void SpawnObjectInstance(GameObject source, InteractiveObject obj, GameWorld world)
         {
             var instance = Instantiate(source);
             instance.name = $"InteractiveObject_{obj.name}";
@@ -314,7 +317,7 @@ namespace MapLootEditorLite.Client
                     if (!string.IsNullOrEmpty(obj.weaponTemplate))
                         stationaryWeapon.Template = obj.weaponTemplate;
                     RecalculateStationaryWeaponLimits(stationaryWeapon);
-                    StartCoroutine(InitializeStationaryWeaponCoroutine(obj, stationaryWeapon));
+                    StartCoroutine(InitializeStationaryWeaponCoroutine(obj, stationaryWeapon, world));
                 }
                 else if (obj.interactiveType == InteractiveObjectType.StationaryWeapon)
                 {
@@ -325,16 +328,18 @@ namespace MapLootEditorLite.Client
                     wio.Id = obj.id;
                 }
 
-                RegisterWorldInteractiveObjectWhenReady(wio, obj.name);
+                RegisterWorldInteractiveObjectWhenReady(wio, obj.name, world);
             }
             else if (stationaryWeapon != null)
             {
+                Plugin.Log.LogInfo($"Stationary weapon '{obj.name}' has StationaryWeapon; setting up.");
                 stationaryWeapon.IdEditable = obj.id;
                 if (!string.IsNullOrEmpty(obj.weaponTemplate))
                     stationaryWeapon.Template = obj.weaponTemplate;
                 RecalculateStationaryWeaponLimits(stationaryWeapon);
-                StartCoroutine(InitializeStationaryWeaponCoroutine(obj, stationaryWeapon));
-                Plugin.Log.LogWarning($"Stationary weapon '{obj.name}' has no WorldInteractiveObject; it may not be interactable until one exists.");
+
+                // Initialize the weapon by creating the item locally and calling Init.
+                StartCoroutine(InitializeStationaryWeaponCoroutine(obj, stationaryWeapon, world));
             }
             else
             {
@@ -344,33 +349,35 @@ namespace MapLootEditorLite.Client
             Plugin.Log.LogInfo($"Spawned interactive object {obj.name} (type={obj.interactiveType})");
         }
 
-        private void RegisterWorldInteractiveObjectWhenReady(WorldInteractiveObject wio, string name)
+        private void RegisterWorldInteractiveObjectWhenReady(WorldInteractiveObject wio, string name, GameWorld world)
         {
-            var gameWorld = Singleton<GameWorld>.Instance;
-            if (gameWorld != null && gameWorld.World_0 != null)
+            if (world != null && world.World_0 != null)
             {
-                gameWorld.RegisterWorldInteractionObject(wio);
+                world.RegisterWorldInteractionObject(wio);
                 Plugin.Log.LogInfo($"Registered interactive object '{name}' (id={wio.Id}) with world.");
             }
             else
             {
-                StartCoroutine(RegisterWorldInteractiveObjectCoroutine(wio, name));
+                StartCoroutine(RegisterWorldInteractiveObjectCoroutine(wio, name, world));
             }
         }
 
-        private IEnumerator RegisterWorldInteractiveObjectCoroutine(WorldInteractiveObject wio, string name)
+        private IEnumerator RegisterWorldInteractiveObjectCoroutine(WorldInteractiveObject wio, string name, GameWorld world)
         {
-            while (true)
+            var timeout = 30f;
+            var elapsed = 0f;
+            while (elapsed < timeout)
             {
-                var gameWorld = Singleton<GameWorld>.Instance;
-                if (gameWorld != null && gameWorld.World_0 != null)
+                if (world != null && world.World_0 != null)
                 {
-                    gameWorld.RegisterWorldInteractionObject(wio);
+                    world.RegisterWorldInteractionObject(wio);
                     Plugin.Log.LogInfo($"Registered interactive object '{name}' (id={wio.Id}) with world.");
                     yield break;
                 }
                 yield return new WaitForSecondsRealtime(0.5f);
+                elapsed += 0.5f;
             }
+            Plugin.Log.LogWarning($"World_0 not available for interactive object '{name}' after {timeout}s; object may not be interactable.");
         }
 
         private static string GenerateItemId()
@@ -378,82 +385,84 @@ namespace MapLootEditorLite.Client
             return Guid.NewGuid().ToString("N").Substring(0, 24);
         }
 
-        private IEnumerator InitializeStationaryWeaponCoroutine(InteractiveObject obj, StationaryWeapon stationaryWeapon)
+        private IEnumerator InitializeStationaryWeaponCoroutine(InteractiveObject obj, StationaryWeapon stationaryWeapon, GameWorld gameWorld)
         {
-            var timeout = 60f;
+            Plugin.Log.LogInfo($"Starting stationary weapon initialization coroutine for '{obj.name}'.");
+
+            if (gameWorld == null)
+            {
+                Plugin.Log.LogWarning($"GameWorld reference is null for stationary weapon '{obj.name}'; cannot initialize.");
+                yield break;
+            }
+
+            var timeout = 30f;
             var elapsed = 0f;
-            LootItemPositionClass lootData = null;
+
+            // Wait for ItemFactoryClass to be available so we can create the weapon item
             while (elapsed < timeout)
             {
-                var gameWorld = Singleton<GameWorld>.Instance;
-                if (gameWorld != null && gameWorld.AllLoot != null)
-                {
-                    lootData = gameWorld.AllLoot.FirstOrDefault(x => x.Id == obj.id);
-                    if (lootData != null)
-                        break;
-                }
+                if (Singleton<ItemFactoryClass>.Instantiated)
+                    break;
                 yield return new WaitForSecondsRealtime(0.5f);
                 elapsed += 0.5f;
             }
 
-            var finalGameWorld = Singleton<GameWorld>.Instance;
-            if (finalGameWorld == null)
+            if (!Singleton<ItemFactoryClass>.Instantiated)
             {
-                Plugin.Log.LogWarning($"GameWorld not available for stationary weapon '{obj.name}'; cannot initialize.");
-                yield break;
-            }
-
-            if (lootData == null)
-            {
-                Plugin.Log.LogWarning($"Stationary weapon '{obj.name}' not found in AllLoot after {timeout}s.");
-                yield break;
-            }
-
-            var item = lootData.Item;
-            if (item == null)
-            {
-                Plugin.Log.LogWarning($"Stationary weapon '{obj.name}' loot entry has no item.");
-                yield break;
-            }
-
-            if (stationaryWeapon.ItemController != null)
-            {
-                Plugin.Log.LogInfo($"Stationary weapon '{obj.name}' already initialized by the game; skipping manual init.");
-                yield break;
-            }
-
-            // Wait for the local player so the controller has a valid player owner.
-            // Init calls into MagVisualController which expects a non-null IPlayer.
-            var playerWait = 30f;
-            var playerElapsed = 0f;
-            while (finalGameWorld.MainPlayer == null && playerElapsed < playerWait)
-            {
-                yield return new WaitForSecondsRealtime(0.5f);
-                playerElapsed += 0.5f;
-            }
-
-            var player = finalGameWorld.MainPlayer;
-            TraderControllerClass controller = null;
-            if (player != null)
-                controller = player.InventoryController as TraderControllerClass;
-
-            if (controller == null)
-            {
-                Plugin.Log.LogWarning($"Stationary weapon '{obj.name}' cannot initialize: no player inventory controller available.");
+                Plugin.Log.LogWarning($"ItemFactoryClass not available for stationary weapon '{obj.name}' after {timeout}s; cannot initialize.");
                 yield break;
             }
 
             try
             {
-                stationaryWeapon.Init(controller);
-            }
-            catch (System.Exception ex)
-            {
-                Plugin.Log.LogWarning($"Stationary weapon '{obj.name}' Init threw an exception: {ex.Message}. The weapon may still be usable if already partially initialized.");
-            }
+                var weaponTemplate = string.IsNullOrWhiteSpace(obj.weaponTemplate) ? "5cdeb229d7f00c000e7ce174" : obj.weaponTemplate;
+                var item = Singleton<ItemFactoryClass>.Instance.CreateItem(obj.id, weaponTemplate, null);
+                if (item == null)
+                {
+                    Plugin.Log.LogWarning($"ItemFactoryClass returned null for stationary weapon '{obj.name}' template {weaponTemplate}.");
+                    yield break;
+                }
 
-            finalGameWorld.RegisterLoot<StationaryWeapon>(stationaryWeapon);
-            Plugin.Log.LogInfo($"Initialized stationary weapon '{obj.name}' id={obj.id}.");
+                var weapon = item as Weapon;
+                if (weapon == null)
+                {
+                    Plugin.Log.LogWarning($"Created item for stationary weapon '{obj.name}' is not a Weapon.");
+                    yield break;
+                }
+
+                // StationaryWeapon.Init assumes a magazine exists, so create one from the allowed slot filter.
+                var magSlot = weapon.GetMagazineSlot();
+                if (magSlot != null && magSlot.ContainedItem == null)
+                {
+                    var magTemplate = magSlot.Filters?.SelectMany(f => f.Filter ?? new MongoID[0])?.FirstOrDefault();
+                    if (!string.IsNullOrWhiteSpace(magTemplate?.ToString()))
+                    {
+                        var magId = MongoID.Generate(false).ToString();
+                        var magazineItem = Singleton<ItemFactoryClass>.Instance.CreateItem(magId, magTemplate.ToString(), null);
+                        if (magazineItem != null)
+                        {
+                            magSlot.ChangeContainedItemDirectly(magazineItem);
+                            Plugin.Log.LogInfo($"Installed magazine {magTemplate} into stationary weapon '{obj.name}'.");
+                        }
+                        else
+                        {
+                            Plugin.Log.LogWarning($"Failed to create magazine {magTemplate} for stationary weapon '{obj.name}'.");
+                        }
+                    }
+                    else
+                    {
+                        Plugin.Log.LogWarning($"No magazine filter found for stationary weapon '{obj.name}'.");
+                    }
+                }
+
+                stationaryWeapon.Init(new TraderControllerClass(item, item.Id, item.ShortName, true, EOwnerType.Profile));
+                gameWorld.RegisterLoot<StationaryWeapon>(stationaryWeapon);
+                Plugin.Log.LogInfo($"Initialized stationary weapon '{obj.name}' id={obj.id} with item {item.TemplateId}.");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"Failed to initialize stationary weapon '{obj.name}': {ex.Message}\n{ex.StackTrace}");
+            }
         }
 
         private static void RecalculateStationaryWeaponLimits(StationaryWeapon stationaryWeapon)
@@ -666,6 +675,51 @@ namespace MapLootEditorLite.Client
         {
             Instance = null;
             ClearSpawned();
+        }
+
+        // Public method to spawn a stationary weapon on-demand when GameWorld.FindStationaryWeapon is called
+        public static StationaryWeapon SpawnStationaryWeaponOnDemand(string id)
+        {
+            if (!CustomStationaryWeapons.TryGetValue(id, out var obj))
+            {
+                Plugin.Log.LogWarning($"Stationary weapon with id '{id}' not found in custom weapons.");
+                return null;
+            }
+
+            Plugin.Log.LogInfo($"Spawning stationary weapon '{obj.name}' on-demand for id '{id}'.");
+
+            // Find the source object in the scene (same approach as SpawnObjectCoroutine)
+            var source = Instance?.FindSourceObject(obj.sourceObjectName, obj.sourceObjectPosition.ToVector3());
+            if (source == null)
+            {
+                Plugin.Log.LogWarning($"Source object '{obj.sourceObjectName}' not found for stationary weapon '{obj.name}'.");
+                return null;
+            }
+
+            // Instantiate the source object
+            var instance = Instantiate(source);
+            instance.name = $"InteractiveObject_{obj.name}";
+            instance.transform.position = obj.position.ToVector3();
+            instance.transform.rotation = obj.rotation.ToQuaternion();
+            instance.transform.localScale = obj.scale.ToVector3();
+
+            var stationaryWeapon = instance.GetComponentInChildren<StationaryWeapon>(true);
+            if (stationaryWeapon == null)
+            {
+                Plugin.Log.LogWarning($"StationaryWeapon component not found in source object '{obj.sourceObjectName}'.");
+                Destroy(instance);
+                return null;
+            }
+
+            // Set the ID to match the server-created item
+            stationaryWeapon.IdEditable = id;
+
+            Plugin.Log.LogInfo($"Spawned stationary weapon '{obj.name}' with id '{id}'.");
+
+            // Remove from the dictionary so we don't spawn it again
+            CustomStationaryWeapons.Remove(id);
+
+            return stationaryWeapon;
         }
     }
 }

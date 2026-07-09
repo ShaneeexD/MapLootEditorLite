@@ -2044,7 +2044,7 @@ namespace MapLootEditorLite.Client
                 {
                     name = packName,
                     author = "",
-                    version = "1.0.0",
+                    version = "1.1.0",
                     maps = new System.Collections.Generic.Dictionary<string, MapData>(System.StringComparer.OrdinalIgnoreCase)
                 };
             }

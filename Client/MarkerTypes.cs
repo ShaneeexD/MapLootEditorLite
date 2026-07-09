@@ -276,7 +276,7 @@ namespace MapLootEditorLite.Client
     {
         public string name = "My Loot Pack";
         public string author = "";
-        public string version = "1.0.0";
+        public string version = "1.1.0";
         public System.Collections.Generic.Dictionary<string, MapData> maps = new System.Collections.Generic.Dictionary<string, MapData>(System.StringComparer.OrdinalIgnoreCase);
     }
 

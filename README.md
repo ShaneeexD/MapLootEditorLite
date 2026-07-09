@@ -69,7 +69,7 @@ The final pack is a JSON file that can be distributed as a standalone add-on.
 
 When publishing:
 
-1. **State the dependency**: Your add-on pack requires **Map Editor Lite v1.0.0** for SPT 4.0.13.
+1. **State the dependency**: Your add-on pack requires **Map Editor Lite v1.1.0** for SPT 4.0.13.
 2. **Do not include** the Map Editor Lite DLL or other authors' packs in your zip.
 3. **Test** by extracting and running the server before publishing.
 

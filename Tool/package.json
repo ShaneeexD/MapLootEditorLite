@@ -1,6 +1,6 @@
 {
   "name": "mapeditorlite-tool",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Visual editor for creating Map Editor Lite spawn definitions",
   "type": "module",
   "scripts": {
