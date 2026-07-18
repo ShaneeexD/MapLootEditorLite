@@ -11,18 +11,58 @@ namespace MapLootEditorLite.Client
 {
     public static class VanillaImporter
     {
-        public static string DatabaseDirectory
+        public static string LocationsDirectory
         {
             get
             {
-                return Path.Combine(Plugin.GameRoot, "SPT_Data", "database", "locations");
+                var candidates = new[]
+                {
+                    Path.Combine(Plugin.GameRoot, "SPT_Data", "database", "locations"),
+                    Path.Combine(Plugin.GameRoot, "SPT", "SPT_Data", "database", "locations"),
+                };
+
+                foreach (var candidate in candidates)
+                {
+                    if (Directory.Exists(candidate))
+                    {
+                        Plugin.Log.LogInfo($"[VanillaImporter] Using locations database: {candidate}");
+                        return candidate;
+                    }
+                }
+
+                // Last resort: search one level down for any SPT_Data subfolder.
+                try
+                {
+                    if (Directory.Exists(Plugin.GameRoot))
+                    {
+                        foreach (var sub in Directory.GetDirectories(Plugin.GameRoot))
+                        {
+                            var candidate = Path.Combine(sub, "SPT_Data", "database", "locations");
+                            if (Directory.Exists(candidate))
+                            {
+                                Plugin.Log.LogInfo($"[VanillaImporter] Found locations database in nested folder: {candidate}");
+                                return candidate;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogWarning($"[VanillaImporter] Failed to search nested folders: {ex.Message}");
+                }
+
+                return candidates[0];
             }
         }
 
         public static MapData Import(string mapId)
         {
             var data = new MapData { map = mapId };
-            var dir = Path.Combine(DatabaseDirectory, mapId.ToLowerInvariant());
+            var locationsDir = LocationsDirectory;
+            var dir = Path.Combine(locationsDir, mapId.ToLowerInvariant());
+
+            Plugin.Log.LogInfo($"[VanillaImporter] GameRoot={Plugin.GameRoot}, LocationsDirectory={locationsDir}, Exists={Directory.Exists(locationsDir)}");
+            Plugin.Log.LogInfo($"[VanillaImporter] Importing map '{mapId}' from {dir}, Exists={Directory.Exists(dir)}");
 
             ImportLooseLoot(data, dir);
             ImportStaticContainers(data, dir);
@@ -48,17 +88,26 @@ namespace MapLootEditorLite.Client
         {
             var path = Path.Combine(dir, "looseLoot.json");
             if (!File.Exists(path))
+            {
+                Plugin.Log.LogWarning($"[VanillaImporter] looseLoot.json not found: {path}");
+                LogDirectoryContents(dir);
                 return;
+            }
 
             try
             {
                 var json = File.ReadAllText(path);
                 var file = JsonConvert.DeserializeObject<VanillaLootFile>(json);
-                if (file?.spawnpointsForced == null)
+                if (file == null)
+                {
+                    Plugin.Log.LogWarning($"[VanillaImporter] Failed to deserialize {path}");
                     return;
+                }
 
-                ImportLooseSpawnpointList(data, file.spawnpointsForced);
-                ImportLooseSpawnpointList(data, file.spawnpoints);
+                if (file.spawnpointsForced != null)
+                    ImportLooseSpawnpointList(data, file.spawnpointsForced);
+                if (file.spawnpoints != null)
+                    ImportLooseSpawnpointList(data, file.spawnpoints);
             }
             catch (Exception ex)
             {
@@ -107,22 +156,48 @@ namespace MapLootEditorLite.Client
                 }
             }
 
+        private static void LogDirectoryContents(string dir)
+        {
+            try
+            {
+                if (Directory.Exists(dir))
+                    Plugin.Log.LogInfo($"[VanillaImporter] Files in {dir}: {string.Join(", ", Directory.GetFiles(dir).Select(Path.GetFileName).OrderBy(f => f))}");
+                else if (Directory.Exists(Path.GetDirectoryName(dir)))
+                    Plugin.Log.LogInfo($"[VanillaImporter] Contents of parent {Path.GetDirectoryName(dir)}: {string.Join(", ", Directory.GetDirectories(Path.GetDirectoryName(dir)).Select(Path.GetFileName).OrderBy(d => d))}");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"[VanillaImporter] Failed to list directory contents for {dir}: {ex.Message}");
+            }
+        }
+
         private static void ImportStaticContainers(MapData data, string dir)
         {
             var path = Path.Combine(dir, "staticContainers.json");
             if (!File.Exists(path))
+            {
+                Plugin.Log.LogWarning($"[VanillaImporter] staticContainers.json not found: {path}");
+                LogDirectoryContents(dir);
                 return;
+            }
 
             try
             {
                 var json = File.ReadAllText(path);
                 var file = JsonConvert.DeserializeObject<VanillaContainerFile>(json);
                 if (file == null)
+                {
+                    Plugin.Log.LogWarning($"[VanillaImporter] Failed to deserialize {path}");
                     return;
+                }
 
                 BuildContainerCache();
-                ImportStaticContainerList(data, file.staticContainers, dir);
-                ImportStaticContainerList(data, file.staticForced, dir);
+                if (file.staticContainers != null)
+                    ImportStaticContainerList(data, file.staticContainers, dir);
+                if (file.staticForced != null)
+                    ImportStaticContainerList(data, file.staticForced, dir);
+                if (file.staticWeapons != null)
+                    ImportStaticContainerList(data, file.staticWeapons, dir);
             }
             catch (Exception ex)
             {
