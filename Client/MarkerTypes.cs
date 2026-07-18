@@ -17,6 +17,7 @@ namespace MapLootEditorLite.Client
         ExtractZone,
         BotSpawnPoint,
         BotSpawnZone,
+        PmcSpawnZone,
         LightZone,
         TriggerZone,
         OcclusionRepairVolume,
@@ -254,6 +255,7 @@ namespace MapLootEditorLite.Client
         public List<ExtractZone> extractZones = new List<ExtractZone>();
         public List<BotSpawnPoint> botSpawnPoints = new List<BotSpawnPoint>();
         public List<BotSpawnZone> botSpawnZones = new List<BotSpawnZone>();
+        public List<PmcSpawnZone> pmcSpawnZones = new List<PmcSpawnZone>();
         public List<LightZone> lightZones = new List<LightZone>();
         public List<TriggerZone> triggerZones = new List<TriggerZone>();
         public List<OcclusionRepairVolume> occlusionRepairVolumes = new List<OcclusionRepairVolume>();
@@ -328,6 +330,8 @@ namespace MapLootEditorLite.Client
         public bool questOnly = false;
         public bool questCompleted = false;
         public string questId = "";
+        public bool isDistribution = false; // True when chance is a relative weight from staticLoot.json
+        public int count = 1; // Stack count for currency/ammo/etc
     }
 
     public class LooseLootSpawn : MarkerBase
@@ -452,6 +456,8 @@ namespace MapLootEditorLite.Client
         public string weaponTemplate = "5cdeb229d7f00c000e7ce174"; // Stationary weapon root template id (NSV Utes)
         public ContainerLootMode lootMode = ContainerLootMode.Default;
         public List<LootItem> items = new List<LootItem>();
+        public int itemCountMin = 0;
+        public int itemCountMax = 0;
         public float spawnChance = 100f;
         public bool questOnly = false;
         public bool questCompleted = false;
@@ -478,6 +484,12 @@ namespace MapLootEditorLite.Client
         public float exfiltrationTime = 5f;
         public string exfiltrationType = "Individual";
         public float spawnChance = 100f;
+        public string side = "Pmc";
+        public string passageRequirement = "None";
+        public string requirementTip = "";
+        public string requiredSlot = "FirstPrimaryWeapon";
+        public int count = 0;
+        public int playersCount = 0;
         public bool questOnly = false;
         public bool questCompleted = false;
         public string questId = "";
@@ -561,6 +573,27 @@ namespace MapLootEditorLite.Client
         public string triggerZoneName = "";
 
         public override MarkerKind Kind => MarkerKind.BotSpawnZone;
+    }
+
+    public class PmcSpawnZone : MarkerBase
+    {
+        public float radius = 5f;
+        public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
+        public ZoneShape shape = ZoneShape.Sphere;
+        public BotSpawnSide side = BotSpawnSide.Pmc;
+        public BotSpawnCategory category = BotSpawnCategory.BotPmc;
+        public BotSpawnPreset preset = BotSpawnPreset.PMC;
+        public string wildSpawnType = "pmcBot";
+        public int minGroupSize = 1;
+        public int maxGroupSize = 1;
+        public float spawnChance = 100f;
+        public float delayToCanSpawnSec = 4f;
+        public string botZoneName = "";
+        public bool questOnly = false;
+        public bool questCompleted = false;
+        public string questId = "";
+
+        public override MarkerKind Kind => MarkerKind.PmcSpawnZone;
     }
 
     public class LightColorData

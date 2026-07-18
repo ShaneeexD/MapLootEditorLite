@@ -201,6 +201,7 @@ namespace MapLootEditorLite.Client
 
             var points = new List<BotSpawnPoint>();
             var zones = new List<BotSpawnZone>();
+            var pmcZones = new List<PmcSpawnZone>();
             foreach (var pack in _packs)
             {
                 if (pack.maps.TryGetValue(mapId, out var map))
@@ -215,6 +216,11 @@ namespace MapLootEditorLite.Client
                         if (QuestConditionsMet(zone.questOnly, zone.questCompleted, zone.questId))
                             zones.Add(zone);
                     }
+                    foreach (var pmc in map.pmcSpawnZones ?? new List<PmcSpawnZone>())
+                    {
+                        if (QuestConditionsMet(pmc.questOnly, pmc.questCompleted, pmc.questId))
+                            pmcZones.Add(pmc);
+                    }
                     foreach (var trigger in map.triggerZones ?? new List<TriggerZone>())
                     {
                         _triggerZones.Add(trigger);
@@ -222,8 +228,8 @@ namespace MapLootEditorLite.Client
                 }
             }
 
-            Plugin.Log.LogInfo($"Spawning for map '{mapId}' with {points.Count} points, {zones.Count} zones, and {_triggerZones.Count} trigger zones from {_packs.Count} packs.");
-            if (points.Count == 0 && zones.Count == 0 && _triggerZones.Count == 0)
+            Plugin.Log.LogInfo($"Spawning for map '{mapId}' with {points.Count} points, {zones.Count} zones, {pmcZones.Count} PMC zones and {_triggerZones.Count} trigger zones from {_packs.Count} packs.");
+            if (points.Count == 0 && zones.Count == 0 && pmcZones.Count == 0 && _triggerZones.Count == 0)
             {
                 Plugin.Log.LogInfo($"No custom bot spawn or trigger data for map {mapId}.");
                 return;
@@ -275,6 +281,39 @@ namespace MapLootEditorLite.Client
 
                 var zoneName = ResolveBotZoneName(zone.botZoneName, zone.position.ToVector3(), botZones);
                 created += CreateZoneMarkers(zone, botZones, zoneName, "spawn").Count;
+            }
+
+            foreach (var pmc in pmcZones)
+            {
+                if (pmc.spawnChance < 100f && _rng.NextDouble() * 100 > pmc.spawnChance)
+                    continue;
+
+                var zoneName = ResolveBotZoneName(pmc.botZoneName, pmc.position.ToVector3(), botZones);
+                if (string.IsNullOrWhiteSpace(zoneName))
+                {
+                    Plugin.Log.LogWarning($"PmcSpawnZone {pmc.id} has no valid BotZone, skipping.");
+                    continue;
+                }
+
+                var pmcZone = new BotSpawnZone
+                {
+                    id = pmc.id,
+                    position = pmc.position,
+                    rotation = pmc.rotation,
+                    radius = pmc.radius,
+                    scale = pmc.scale,
+                    shape = pmc.shape,
+                    side = pmc.side,
+                    category = pmc.category,
+                    preset = pmc.preset,
+                    wildSpawnType = pmc.wildSpawnType,
+                    spawnCount = _rng.Next(pmc.minGroupSize, pmc.maxGroupSize + 1),
+                    spawnChance = 100f,
+                    spawnMode = "Potential",
+                    delayToCanSpawnSec = pmc.delayToCanSpawnSec,
+                    botZoneName = zoneName
+                };
+                created += CreateZoneMarkers(pmcZone, botZones, zoneName, "pmc").Count;
             }
 
             Plugin.Log.LogInfo($"Created {created} custom bot spawn markers for map {mapId} across {botZones?.Length ?? 0} zones. {points.Count(p => p.triggerActivated) + zones.Count(z => z.triggerActivated)} spawns are trigger-activated.");

@@ -31,6 +31,8 @@ namespace MapLootEditorLite.Client
         private readonly Color _botSpawnPointWireColor = new Color(1f, 0.2f, 0.2f, 1.0f);
         private readonly Color _botSpawnZoneColor = new Color(1f, 0.2f, 0.2f, 0.15f);
         private readonly Color _botSpawnZoneWireColor = new Color(1f, 0.2f, 0.2f, 1.0f);
+        private readonly Color _pmcSpawnZoneColor = new Color(0.2f, 0.4f, 1f, 0.2f);
+        private readonly Color _pmcSpawnZoneWireColor = new Color(0.2f, 0.4f, 1f, 1.0f);
         private readonly Color _lightZoneColor = new Color(1f, 1f, 0.2f, 0.6f);
         private readonly Color _lightZoneWireColor = new Color(1f, 1f, 0.2f, 1.0f);
         private readonly Color _triggerZoneColor = new Color(1f, 0.2f, 1f, 0.15f);
@@ -87,6 +89,10 @@ namespace MapLootEditorLite.Client
 
             foreach (var marker in _manager.GetAllMarkersIncludingVanilla())
             {
+                if (marker.isVanilla && !ShowVanillaGizmos)
+                    continue;
+                if (!marker.isVanilla && !ShowPackGizmos)
+                    continue;
                 if (marker.isVanilla && VanillaRenderDistance > 0f && camera != null)
                 {
                     var distance = Vector3.Distance(cameraPos, marker.position.ToVector3());
@@ -171,6 +177,15 @@ namespace MapLootEditorLite.Client
                     }
                 }
 
+                if (marker is PmcSpawnZone currentPz && _visuals.TryGetValue(marker.id, out GameObject existingPzVisual))
+                {
+                    if (_zoneShapeCache.TryGetValue(marker.id, out ZoneShape cachedPzShape) && cachedPzShape != currentPz.shape)
+                    {
+                        UnityEngine.Object.Destroy(existingPzVisual);
+                        _visuals.Remove(marker.id);
+                    }
+                }
+
                 if (marker is TriggerZone currentTz && _visuals.TryGetValue(marker.id, out GameObject existingTzVisual))
                 {
                     if (_zoneShapeCache.TryGetValue(marker.id, out ZoneShape cachedTzShape) && cachedTzShape != currentTz.shape)
@@ -245,6 +260,11 @@ namespace MapLootEditorLite.Client
                     {
                         ApplyZoneScale(visual, bz);
                         _zoneShapeCache[marker.id] = bz.shape;
+                    }
+                    else if (marker is PmcSpawnZone pz)
+                    {
+                        ApplyZoneScale(visual, pz);
+                        _zoneShapeCache[marker.id] = pz.shape;
                     }
                     else if (marker is LightZone lz)
                     {
@@ -380,6 +400,9 @@ namespace MapLootEditorLite.Client
                     break;
                 case BotSpawnZone bz:
                     visual = CreateBotSpawnZoneVisual(bz);
+                    break;
+                case PmcSpawnZone pz:
+                    visual = CreatePmcSpawnZoneVisual(pz);
                     break;
                 case LightZone lz:
                     visual = CreateLightZoneVisual(lz);
@@ -587,6 +610,11 @@ namespace MapLootEditorLite.Client
         private GameObject CreateBotSpawnZoneVisual(BotSpawnZone bz)
         {
             return CreateZoneVisualWithColor(bz.shape, _botSpawnZoneWireColor);
+        }
+
+        private GameObject CreatePmcSpawnZoneVisual(PmcSpawnZone pz)
+        {
+            return CreateZoneVisualWithColor(pz.shape, _pmcSpawnZoneWireColor);
         }
 
         private GameObject CreateTriggerZoneVisual(TriggerZone tz)
@@ -897,6 +925,26 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        private void ApplyZoneScale(GameObject visual, PmcSpawnZone zone)
+        {
+            var scale = zone.scale ?? new TransformData { x = 1f, y = 1f, z = 1f };
+            switch (zone.shape)
+            {
+                case ZoneShape.Box:
+                    visual.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
+                    break;
+                case ZoneShape.Cylinder:
+                    visual.transform.localScale = new Vector3(zone.radius * 2f * scale.x, scale.y, zone.radius * 2f * scale.x);
+                    break;
+                case ZoneShape.Capsule:
+                    visual.transform.localScale = new Vector3(zone.radius * 2f * scale.x, scale.y, zone.radius * 2f * scale.x);
+                    break;
+                default:
+                    visual.transform.localScale = Vector3.one * zone.radius * 2f * scale.x;
+                    break;
+            }
+        }
+
         private void ApplyZoneScale(GameObject visual, TriggerZone zone)
         {
             var scale = zone.scale ?? new TransformData { x = 1f, y = 1f, z = 1f };
@@ -1012,6 +1060,10 @@ namespace MapLootEditorLite.Client
             {
                 color = _botSpawnZoneColor;
             }
+            else if (marker is PmcSpawnZone)
+            {
+                color = _pmcSpawnZoneColor;
+            }
             else if (marker is LightZone)
             {
                 color = _lightZoneColor;
@@ -1060,6 +1112,8 @@ namespace MapLootEditorLite.Client
                         wireColor = _botSpawnPointWireColor;
                     else if (marker is BotSpawnZone)
                         wireColor = _botSpawnZoneWireColor;
+                    else if (marker is PmcSpawnZone)
+                        wireColor = _pmcSpawnZoneWireColor;
                     else if (marker is LightZone)
                         wireColor = _lightZoneWireColor;
                     else if (marker is TriggerZone)

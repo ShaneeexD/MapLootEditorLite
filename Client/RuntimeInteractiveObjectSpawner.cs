@@ -26,6 +26,34 @@ namespace MapLootEditorLite.Client
         private string _currentMapId;
         private List<GameObject> _spawned = new List<GameObject>();
 
+        private static readonly Dictionary<string, Dictionary<string, BundledStaticLootDistribution>> _bundledStaticLootCache = new Dictionary<string, Dictionary<string, BundledStaticLootDistribution>>(StringComparer.OrdinalIgnoreCase);
+
+        private class BundledStaticLootDistribution
+        {
+            public int minCount = 1;
+            public int maxCount = 1;
+            public List<LootItem> items = new List<LootItem>();
+        }
+
+        private class BundledStaticLootEntry
+        {
+            public List<BundledCountEntry> itemcountDistribution = new List<BundledCountEntry>();
+            public List<BundledItemEntry> itemDistribution = new List<BundledItemEntry>();
+        }
+
+        private class BundledCountEntry
+        {
+            public int count;
+            public float relativeProbability;
+        }
+
+        private class BundledItemEntry
+        {
+            public string tpl;
+            public float relativeProbability;
+            public int count;
+        }
+
         private void Awake()
         {
             Instance = this;
@@ -528,9 +556,6 @@ namespace MapLootEditorLite.Client
                 yield break;
             }
 
-            // Default and Hybrid now use the marker's item list (vanilla loot copied by the importer + any extras),
-            // injected into a fresh container item just like Custom mode. This avoids relying on SPT's raid-time
-            // static loot roll, which can produce empty containers depending on the map/container.
             Item item = itemFactory.CreateItem(obj.containerId, lootable.Template, null);
             if (item == null)
             {
@@ -538,16 +563,158 @@ namespace MapLootEditorLite.Client
                 yield break;
             }
 
-            var addedItems = InjectMarkerItems(obj, item as CompoundItem);
+            int addedItems;
+            if (obj.lootMode == ContainerLootMode.Custom)
+            {
+                addedItems = InjectMarkerItems(obj, item as CompoundItem);
+            }
+            else if (obj.items != null && obj.items.Any(i => !i.isDistribution))
+            {
+                // Pre-rolled vanilla items from staticContainers.json (with StackObjectsCount) take priority over distribution.
+                addedItems = InjectMarkerItems(obj, item as CompoundItem);
+            }
+            else
+            {
+                // Default and Hybrid use the bundled vanilla staticLoot.json so the exact vanilla distribution is respected,
+                // independent of whatever the pack's marker items happen to contain.
+                var dist = GetBundledStaticLoot(_currentMapId, obj.containerTemplate);
+                if (dist == null)
+                {
+                    Plugin.Log.LogWarning($"No bundled vanilla loot distribution found for '{obj.name}' template={obj.containerTemplate} on map '{_currentMapId}', falling back to marker items.");
+                    addedItems = InjectMarkerItems(obj, item as CompoundItem);
+                }
+                else
+                {
+                    var marker = new InteractiveObject
+                    {
+                        name = obj.name,
+                        itemCountMin = dist.minCount,
+                        itemCountMax = dist.maxCount,
+                        items = new List<LootItem>(dist.items)
+                    };
+                    if (obj.lootMode == ContainerLootMode.Hybrid)
+                        marker.items.AddRange(obj.items.Where(i => !i.isDistribution));
+                    addedItems = InjectMarkerItems(marker, item as CompoundItem);
+                }
+            }
 
             var controller = new TraderControllerClass(item, item.Id, item.ShortName.Localized(null), true, EOwnerType.Profile);
             lootable.Init(controller);
             var finalGameWorld = Singleton<GameWorld>.Instance;
             if (finalGameWorld != null)
+            {
+                // Imported/Default containers already have an AllLoot entry from SPT's generation, so
+                // remove it before registering our injected item to avoid duplicate IDs in the world.
+                if (finalGameWorld.AllLoot != null)
+                {
+                    var existing = finalGameWorld.AllLoot.FirstOrDefault(x => x.Id == obj.containerId);
+                    if (existing != null)
+                    {
+                        finalGameWorld.AllLoot.Remove(existing);
+                        Plugin.Log.LogInfo($"Removed existing AllLoot entry for container '{obj.name}' id={obj.containerId} before re-registration.");
+                    }
+                }
                 finalGameWorld.RegisterLoot<LootableContainer>(lootable);
+            }
             else
                 Plugin.Log.LogWarning($"GameWorld not available for container '{obj.name}' loot registration; container initialized but not registered with world.");
             Plugin.Log.LogInfo($"Initialized lootable container '{obj.name}' id={obj.containerId}, template={lootable.Template}, itemId={item.Id}, mode={obj.lootMode}, injectedItems={addedItems}");
+        }
+
+        private string FindBundledStaticLootResourceName(string mapId)
+        {
+            var marker = $"locations.{mapId}.staticLoot.json";
+            var asm = typeof(RuntimeInteractiveObjectSpawner).Assembly;
+            return asm.GetManifestResourceNames().FirstOrDefault(n => n.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        private BundledStaticLootDistribution GetBundledStaticLoot(string mapId, string containerTemplate)
+        {
+            if (string.IsNullOrEmpty(mapId) || string.IsNullOrEmpty(containerTemplate))
+                return null;
+
+            if (!_bundledStaticLootCache.TryGetValue(mapId, out var mapCache))
+            {
+                mapCache = LoadBundledStaticLoot(mapId);
+                _bundledStaticLootCache[mapId] = mapCache;
+            }
+
+            if (mapCache == null)
+                return null;
+            mapCache.TryGetValue(containerTemplate, out var dist);
+            return dist;
+        }
+
+        private Dictionary<string, BundledStaticLootDistribution> LoadBundledStaticLoot(string mapId)
+        {
+            var name = FindBundledStaticLootResourceName(mapId);
+            if (name == null)
+            {
+                Plugin.Log.LogWarning($"Bundled staticLoot.json resource not found for map '{mapId}'");
+                return new Dictionary<string, BundledStaticLootDistribution>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            try
+            {
+                var asm = typeof(RuntimeInteractiveObjectSpawner).Assembly;
+                string json;
+                using (var stream = asm.GetManifestResourceStream(name))
+                using (var reader = new StreamReader(stream))
+                    json = reader.ReadToEnd();
+
+                var file = JsonConvert.DeserializeObject<Dictionary<string, BundledStaticLootEntry>>(json);
+                var result = new Dictionary<string, BundledStaticLootDistribution>(StringComparer.OrdinalIgnoreCase);
+                if (file == null)
+                    return result;
+
+                foreach (var kvp in file)
+                {
+                    var tpl = kvp.Key;
+                    var entry = kvp.Value;
+                    if (entry?.itemDistribution == null || entry.itemDistribution.Count == 0)
+                        continue;
+
+                    var total = entry.itemDistribution.Sum(d => d.relativeProbability);
+                    if (total <= 0)
+                        continue;
+
+                    var dist = new BundledStaticLootDistribution();
+                    foreach (var item in entry.itemDistribution)
+                    {
+                        if (string.IsNullOrEmpty(item.tpl))
+                            continue;
+                        dist.items.Add(new LootItem
+                        {
+                            template = item.tpl,
+                            chance = (item.relativeProbability / total) * 100f,
+                            randomRotation = true,
+                            isDistribution = true,
+                            count = Math.Max(item.count, 1)
+                        });
+                    }
+
+                    dist.items.Sort((a, b) => b.chance.CompareTo(a.chance));
+
+                    int minCount = 1, maxCount = 1;
+                    if (entry.itemcountDistribution != null && entry.itemcountDistribution.Count > 0)
+                    {
+                        var counts = entry.itemcountDistribution.Select(d => d.count).ToList();
+                        minCount = Math.Max(counts.Min(), 1);
+                        maxCount = Math.Max(counts.Max(), minCount);
+                    }
+                    dist.minCount = minCount;
+                    dist.maxCount = maxCount;
+                    result[tpl] = dist;
+                }
+
+                Plugin.Log.LogInfo($"Loaded bundled staticLoot.json for {mapId}: {result.Count} container distributions");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"Failed to load bundled staticLoot.json for {mapId}: {ex.Message}");
+                return new Dictionary<string, BundledStaticLootDistribution>(StringComparer.OrdinalIgnoreCase);
+            }
         }
 
         private int InjectMarkerItems(InteractiveObject obj, CompoundItem compoundItem)
@@ -560,55 +727,126 @@ namespace MapLootEditorLite.Client
                 return 0;
 
             int added = 0;
-            foreach (var loot in obj.items)
+
+            // Distribution items (from vanilla staticLoot.json) are weighted together and drawn
+            // according to the container's item count distribution, matching SPT's container loot logic.
+            // Seed per container so loot varies between raids/containers instead of reusing UnityEngine.Random's deterministic state.
+            var rng = new System.Random(Environment.TickCount ^ (obj.containerId?.GetHashCode() ?? 0) ^ (int)(DateTime.UtcNow.Ticks & int.MaxValue));
+
+            var distribution = obj.items.Where(i => i.isDistribution).ToList();
+            if (distribution.Count > 0)
             {
-                if (string.IsNullOrWhiteSpace(loot.template))
-                    continue;
-
-                if (!QuestConditionsMet(loot.questOnly, loot.questCompleted, loot.questId))
+                var total = distribution.Sum(i => i.chance);
+                if (total > 0)
                 {
-                    Plugin.Log.LogInfo($"Skipping quest-gated item {loot.template} for container '{obj.name}' (quest {loot.questId} not active/completed).");
-                    continue;
-                }
-
-                if (loot.chance < 100f)
-                {
-                    var roll = UnityEngine.Random.Range(0f, 100f);
-                    if (roll >= loot.chance)
+                    int minCount = Math.Max(obj.itemCountMin, 1);
+                    int maxCount = Math.Max(obj.itemCountMax, minCount);
+                    int count = rng.Next(minCount, maxCount + 1);
+                    for (int n = 0; n < count; n++)
                     {
-                        Plugin.Log.LogInfo($"Item {loot.template} chance roll {roll:F1} >= {loot.chance}; skipping for container '{obj.name}'.");
-                        continue;
-                    }
-                }
-
-                var childItem = itemFactory.CreateItem(GenerateItemId(), loot.template, null);
-                if (childItem == null)
-                {
-                    Plugin.Log.LogWarning($"Failed to create item {loot.template} for container '{obj.name}'");
-                    continue;
-                }
-
-                bool placed = false;
-                if (compoundItem.Grids != null)
-                {
-                    foreach (var grid in compoundItem.Grids)
-                    {
-                        var result = grid.AddAnywhere(childItem, EErrorHandlingType.Ignore);
-                        if (result.Succeeded)
+                        var roll = (float)(rng.NextDouble() * total);
+                        var running = 0f;
+                        foreach (var loot in distribution)
                         {
-                            placed = true;
-                            break;
+                            running += loot.chance;
+                            if (roll < running)
+                            {
+                                if (TryAddItemToContainer(loot, compoundItem, itemFactory, obj, rng))
+                                    added++;
+                                break;
+                            }
                         }
                     }
                 }
+            }
 
-                if (placed)
+            // Custom items are independent chance rolls.
+            foreach (var loot in obj.items.Where(i => !i.isDistribution))
+            {
+                if (TryAddItemToContainer(loot, compoundItem, itemFactory, obj, rng))
                     added++;
-                else
-                    Plugin.Log.LogWarning($"Could not place item {loot.template} in container '{obj.name}'");
             }
 
             return added;
+        }
+
+        private bool TryAddItemToContainer(LootItem loot, CompoundItem compoundItem, ItemFactoryClass itemFactory, InteractiveObject obj, System.Random rng)
+        {
+            if (string.IsNullOrWhiteSpace(loot.template))
+                return false;
+
+            if (!QuestConditionsMet(loot.questOnly, loot.questCompleted, loot.questId))
+            {
+                Plugin.Log.LogInfo($"Skipping quest-gated item {loot.template} for container '{obj.name}' (quest {loot.questId} not active/completed).");
+                return false;
+            }
+
+            // Only non-distribution items use their own chance as a percentage.
+            if (!loot.isDistribution && loot.chance < 100f)
+            {
+                var roll = (float)(rng.NextDouble() * 100.0);
+                if (roll >= loot.chance)
+                {
+                    Plugin.Log.LogInfo($"Item {loot.template} chance roll {roll:F1} >= {loot.chance}; skipping for container '{obj.name}'.");
+                    return false;
+                }
+            }
+
+            var childItem = itemFactory.CreateItem(GenerateItemId(), loot.template, null);
+            if (childItem == null)
+            {
+                Plugin.Log.LogWarning($"Failed to create item {loot.template} for container '{obj.name}'");
+                return false;
+            }
+
+            if (loot.count > 1)
+                SetItemStackCount(childItem, loot.count);
+
+            if (compoundItem.Grids != null)
+            {
+                foreach (var grid in compoundItem.Grids)
+                {
+                    var result = grid.AddAnywhere(childItem, EErrorHandlingType.Ignore);
+                    if (result.Succeeded)
+                        return true;
+                }
+            }
+
+            Plugin.Log.LogWarning($"Could not place item {loot.template} in container '{obj.name}'");
+            return false;
+        }
+
+        private void SetItemStackCount(Item item, int count)
+        {
+            if (item == null || count <= 1)
+                return;
+
+            try
+            {
+                var itemType = item.GetType();
+                var updProp = itemType.GetProperty("Upd", BindingFlags.Public | BindingFlags.Instance);
+                if (updProp == null)
+                    return;
+
+                var upd = updProp.GetValue(item);
+                if (upd == null)
+                {
+                    var updType = updProp.PropertyType;
+                    upd = Activator.CreateInstance(updType);
+                    updProp.SetValue(item, upd);
+                }
+
+                var stackProp = upd.GetType().GetProperty("StackObjectsCount", BindingFlags.Public | BindingFlags.Instance);
+                if (stackProp == null)
+                    return;
+
+                var underlying = Nullable.GetUnderlyingType(stackProp.PropertyType) ?? stackProp.PropertyType;
+                stackProp.SetValue(upd, Convert.ChangeType(count, underlying));
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"Failed to set stack count for {item?.Template}: {ex.Message}");
+            }
         }
 
         private void ClearSpawned()

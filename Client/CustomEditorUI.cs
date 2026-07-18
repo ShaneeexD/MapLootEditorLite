@@ -575,6 +575,7 @@ namespace MapLootEditorLite.Client
                     new MenuItem("Extract Zone", () => controller.CreateExtractZone()),
                     new MenuItem("Bot Spawn Point", () => controller.CreateBotSpawnPoint()),
                     new MenuItem("Bot Spawn Zone", () => controller.CreateBotSpawnZone()),
+                    new MenuItem("PMC Spawn Zone", () => controller.CreatePmcSpawnZone()),
                     new MenuItem("Light Zone", () => controller.CreateLightZone()),
                     new MenuItem("Trigger Zone", () => controller.CreateTriggerZone())
                     // new MenuItem("Cut Volume", () => controller.CreateCutVolume()) // disabled until mesh cutting is fully reliable
@@ -2002,6 +2003,9 @@ namespace MapLootEditorLite.Client
                 case BotSpawnZone zone:
                     BuildBotSpawnZone(zone);
                     break;
+                case PmcSpawnZone zone:
+                    BuildPmcSpawnZone(zone);
+                    break;
                 case LightZone zone:
                     BuildLightZone(zone);
                     break;
@@ -2366,6 +2370,13 @@ namespace MapLootEditorLite.Client
             BuildDropdownField(_inspectorContent, "Exfil Type", zone.exfiltrationType ?? "Individual", new[] { "Individual", "SharedTimer", "Manual" }, (v) => { zone.exfiltrationType = v; manager.IsDirty = true; });
             BuildFloatField(_inspectorContent, "Spawn Chance", zone.spawnChance, (v) => { zone.spawnChance = v; manager.IsDirty = true; });
 
+            BuildDropdownField(_inspectorContent, "Side", zone.side ?? "Pmc", new[] { "Pmc", "Coop", "Scav" }, (v) => { zone.side = v; manager.IsDirty = true; });
+            BuildDropdownField(_inspectorContent, "Passage Requirement", zone.passageRequirement ?? "None", new[] { "None", "Empty", "TransferItem", "WorldEvent", "HasItem", "EmptyOrSize", "SkillLevel", "Reference", "ScavCooperation", "Train", "Timer", "SecretTransferItem" }, (v) => { zone.passageRequirement = v; manager.IsDirty = true; });
+            BuildStringField(_inspectorContent, "Requirement Tip", zone.requirementTip ?? "", (v) => { zone.requirementTip = v; manager.IsDirty = true; });
+            BuildStringField(_inspectorContent, "Required Slot", zone.requiredSlot ?? "FirstPrimaryWeapon", (v) => { zone.requiredSlot = v; manager.IsDirty = true; });
+            BuildIntField(_inspectorContent, "Count", zone.count, (v) => { zone.count = v; manager.IsDirty = true; });
+            BuildIntField(_inspectorContent, "Players Count", zone.playersCount, (v) => { zone.playersCount = v; manager.IsDirty = true; });
+
             var shapeRow = UIBuilder.CreatePanel("ShapeRow", _inspectorContent, new Color(0, 0, 0, 0));
             UIBuilder.AddHorizontalLayout(shapeRow, 2, 2, false, false);
             UIBuilder.AddLayoutElement(shapeRow, null, 20, null, 20, null, 0);
@@ -2550,6 +2561,46 @@ namespace MapLootEditorLite.Client
             UIBuilder.AddHorizontalLayout(previewRow, 2, 2, false, false);
             UIBuilder.AddLayoutElement(previewRow, null, 22, null, 22, null, 0);
             UIBuilder.CreateButton(previewRow, "Preview Spawns", () => previews.SpawnBotSpawnZonePreview(zone), 110, 22);
+        }
+
+        private void BuildPmcSpawnZone(PmcSpawnZone zone)
+        {
+            if (zone.scale == null)
+                zone.scale = new TransformData { x = 1f, y = 1f, z = 1f };
+
+            BuildReadOnlyLabel(_inspectorContent, "Side", zone.side.ToString());
+            BuildReadOnlyLabel(_inspectorContent, "Category", zone.category.ToString());
+            BuildIntField(_inspectorContent, "Min Group Size", zone.minGroupSize, (v) => { zone.minGroupSize = Math.Max(0, v); manager.IsDirty = true; });
+            BuildIntField(_inspectorContent, "Max Group Size", zone.maxGroupSize, (v) => { zone.maxGroupSize = Math.Max(zone.minGroupSize, v); manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Spawn Chance", zone.spawnChance, (v) => { zone.spawnChance = v; manager.IsDirty = true; });
+            BuildFloatField(_inspectorContent, "Delay", zone.delayToCanSpawnSec, (v) => { zone.delayToCanSpawnSec = v; manager.IsDirty = true; });
+
+            var shapeRow = UIBuilder.CreatePanel("ShapeRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(shapeRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(shapeRow, null, 20, null, 20, null, 0);
+            UIBuilder.CreateLabel(shapeRow, "Shape", 11, 44, 20);
+            var shapes = new[] { "Sphere", "Box", "Cylinder", "Capsule" };
+            for (int i = 0; i < shapes.Length; i++)
+            {
+                int idx = i;
+                var btn = UIBuilder.CreateButton(shapeRow, shapes[idx], () => { zone.shape = (ZoneShape)idx; manager.IsDirty = true; RefreshInspector(); }, 52, 20, 10);
+                if ((int)zone.shape == idx)
+                    btn.GetComponent<Image>().color = new Color(0.25f, 0.45f, 0.75f, 1f);
+            }
+
+            BuildFloatField(_inspectorContent, "Radius", zone.radius, (v) => { zone.radius = v; manager.IsDirty = true; });
+            BuildVector3Field(_inspectorContent, "Scale", zone.scale.ToVector3(), (v) => { zone.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
+            BuildStringField(_inspectorContent, "Bot Zone Name", zone.botZoneName ?? "", (v) => { zone.botZoneName = v; manager.IsDirty = true; });
+
+            BuildToggleField(_inspectorContent, "Quest only", zone.questOnly, (v) => { zone.questOnly = v; manager.IsDirty = true; RefreshInspector(); });
+            BuildToggleField(_inspectorContent, "Quest completed", zone.questCompleted, (v) => { zone.questCompleted = v; manager.IsDirty = true; RefreshInspector(); });
+            if (zone.questOnly || zone.questCompleted)
+                BuildStringField(_inspectorContent, "Quest ID", zone.questId ?? "", (v) => { zone.questId = v; manager.IsDirty = true; });
+
+            var previewRow = UIBuilder.CreatePanel("PreviewRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(previewRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(previewRow, null, 22, null, 22, null, 0);
+            UIBuilder.CreateButton(previewRow, "Preview Spawns", () => previews.SpawnPmcSpawnZonePreview(zone), 110, 22);
         }
 
         private void BuildLightZone(LightZone zone)

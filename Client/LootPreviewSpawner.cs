@@ -207,6 +207,25 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        public void SpawnPmcSpawnZonePreview(PmcSpawnZone marker)
+        {
+            if (marker == null)
+                return;
+
+            ClearByMarkerId(marker.id);
+            var center = marker.position.ToVector3();
+            var markerRot = marker.rotation.ToQuaternion();
+            var scale = marker.scale ?? new TransformData { x = 1f, y = 1f, z = 1f };
+            var count = Mathf.Max(1, marker.maxGroupSize);
+
+            for (int i = 0; i < count; i++)
+            {
+                var point = GetRandomPointInZone(center, marker.shape, marker.radius, scale, markerRot);
+                var go = CreateBotPreviewObject(point, markerRot, marker.name, marker.id, marker.preset.ToString(), marker.side.ToString(), marker.category.ToString(), i);
+                _effectPreviews.Add(go);
+            }
+        }
+
         private GameObject CreateBotPreviewObject(Vector3 position, Quaternion rotation, string markerName, string markerId, string preset, string side, string category, int index = -1)
         {
             var go = new GameObject($"BotPreview_{markerName}" + (index >= 0 ? $"_{index}" : ""));
@@ -760,6 +779,9 @@ namespace MapLootEditorLite.Client
                     break;
                 case MarkerKind.LightZone:
                     SpawnLightPreview((LightZone)marker);
+                    break;
+                case MarkerKind.PmcSpawnZone:
+                    SpawnPmcSpawnZonePreview((PmcSpawnZone)marker);
                     break;
             }
         }

@@ -115,4 +115,9 @@
   <ItemGroup>
     <EmbeddedResource Include="..\api_item_names.json" LogicalName="api_item_names.json" />
   </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\locations\**\staticLoot.json" Link="locations\%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\locations\**\extractPositions.json" Link="locations\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

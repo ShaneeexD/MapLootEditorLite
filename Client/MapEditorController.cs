@@ -816,6 +816,15 @@ namespace MapLootEditorLite.Client
             _renderer.Rebuild();
         }
 
+        public void CreatePmcSpawnZone()
+        {
+            if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
+            var marker = _manager.CreatePmcSpawnZone(GetLookPosition());
+            _manager.Selected = marker;
+            _renderer.Rebuild();
+        }
+
         public void CreateLightZone()
         {
             if (!EnsureMapLoaded()) return;

@@ -219,6 +219,9 @@ namespace MapLootEditorLite.Client
             if (Data.botSpawnZones != null)
                 foreach (var m in Data.botSpawnZones)
                     yield return m;
+            if (Data.pmcSpawnZones != null)
+                foreach (var m in Data.pmcSpawnZones)
+                    yield return m;
             if (Data.lightZones != null)
                 foreach (var m in Data.lightZones)
                     yield return m;
@@ -336,6 +339,10 @@ namespace MapLootEditorLite.Client
                     Data.botSpawnZones ??= new List<BotSpawnZone>();
                     Data.botSpawnZones.Add(bz);
                     break;
+                case PmcSpawnZone pz:
+                    Data.pmcSpawnZones ??= new List<PmcSpawnZone>();
+                    Data.pmcSpawnZones.Add(pz);
+                    break;
                 case LightZone lz:
                     Data.lightZones ??= new List<LightZone>();
                     Data.lightZones.Add(lz);
@@ -412,6 +419,7 @@ namespace MapLootEditorLite.Client
                 case ExtractZone ez: Data.extractZones.Remove(ez); break;
                 case BotSpawnPoint bp: Data.botSpawnPoints.Remove(bp); break;
                 case BotSpawnZone bz: Data.botSpawnZones.Remove(bz); break;
+                case PmcSpawnZone pz: Data.pmcSpawnZones.Remove(pz); break;
                 case LightZone lz: Data.lightZones.Remove(lz); break;
                 case TriggerZone tz: Data.triggerZones.Remove(tz); break;
                 case OcclusionRepairVolume orv: Data.occlusionRepairVolumes.Remove(orv); break;
@@ -470,6 +478,10 @@ namespace MapLootEditorLite.Client
                     case BotSpawnZone bz:
                         copy = JsonConvert.DeserializeObject<BotSpawnZone>(json);
                         Data.botSpawnZones.Add((BotSpawnZone)copy);
+                        break;
+                    case PmcSpawnZone pz:
+                        copy = JsonConvert.DeserializeObject<PmcSpawnZone>(json);
+                        Data.pmcSpawnZones.Add((PmcSpawnZone)copy);
                         break;
                     case LightZone lz:
                         copy = JsonConvert.DeserializeObject<LightZone>(json);
@@ -669,6 +681,31 @@ namespace MapLootEditorLite.Client
             return marker;
         }
 
+        public PmcSpawnZone CreatePmcSpawnZone(Vector3 position)
+        {
+            Data.pmcSpawnZones ??= new List<PmcSpawnZone>();
+            var marker = new PmcSpawnZone
+            {
+                name = "pmc_spawn_zone",
+                position = TransformData.FromVector3(position),
+                rotation = TransformData.FromVector3(Vector3.zero),
+                scale = new TransformData { x = 1f, y = 1f, z = 1f },
+                radius = 5f,
+                shape = ZoneShape.Sphere,
+                side = BotSpawnSide.Pmc,
+                category = BotSpawnCategory.BotPmc,
+                preset = BotSpawnPreset.PMC,
+                wildSpawnType = "pmcBot",
+                minGroupSize = 1,
+                maxGroupSize = 1,
+                spawnChance = 100f,
+                delayToCanSpawnSec = 4f
+            };
+            Data.pmcSpawnZones.Add(marker);
+            IsDirty = true;
+            return marker;
+        }
+
         public LightZone CreateLightZone(Vector3 position)
         {
             Data.lightZones ??= new List<LightZone>();
@@ -757,6 +794,7 @@ namespace MapLootEditorLite.Client
                 case ExtractZone ez: Data.extractZones.Remove(ez); break;
                 case BotSpawnPoint bp: Data.botSpawnPoints.Remove(bp); break;
                 case BotSpawnZone bz: Data.botSpawnZones.Remove(bz); break;
+                case PmcSpawnZone pz: Data.pmcSpawnZones.Remove(pz); break;
                 case LightZone lz: Data.lightZones.Remove(lz); break;
                 case TriggerZone tz: Data.triggerZones.Remove(tz); break;
                 case OcclusionRepairVolume orv: Data.occlusionRepairVolumes.Remove(orv); break;

@@ -5,6 +5,7 @@ using System.Linq;
 using EFT.Interactive;
 using EFT.InventoryLogic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 namespace MapLootEditorLite.Client
@@ -66,11 +67,12 @@ namespace MapLootEditorLite.Client
 
             ImportLooseLoot(data, dir);
             ImportStaticContainers(data, dir);
+            ImportVanillaSpawnsAndExtracts(data, dir);
 
             MarkVanilla(data);
             ClearContainerCache();
 
-            Plugin.Log.LogInfo($"Imported vanilla data for {mapId}: {data.lootSpawns.Count} loose loot, {data.interactiveObjects.Count} containers.");
+            Plugin.Log.LogInfo($"Imported vanilla data for {mapId}: {data.lootSpawns.Count} loose loot, {data.interactiveObjects.Count} containers, {data.botSpawnPoints.Count} PMC spawns, {data.extractZones.Count} extracts.");
             return data;
         }
 
@@ -82,6 +84,9 @@ namespace MapLootEditorLite.Client
             foreach (var marker in data.wttQuestZones) { marker.isVanilla = true; marker.group = "Vanilla"; }
             foreach (var marker in data.wttStaticObjects) { marker.isVanilla = true; marker.group = "Vanilla"; }
             foreach (var marker in data.interactiveObjects) { marker.isVanilla = true; marker.group = "Vanilla"; }
+            foreach (var marker in data.extractZones) { marker.isVanilla = true; marker.group = "Vanilla"; }
+            foreach (var marker in data.botSpawnPoints) { marker.isVanilla = true; marker.group = "Vanilla"; }
+            foreach (var marker in data.botSpawnZones) { marker.isVanilla = true; marker.group = "Vanilla"; }
         }
 
         private static void ImportLooseLoot(MapData data, string dir)
@@ -147,7 +152,8 @@ namespace MapLootEditorLite.Client
                             {
                                 template = item._tpl,
                                 chance = 100f,
-                                randomRotation = true
+                                randomRotation = true,
+                                count = Math.Max(item.upd?.StackObjectsCount ?? 1, 1)
                             });
                         }
                     }
@@ -207,6 +213,7 @@ namespace MapLootEditorLite.Client
 
         private static Dictionary<string, LootableContainer> _containerCache;
         private static Dictionary<string, List<LootItem>> _staticLootCache;
+        private static Dictionary<string, (int min, int max)> _staticLootCountCache;
 
         private static void BuildContainerCache()
         {
@@ -228,6 +235,7 @@ namespace MapLootEditorLite.Client
         {
             _containerCache = null;
             _staticLootCache = null;
+            _staticLootCountCache = null;
         }
 
         private static LootableContainer FindContainer(string id)
@@ -283,7 +291,8 @@ namespace MapLootEditorLite.Client
                         {
                             template = item._tpl,
                             chance = 100f,
-                            randomRotation = true
+                            randomRotation = true,
+                            count = Math.Max(item.upd?.StackObjectsCount ?? 1, 1)
                         });
                     }
                 }
@@ -305,6 +314,12 @@ namespace MapLootEditorLite.Client
                 return;
 
             marker.items.AddRange(distribution);
+
+            if (_staticLootCountCache != null && _staticLootCountCache.TryGetValue(containerTpl, out var counts))
+            {
+                marker.itemCountMin = counts.min;
+                marker.itemCountMax = counts.max;
+            }
         }
 
         private static void LoadStaticLootCache(string dir)
@@ -321,6 +336,8 @@ namespace MapLootEditorLite.Client
                 if (file == null)
                     return;
 
+                _staticLootCache = new Dictionary<string, List<LootItem>>(StringComparer.OrdinalIgnoreCase);
+                _staticLootCountCache = new Dictionary<string, (int min, int max)>(StringComparer.OrdinalIgnoreCase);
                 foreach (var kvp in file)
                 {
                     var tpl = kvp.Key;
@@ -341,12 +358,22 @@ namespace MapLootEditorLite.Client
                         {
                             template = dist.tpl,
                             chance = (dist.relativeProbability / total) * 100f,
-                            randomRotation = true
+                            randomRotation = true,
+                            isDistribution = true
                         });
                     }
 
                     items.Sort((a, b) => b.chance.CompareTo(a.chance));
                     _staticLootCache[tpl] = items;
+
+                    int minCount = 1, maxCount = 1;
+                    if (entry.itemcountDistribution != null && entry.itemcountDistribution.Count > 0)
+                    {
+                        var counts = entry.itemcountDistribution.Select(d => d.count).ToList();
+                        minCount = Math.Max(counts.Min(), 1);
+                        maxCount = Math.Max(counts.Max(), 1);
+                    }
+                    _staticLootCountCache[tpl] = (minCount, maxCount);
                 }
             }
             catch (Exception ex)
@@ -363,6 +390,202 @@ namespace MapLootEditorLite.Client
         private static TransformData FromVector3(Vector3 v)
         {
             return new TransformData { x = v.x, y = v.y, z = v.z };
+        }
+
+        private static void ImportVanillaSpawnsAndExtracts(MapData data, string dir)
+        {
+            ImportPmcSpawns(data, dir);
+            ImportExtracts(data, dir);
+        }
+
+        private static void ImportPmcSpawns(MapData data, string dir)
+        {
+            var path = Path.Combine(dir, "base.json");
+            if (!File.Exists(path))
+                return;
+
+            try
+            {
+                var json = File.ReadAllText(path);
+                var obj = JObject.Parse(json);
+                if (!obj.TryGetValue("SpawnPointParams", StringComparison.OrdinalIgnoreCase, out var token) || token is not JArray array)
+                    return;
+
+                data.botSpawnPoints ??= new List<BotSpawnPoint>();
+                foreach (var item in array)
+                {
+                    var categories = item["Categories"]?.ToObject<List<string>>() ?? new List<string>();
+                    var sides = item["Sides"]?.ToObject<List<string>>() ?? new List<string>();
+                    var catsLower = categories.Select(c => c.ToLowerInvariant()).ToList();
+                    var sidesLower = sides.Select(s => s.ToLowerInvariant()).ToList();
+                    bool isPlayerSpawn = catsLower.Contains("player") || catsLower.Contains("coop") || catsLower.Contains("opposite");
+                    bool isPmcSide = sidesLower.Contains("pmc") || sidesLower.Contains("all");
+                    if (!isPlayerSpawn && !isPmcSide)
+                        continue;
+
+                    var position = item["Position"];
+                    if (position == null)
+                        continue;
+
+                    float x = position["x"]?.Value<float>() ?? 0f;
+                    float y = position["y"]?.Value<float>() ?? 0f;
+                    float z = position["z"]?.Value<float>() ?? 0f;
+                    float rotation = item["Rotation"]?.Value<float>() ?? 0f;
+
+                    float radius = 0.5f;
+                    if (item["ColliderParams"]?["_props"]?["Radius"] is JValue rv)
+                        radius = rv.Value<float>();
+
+                    string id = item["Id"]?.Value<string>() ?? Guid.NewGuid().ToString();
+                    string infiltration = item["Infiltration"]?.Value<string>() ?? "pmc";
+                    string botZoneName = item["BotZoneName"]?.Value<string>() ?? "";
+                    float delay = item["DelayToCanSpawnSec"]?.Value<float>() ?? 4f;
+
+                    data.botSpawnPoints.Add(new BotSpawnPoint
+                    {
+                        id = id,
+                        name = "vanilla_pmc_" + (string.IsNullOrWhiteSpace(infiltration) ? "pmc" : infiltration.ToLowerInvariant()),
+                        position = new TransformData { x = x, y = y, z = z },
+                        rotation = new TransformData { x = 0, y = rotation, z = 0 },
+                        radius = radius,
+                        side = BotSpawnSide.Pmc,
+                        category = BotSpawnCategory.BotPmc,
+                        preset = BotSpawnPreset.PMC,
+                        wildSpawnType = "pmcBot",
+                        spawnChance = 100f,
+                        delayToCanSpawnSec = delay,
+                        botZoneName = botZoneName,
+                        spawnMode = "Potential"
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"[VanillaImporter] Failed to import vanilla PMC spawns from {path}: {ex.Message}");
+            }
+        }
+
+        private static void ImportExtracts(MapData data, string dir)
+        {
+            var path = Path.Combine(dir, "allExtracts.json");
+            if (!File.Exists(path))
+                return;
+
+            var positions = LoadExtractPositions(dir, data.map);
+
+            try
+            {
+                var json = File.ReadAllText(path);
+                var array = JArray.Parse(json);
+                data.extractZones ??= new List<ExtractZone>();
+                foreach (var item in array)
+                {
+                    string name = item["Name"]?.Value<string>() ?? "extract";
+                    var position = item["Position"] ?? (positions.TryGetValue(name, out var posEntry) ? posEntry["position"] : null);
+                    if (position == null)
+                        continue;
+
+                    float x = position["x"]?.Value<float>() ?? 0f;
+                    float y = position["y"]?.Value<float>() ?? 0f;
+                    float z = position["z"]?.Value<float>() ?? 0f;
+                    float time = item["ExfiltrationTime"]?.Value<float>() ?? 5f;
+                    float chance = item["Chance"]?.Value<float>() ?? 100f;
+                    string type = item["ExfiltrationType"]?.Value<string>() ?? "Individual";
+                    string side = item["Side"]?.Value<string>() ?? "Pmc";
+                    string passage = item["PassageRequirement"]?.Value<string>() ?? "None";
+                    string reqTip = item["RequirementTip"]?.Value<string>() ?? "";
+                    string reqSlot = item["RequiredSlot"]?.Value<string>() ?? "FirstPrimaryWeapon";
+                    int count = item["Count"]?.Value<int>() ?? 0;
+                    int playersCount = item["PlayersCount"]?.Value<int>() ?? 0;
+
+                    var requirements = new List<ExtractZoneRequirement>();
+
+                    data.extractZones.Add(new ExtractZone
+                    {
+                        id = Guid.NewGuid().ToString(),
+                        name = "vanilla_extract_" + name,
+                        exitName = name,
+                        position = new TransformData { x = x, y = y, z = z },
+                        rotation = new TransformData(),
+                        scale = new TransformData { x = 1f, y = 1f, z = 1f },
+                        radius = 2f,
+                        shape = ZoneShape.Box,
+                        exfiltrationTime = time,
+                        spawnChance = chance,
+                        exfiltrationType = type,
+                        side = side,
+                        passageRequirement = passage,
+                        requirementTip = reqTip,
+                        requiredSlot = reqSlot,
+                        count = count,
+                        playersCount = playersCount,
+                        requirements = requirements
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"[VanillaImporter] Failed to import vanilla extracts from {path}: {ex.Message}");
+            }
+        }
+
+        private static Dictionary<string, JToken> LoadExtractPositions(string dir, string mapId)
+        {
+            var dict = new Dictionary<string, JToken>(StringComparer.OrdinalIgnoreCase);
+
+            var path = Path.Combine(dir, "extractPositions.json");
+            if (File.Exists(path))
+            {
+                try
+                {
+                    var json = File.ReadAllText(path);
+                    var array = JArray.Parse(json);
+                    foreach (var entry in array)
+                    {
+                        var name = entry["name"]?.Value<string>();
+                        if (string.IsNullOrWhiteSpace(name))
+                            continue;
+                        dict[name] = entry;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogWarning($"[VanillaImporter] Failed to load extractPositions.json from {path}: {ex.Message}");
+                }
+            }
+
+            if (dict.Count > 0)
+                return dict;
+
+            try
+            {
+                var asm = typeof(VanillaImporter).Assembly;
+                var resource = asm.GetManifestResourceNames()
+                    .FirstOrDefault(n => n.IndexOf($".{mapId}.extractPositions.json", StringComparison.OrdinalIgnoreCase) >= 0);
+                if (resource != null)
+                {
+                    using (var stream = asm.GetManifestResourceStream(resource))
+                    using (var reader = new StreamReader(stream))
+                    {
+                        var json = reader.ReadToEnd();
+                        var array = JArray.Parse(json);
+                        foreach (var entry in array)
+                        {
+                            var name = entry["name"]?.Value<string>();
+                            if (string.IsNullOrWhiteSpace(name))
+                                continue;
+                            if (!dict.ContainsKey(name))
+                                dict[name] = entry;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"[VanillaImporter] Failed to load embedded extractPositions.json for {mapId}: {ex.Message}");
+            }
+
+            return dict;
         }
 
         private class VanillaLootFile
@@ -425,7 +648,7 @@ namespace MapLootEditorLite.Client
 
         private class VanillaUpd
         {
-            // Ignored for now
+            public int StackObjectsCount;
         }
 
         private class StaticLootEntry

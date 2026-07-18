@@ -5,6 +5,7 @@ using System.Linq;
 using Comfort.Common;
 using EFT;
 using EFT.Interactive;
+using EFT.InventoryLogic;
 using EFT.Quests;
 using HarmonyLib;
 using Newtonsoft.Json;
@@ -153,6 +154,8 @@ namespace MapLootEditorLite.Client
                 return;
             }
 
+            DumpVanillaExtractPositions(mapId);
+
             var zones = new List<ExtractZone>();
             foreach (var pack in _packs)
             {
@@ -276,16 +279,33 @@ namespace MapLootEditorLite.Client
                 Name = string.IsNullOrWhiteSpace(zone.exitName) ? zone.name : zone.exitName,
                 ExfiltrationType = ParseExfiltrationType(zone.exfiltrationType),
                 ExfiltrationTime = zone.exfiltrationTime,
-                Chance = 100f,
+                Chance = zone.spawnChance,
                 MinTime = 0f,
                 MaxTime = 0f,
-                PlayersCount = 1,
+                PlayersCount = zone.playersCount,
                 EntryPoints = entryPoint
             };
             point.EligibleEntryPoints = new[] { entryPoint };
             point.Reusable = false;
 
             var requirements = new List<ExfiltrationRequirement>();
+
+            if (!string.IsNullOrWhiteSpace(zone.passageRequirement) && !zone.passageRequirement.Equals("None", StringComparison.OrdinalIgnoreCase) &&
+                Enum.TryParse<ERequirementState>(zone.passageRequirement, true, out var mainState))
+            {
+                var mainReq = ExfiltrationRequirement.CreateRequirement(mainState);
+                if (mainReq is ExfiltrationRequirement mainBase)
+                {
+                    mainBase.Requirement = mainState;
+                    mainBase.Id = zone.id;
+                    mainBase.Count = zone.count;
+                    mainBase.RequiredSlot = ParseEquipmentSlot(zone.requiredSlot);
+                    mainBase.RequirementTip = string.IsNullOrWhiteSpace(zone.requirementTip) ? "" : zone.requirementTip;
+                    mainBase.Start(point);
+                    requirements.Add(mainBase);
+                }
+            }
+
             foreach (var req in zone.requirements ?? new List<ExtractZoneRequirement>())
             {
                 var requirement = CreateRequirement(req);
@@ -354,6 +374,49 @@ namespace MapLootEditorLite.Client
             if (Enum.TryParse<EExfiltrationType>(type, true, out var result))
                 return result;
             return EExfiltrationType.Individual;
+        }
+
+        private EquipmentSlot ParseEquipmentSlot(string slot)
+        {
+            if (Enum.TryParse<EquipmentSlot>(slot, true, out var result))
+                return result;
+            return EquipmentSlot.FirstPrimaryWeapon;
+        }
+
+        private void DumpVanillaExtractPositions(string mapId)
+        {
+            try
+            {
+                var controller = ExfiltrationControllerClass.Instance;
+                if (controller == null)
+                    return;
+
+                var vanilla = new List<ExfiltrationPoint>();
+                if (controller.ExfiltrationPoints != null)
+                    vanilla.AddRange(controller.ExfiltrationPoints);
+                if (controller.ScavExfiltrationPoints != null)
+                    vanilla.AddRange(controller.ScavExfiltrationPoints);
+
+                var entries = vanilla
+                    .Where(p => p != null && p.Settings != null)
+                    .Select(p => new
+                    {
+                        name = p.Settings.Name,
+                        position = new { x = p.transform.position.x, y = p.transform.position.y, z = p.transform.position.z },
+                        rotation = new { x = p.transform.eulerAngles.x, y = p.transform.eulerAngles.y, z = p.transform.eulerAngles.z }
+                    })
+                    .ToList();
+
+                var dir = Plugin.ServerModExportsDirectory;
+                Directory.CreateDirectory(dir);
+                var path = Path.Combine(dir, $"vanilla_extract_positions_{mapId}.json");
+                File.WriteAllText(path, JsonConvert.SerializeObject(entries, Formatting.Indented));
+                Plugin.Log.LogInfo($"Dumped {entries.Count} vanilla extract positions to {path}");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"Failed to dump vanilla extract positions: {ex.Message}");
+            }
         }
 
         private void ClearSpawned()
