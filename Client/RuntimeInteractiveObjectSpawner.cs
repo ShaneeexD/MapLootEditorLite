@@ -54,6 +54,43 @@ namespace MapLootEditorLite.Client
             public int count;
         }
 
+        private static readonly Dictionary<string, Dictionary<string, List<LootItem>>> _bundledStaticContainersCache = new Dictionary<string, Dictionary<string, List<LootItem>>>(StringComparer.OrdinalIgnoreCase);
+
+        private class BundledContainerFile
+        {
+            public List<BundledContainerSpawn> staticContainers = new List<BundledContainerSpawn>();
+            public List<BundledContainerSpawn> staticForced = new List<BundledContainerSpawn>();
+            public List<BundledContainerSpawn> staticWeapons = new List<BundledContainerSpawn>();
+        }
+
+        private class BundledContainerSpawn
+        {
+            public string Id;
+            public float probability;
+            public BundledContainerTemplate template;
+        }
+
+        private class BundledContainerTemplate
+        {
+            public string Id;
+            public string Root;
+            public List<BundledContainerItem> Items;
+        }
+
+        private class BundledContainerItem
+        {
+            public string _id;
+            public string _tpl;
+            public string parentId;
+            public string slotId;
+            public BundledContainerUpd upd;
+        }
+
+        private class BundledContainerUpd
+        {
+            public int StackObjectsCount;
+        }
+
         private void Awake()
         {
             Instance = this;
@@ -568,33 +605,49 @@ namespace MapLootEditorLite.Client
             {
                 addedItems = InjectMarkerItems(obj, item as CompoundItem);
             }
-            else if (obj.items != null && obj.items.Any(i => !i.isDistribution))
-            {
-                // Pre-rolled vanilla items from staticContainers.json (with StackObjectsCount) take priority over distribution.
-                addedItems = InjectMarkerItems(obj, item as CompoundItem);
-            }
             else
             {
-                // Default and Hybrid use the bundled vanilla staticLoot.json so the exact vanilla distribution is respected,
-                // independent of whatever the pack's marker items happen to contain.
-                var dist = GetBundledStaticLoot(_currentMapId, obj.containerTemplate);
-                if (dist == null)
-                {
-                    Plugin.Log.LogWarning($"No bundled vanilla loot distribution found for '{obj.name}' template={obj.containerTemplate} on map '{_currentMapId}', falling back to marker items.");
-                    addedItems = InjectMarkerItems(obj, item as CompoundItem);
-                }
-                else
+                // Default/Hybrid: use the exact pre-rolled vanilla staticContainers.json for this
+                // container so StackObjectsCount (currency/ammo stacks) is preserved.
+                var preRolled = GetBundledStaticContainerItems(_currentMapId, obj.containerId);
+                if (preRolled != null && preRolled.Count > 0)
                 {
                     var marker = new InteractiveObject
                     {
                         name = obj.name,
-                        itemCountMin = dist.minCount,
-                        itemCountMax = dist.maxCount,
-                        items = new List<LootItem>(dist.items)
+                        items = new List<LootItem>(preRolled)
                     };
                     if (obj.lootMode == ContainerLootMode.Hybrid)
                         marker.items.AddRange(obj.items.Where(i => !i.isDistribution));
                     addedItems = InjectMarkerItems(marker, item as CompoundItem);
+                }
+                else if (obj.items != null && obj.items.Any(i => !i.isDistribution) && obj.lootMode == ContainerLootMode.Default)
+                {
+                    // Pre-rolled vanilla items already stored in the pack (editor import) for Default only.
+                    addedItems = InjectMarkerItems(obj, item as CompoundItem);
+                }
+                else
+                {
+                    // Fallback to the bundled vanilla staticLoot.json distribution.
+                    var dist = GetBundledStaticLoot(_currentMapId, obj.containerTemplate);
+                    if (dist == null)
+                    {
+                        Plugin.Log.LogWarning($"No bundled vanilla loot distribution found for '{obj.name}' template={obj.containerTemplate} on map '{_currentMapId}', falling back to marker items.");
+                        addedItems = InjectMarkerItems(obj, item as CompoundItem);
+                    }
+                    else
+                    {
+                        var marker = new InteractiveObject
+                        {
+                            name = obj.name,
+                            itemCountMin = dist.minCount,
+                            itemCountMax = dist.maxCount,
+                            items = new List<LootItem>(dist.items)
+                        };
+                        if (obj.lootMode == ContainerLootMode.Hybrid)
+                            marker.items.AddRange(obj.items.Where(i => !i.isDistribution));
+                        addedItems = InjectMarkerItems(marker, item as CompoundItem);
+                    }
                 }
             }
 
@@ -717,6 +770,103 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        private string FindBundledStaticContainersResourceName(string mapId)
+        {
+            var marker = $"locations.{mapId}.staticContainers.json";
+            var asm = typeof(RuntimeInteractiveObjectSpawner).Assembly;
+            return asm.GetManifestResourceNames().FirstOrDefault(n => n.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        private List<LootItem> GetBundledStaticContainerItems(string mapId, string containerId)
+        {
+            if (string.IsNullOrWhiteSpace(mapId) || string.IsNullOrWhiteSpace(containerId))
+                return null;
+
+            List<LootItem> items = null;
+            if (!_bundledStaticContainersCache.TryGetValue(mapId, out var cache))
+            {
+                cache = LoadBundledStaticContainers(mapId);
+                _bundledStaticContainersCache[mapId] = cache;
+            }
+
+            if (cache != null)
+                cache.TryGetValue(containerId, out items);
+
+            return items;
+        }
+
+        private Dictionary<string, List<LootItem>> LoadBundledStaticContainers(string mapId)
+        {
+            var name = FindBundledStaticContainersResourceName(mapId);
+            if (name == null)
+            {
+                Plugin.Log.LogWarning($"Bundled staticContainers.json resource not found for map '{mapId}'");
+                return new Dictionary<string, List<LootItem>>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            try
+            {
+                var asm = typeof(RuntimeInteractiveObjectSpawner).Assembly;
+                string json;
+                using (var stream = asm.GetManifestResourceStream(name))
+                using (var reader = new StreamReader(stream))
+                    json = reader.ReadToEnd();
+
+                var file = JsonConvert.DeserializeObject<BundledContainerFile>(json);
+                var result = new Dictionary<string, List<LootItem>>(StringComparer.OrdinalIgnoreCase);
+                if (file == null)
+                    return result;
+
+                foreach (var list in new[] { file.staticContainers, file.staticForced, file.staticWeapons })
+                {
+                    if (list == null)
+                        continue;
+                    foreach (var sp in list)
+                    {
+                        if (sp?.template?.Items == null)
+                            continue;
+
+                        var root = sp.template.Items.FirstOrDefault(i => string.IsNullOrEmpty(i?.parentId));
+                        var rootId = root?._id ?? sp.template.Root;
+                        if (string.IsNullOrWhiteSpace(rootId))
+                            continue;
+
+                        var items = new List<LootItem>();
+                        foreach (var item in sp.template.Items)
+                        {
+                            if (string.IsNullOrWhiteSpace(item?._tpl))
+                                continue;
+                            if (string.IsNullOrWhiteSpace(item.parentId))
+                                continue;
+                            items.Add(new LootItem
+                            {
+                                template = item._tpl,
+                                chance = 100f,
+                                randomRotation = true,
+                                isDistribution = false,
+                                count = Math.Max(item.upd?.StackObjectsCount ?? 1, 1)
+                            });
+                        }
+
+                        if (!result.ContainsKey(rootId))
+                            result[rootId] = items;
+
+                        var tplId = sp.template.Id ?? sp.Id;
+                        if (!string.IsNullOrWhiteSpace(tplId) && !result.ContainsKey(tplId))
+                            result[tplId] = items;
+                    }
+                }
+
+                Plugin.Log.LogInfo($"Loaded bundled staticContainers.json for {mapId}: {result.Count} containers");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"Failed to load bundled staticContainers.json for {mapId}: {ex.Message}");
+                return new Dictionary<string, List<LootItem>>(StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
         private int InjectMarkerItems(InteractiveObject obj, CompoundItem compoundItem)
         {
             if (compoundItem == null || obj.items == null)
@@ -821,32 +971,88 @@ namespace MapLootEditorLite.Client
             if (item == null || count <= 1)
                 return;
 
+            var name = item?.Id?.ToString() ?? "unknown";
             try
             {
-                var itemType = item.GetType();
-                var updProp = itemType.GetProperty("Upd", BindingFlags.Public | BindingFlags.Instance);
-                if (updProp == null)
-                    return;
-
-                var upd = updProp.GetValue(item);
-                if (upd == null)
+                if (TrySetStackValue(item, "Upd", "StackObjectsCount", count, out _))
                 {
-                    var updType = updProp.PropertyType;
-                    upd = Activator.CreateInstance(updType);
-                    updProp.SetValue(item, upd);
-                }
-
-                var stackProp = upd.GetType().GetProperty("StackObjectsCount", BindingFlags.Public | BindingFlags.Instance);
-                if (stackProp == null)
+                    Plugin.Log.LogInfo($"Set Upd.StackObjectsCount={count} for {name}");
                     return;
-
-                var underlying = Nullable.GetUnderlyingType(stackProp.PropertyType) ?? stackProp.PropertyType;
-                stackProp.SetValue(upd, Convert.ChangeType(count, underlying));
+                }
+                if (TrySetStackValue(item, null, "StackObjectsCount", count, out _))
+                {
+                    Plugin.Log.LogInfo($"Set StackObjectsCount={count} for {name}");
+                    return;
+                }
+                Plugin.Log.LogWarning($"Could not set stack count for {name}: no accessible StackObjectsCount property/field");
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogWarning($"Failed to set stack count for {item?.Template}: {ex.Message}");
+                Plugin.Log.LogWarning($"Failed to set stack count for {name}: {ex.Message}");
             }
+        }
+
+        private bool TrySetStackValue(object target, string parentName, string memberName, int count, out string reason)
+        {
+            reason = null;
+            if (target == null)
+            {
+                reason = "target is null";
+                return false;
+            }
+
+            try
+            {
+                object current = target;
+                if (!string.IsNullOrEmpty(parentName))
+                {
+                    var parentProp = target.GetType().GetProperty(parentName, BindingFlags.Public | BindingFlags.Instance);
+                    if (parentProp == null)
+                    {
+                        reason = $"no property {parentName}";
+                        return false;
+                    }
+                    current = parentProp.GetValue(target);
+                    if (current == null)
+                    {
+                        var parentType = parentProp.PropertyType;
+                        current = Activator.CreateInstance(parentType);
+                        var setMethod = parentProp.GetSetMethod(true);
+                        if (setMethod == null)
+                        {
+                            reason = $"{parentName} has no setter";
+                            return false;
+                        }
+                        setMethod.Invoke(target, new[] { current });
+                    }
+                }
+
+                var prop = current.GetType().GetProperty(memberName, BindingFlags.Public | BindingFlags.Instance);
+                if (prop != null)
+                {
+                    var setMethod = prop.GetSetMethod(true);
+                    if (setMethod != null)
+                    {
+                        var underlying = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
+                        var value = Convert.ChangeType(count, underlying);
+                        setMethod.Invoke(current, new[] { value });
+                        return true;
+                    }
+                }
+
+                var field = current.GetType().GetField(memberName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (field != null)
+                {
+                    var value = Convert.ChangeType(count, field.FieldType);
+                    field.SetValue(current, value);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                reason = ex.Message;
+            }
+            return false;
         }
 
         private void ClearSpawned()
