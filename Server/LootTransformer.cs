@@ -114,9 +114,20 @@ public static class LootTransformer
                             continue;
                         }
 
+                        // Zone-level spawn chance acts as a master switch for this zone
+                        if (zone.SpawnChance < 100.0 && random.NextDouble() * 100.0 >= zone.SpawnChance)
+                        {
+                            continue;
+                        }
+
                         for (int i = 0; i < zone.Items.Count; i++)
                         {
                             var item = zone.Items[i];
+                            if (item.Chance < 100.0 && random.NextDouble() * 100.0 >= item.Chance)
+                            {
+                                continue;
+                            }
+
                             if (!ShouldSpawnItem(item))
                             {
                                 continue;
@@ -187,7 +198,7 @@ public static class LootTransformer
         return new Spawnpoint
         {
             LocationId = locationId,
-            Probability = zone.SpawnChance * item.Chance / 10000.0,
+            Probability = 1.0,
             Template = new SpawnpointTemplate
             {
                 Id = locationId,

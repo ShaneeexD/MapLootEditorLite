@@ -22,7 +22,7 @@ public record ModMetadata : AbstractModMetadata
     public override string Name { get; init; } = "MapEditorLite";
     public override string Author { get; init; } = "Shane";
     public override List<string>? Contributors { get; init; } = null;
-    public override Version Version { get; init; } = new("1.1.0");
+    public override Version Version { get; init; } = new("1.1.1");
     public override Range SptVersion { get; init; } = new("~4.0.13");
     public override List<string>? Incompatibilities { get; init; } = null;
     public override Dictionary<string, Range>? ModDependencies { get; init; } = new()

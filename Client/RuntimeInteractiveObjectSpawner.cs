@@ -528,67 +528,17 @@ namespace MapLootEditorLite.Client
                 yield break;
             }
 
-            Item item = null;
-            var source = "unknown";
-
-            if (obj.lootMode == ContainerLootMode.Custom)
-            {
-                item = itemFactory.CreateItem(obj.containerId, lootable.Template, null);
-                source = "custom";
-            }
-            else
-            {
-                var timeout = 15f;
-                var elapsed = 0f;
-                LootItemPositionClass lootData = null;
-                while (elapsed < timeout)
-                {
-                    var currentWorld = Singleton<GameWorld>.Instance;
-                    if (currentWorld != null && currentWorld.AllLoot != null)
-                    {
-                        lootData = currentWorld.AllLoot.FirstOrDefault(x => x.Id == obj.containerId);
-                        if (lootData != null)
-                            break;
-                    }
-                    yield return new WaitForSecondsRealtime(0.5f);
-                    elapsed += 0.5f;
-                }
-
-                if (lootData != null)
-                {
-                    if (lootData.Item != null)
-                    {
-                        item = lootData.Item;
-                        source = "generated";
-                    }
-                    else
-                    {
-                        Plugin.Log.LogWarning($"Container '{obj.name}' found in AllLoot but Item is null; falling back to empty item.");
-                    }
-                }
-                else
-                {
-                    Plugin.Log.LogWarning($"Container '{obj.name}' not found in AllLoot after {timeout}s; falling back to empty item.");
-                }
-
-                if (item == null)
-                {
-                    item = itemFactory.CreateItem(obj.containerId, lootable.Template, null);
-                    source = "fallback";
-                }
-            }
-
+            // Default and Hybrid now use the marker's item list (vanilla loot copied by the importer + any extras),
+            // injected into a fresh container item just like Custom mode. This avoids relying on SPT's raid-time
+            // static loot roll, which can produce empty containers depending on the map/container.
+            Item item = itemFactory.CreateItem(obj.containerId, lootable.Template, null);
             if (item == null)
             {
                 Plugin.Log.LogWarning($"Failed to create item for container '{obj.name}'.");
                 yield break;
             }
 
-            int addedItems = 0;
-            if (obj.lootMode == ContainerLootMode.Hybrid || obj.lootMode == ContainerLootMode.Custom)
-            {
-                addedItems = InjectMarkerItems(obj, item as CompoundItem);
-            }
+            var addedItems = InjectMarkerItems(obj, item as CompoundItem);
 
             var controller = new TraderControllerClass(item, item.Id, item.ShortName.Localized(null), true, EOwnerType.Profile);
             lootable.Init(controller);
@@ -597,7 +547,7 @@ namespace MapLootEditorLite.Client
                 finalGameWorld.RegisterLoot<LootableContainer>(lootable);
             else
                 Plugin.Log.LogWarning($"GameWorld not available for container '{obj.name}' loot registration; container initialized but not registered with world.");
-            Plugin.Log.LogInfo($"Initialized lootable container '{obj.name}' id={obj.containerId}, template={lootable.Template}, itemId={item.Id}, source={source}, injectedItems={addedItems}");
+            Plugin.Log.LogInfo($"Initialized lootable container '{obj.name}' id={obj.containerId}, template={lootable.Template}, itemId={item.Id}, mode={obj.lootMode}, injectedItems={addedItems}");
         }
 
         private int InjectMarkerItems(InteractiveObject obj, CompoundItem compoundItem)
