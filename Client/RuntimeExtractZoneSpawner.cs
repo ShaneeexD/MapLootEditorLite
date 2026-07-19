@@ -235,6 +235,22 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        public void SetExtractEnabled(string name, bool enabled)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+
+            var point = _spawned.FirstOrDefault(p => p != null && p.name == $"CustomExtractZone_{name}");
+            if (point == null)
+            {
+                Plugin.Log.LogWarning($"Cannot toggle extract zone '{name}': not found.");
+                return;
+            }
+
+            point.gameObject.SetActive(enabled);
+            Plugin.Log.LogInfo($"Extract zone '{name}' enabled={enabled}.");
+        }
+
         private ExfiltrationPoint CreateExfiltrationPoint(ExtractZone zone, string entryPoint)
         {
             var go = new GameObject($"CustomExtractZone_{zone.name}");

@@ -2314,7 +2314,7 @@ namespace MapLootEditorLite.Client
             if (obj.scale == null)
                 obj.scale = new TransformData { x = 1f, y = 1f, z = 1f };
 
-            BuildDropdownField(_inspectorContent, "Type", obj.interactiveType.ToString(), new[] { "Door", "Container", "StationaryWeapon" }, (v) =>
+            BuildDropdownField(_inspectorContent, "Type", obj.interactiveType.ToString(), new[] { "Door", "Container", "StationaryWeapon", "Switch" }, (v) =>
             {
                 obj.interactiveType = (InteractiveObjectType)System.Enum.Parse(typeof(InteractiveObjectType), v);
                 manager.IsDirty = true;
@@ -2355,6 +2355,16 @@ namespace MapLootEditorLite.Client
             else if (obj.interactiveType == InteractiveObjectType.StationaryWeapon)
             {
                 BuildWeaponTemplateDropdown(obj);
+            }
+            else if (obj.interactiveType == InteractiveObjectType.Switch)
+            {
+                BuildToggleField(_inspectorContent, "Start On", obj.switchInitialState, (v) => { obj.switchInitialState = v; manager.IsDirty = true; });
+                if (obj.linkedLightZoneNames == null)
+                    obj.linkedLightZoneNames = new List<string>();
+                BuildStringList(_inspectorContent, "Linked Light Zones", obj.linkedLightZoneNames, "lightZoneName");
+                if (obj.linkedExtractNames == null)
+                    obj.linkedExtractNames = new List<string>();
+                BuildStringList(_inspectorContent, "Linked Extract Zones", obj.linkedExtractNames, "extractName");
             }
 
             UIBuilder.CreateButton(_inspectorContent, "Preview Object", () => previews.SpawnInteractivePreview(obj), 100, 24);

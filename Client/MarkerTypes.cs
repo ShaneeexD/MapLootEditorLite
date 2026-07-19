@@ -38,7 +38,8 @@ namespace MapLootEditorLite.Client
     {
         Door,
         Container,
-        StationaryWeapon
+        StationaryWeapon,
+        Switch
     }
 
     [JsonConverter(typeof(StringEnumConverter))]
@@ -462,6 +463,11 @@ namespace MapLootEditorLite.Client
         public bool questOnly = false;
         public bool questCompleted = false;
         public string questId = "";
+
+        // Switch (rubilnik etc)
+        public bool switchInitialState = false;
+        public List<string> linkedLightZoneNames = new List<string>();
+        public List<string> linkedExtractNames = new List<string>();
 
         public override MarkerKind Kind => MarkerKind.InteractiveObject;
     }

@@ -389,6 +389,17 @@ namespace MapLootEditorLite.Client
                 {
                     Plugin.Log.LogWarning($"Spawned stationary weapon '{obj.name}' has no StationaryWeapon component; interaction will not work.");
                 }
+                else if (obj.interactiveType == InteractiveObjectType.Switch)
+                {
+                    wio.Id = obj.id;
+                    var state = obj.switchInitialState ? EDoorState.Open : EDoorState.Shut;
+                    wio.SetDoorState(state, true);
+
+                    var controller = instance.GetComponent<CustomSwitchController>() ?? instance.AddComponent<CustomSwitchController>();
+                    controller.Data = obj;
+                    controller.Wio = wio;
+                    Plugin.Log.LogInfo($"Switch '{obj.name}' initial state {(obj.switchInitialState ? "On" : "Off")}.");
+                }
                 else
                 {
                     wio.Id = obj.id;
