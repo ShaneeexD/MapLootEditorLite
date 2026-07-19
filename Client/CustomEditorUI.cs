@@ -2471,6 +2471,7 @@ namespace MapLootEditorLite.Client
             });
             BuildReadOnlyLabel(_inspectorContent, "Side", point.side.ToString());
             BuildReadOnlyLabel(_inspectorContent, "Category", point.category.ToString());
+            BuildToggleField(_inspectorContent, "Force Player Spawn (off = bot/any)", point.forcePlayerSpawn, (v) => { point.forcePlayerSpawn = v; manager.IsDirty = true; });
             BuildDropdownField(_inspectorContent, "Spawn Mode", point.spawnMode ?? "Forced", new[] { "Forced", "Potential" }, (v) =>
             {
                 point.spawnMode = v;
@@ -2570,6 +2571,7 @@ namespace MapLootEditorLite.Client
 
             BuildReadOnlyLabel(_inspectorContent, "Side", zone.side.ToString());
             BuildReadOnlyLabel(_inspectorContent, "Category", zone.category.ToString());
+            BuildToggleField(_inspectorContent, "Force Player Spawn (off = bot/any)", zone.forcePlayerSpawn, (v) => { zone.forcePlayerSpawn = v; manager.IsDirty = true; });
             BuildIntField(_inspectorContent, "Min Group Size", zone.minGroupSize, (v) => { zone.minGroupSize = Math.Max(0, v); manager.IsDirty = true; });
             BuildIntField(_inspectorContent, "Max Group Size", zone.maxGroupSize, (v) => { zone.maxGroupSize = Math.Max(zone.minGroupSize, v); manager.IsDirty = true; });
             BuildFloatField(_inspectorContent, "Spawn Chance", zone.spawnChance, (v) => { zone.spawnChance = v; manager.IsDirty = true; });

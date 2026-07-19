@@ -30,6 +30,9 @@ namespace MapLootEditorLite.Client
         private Dictionary<string, TriggerState> _triggerStates = new Dictionary<string, TriggerState>();
         private List<PendingTrigger> _pendingTriggers = new List<PendingTrigger>();
         private float _raidStartTime;
+        private Vector3? _pendingForcePosition;
+        private Quaternion? _pendingForceRotation;
+        private bool _forceSpawned;
 
         private class TriggerState
         {
@@ -84,6 +87,9 @@ namespace MapLootEditorLite.Client
             _triggerStates.Clear();
             _pendingTriggers.Clear();
             _raidStartTime = 0f;
+            _pendingForcePosition = null;
+            _pendingForceRotation = null;
+            _forceSpawned = false;
         }
 
         private void LoadPacks()
@@ -208,8 +214,21 @@ namespace MapLootEditorLite.Client
                 {
                     foreach (var point in map.botSpawnPoints ?? new List<BotSpawnPoint>())
                     {
-                        if (QuestConditionsMet(point.questOnly, point.questCompleted, point.questId))
-                            points.Add(point);
+                        if (!QuestConditionsMet(point.questOnly, point.questCompleted, point.questId))
+                            continue;
+
+                        if (point.forcePlayerSpawn)
+                        {
+                            if (!_pendingForcePosition.HasValue)
+                            {
+                                _pendingForcePosition = point.position.ToVector3();
+                                _pendingForceRotation = Quaternion.Euler(point.rotation.ToVector3());
+                                Plugin.Log.LogInfo($"Registered force player spawn point '{point.name}' at {_pendingForcePosition.Value}.");
+                            }
+                            continue;
+                        }
+
+                        points.Add(point);
                     }
                     foreach (var zone in map.botSpawnZones ?? new List<BotSpawnZone>())
                     {
@@ -218,8 +237,21 @@ namespace MapLootEditorLite.Client
                     }
                     foreach (var pmc in map.pmcSpawnZones ?? new List<PmcSpawnZone>())
                     {
-                        if (QuestConditionsMet(pmc.questOnly, pmc.questCompleted, pmc.questId))
-                            pmcZones.Add(pmc);
+                        if (!QuestConditionsMet(pmc.questOnly, pmc.questCompleted, pmc.questId))
+                            continue;
+
+                        if (pmc.forcePlayerSpawn)
+                        {
+                            if (!_pendingForcePosition.HasValue)
+                            {
+                                _pendingForcePosition = pmc.position.ToVector3();
+                                _pendingForceRotation = Quaternion.Euler(pmc.rotation.ToVector3());
+                                Plugin.Log.LogInfo($"Registered force player spawn zone '{pmc.name}' at {_pendingForcePosition.Value}.");
+                            }
+                            continue;
+                        }
+
+                        pmcZones.Add(pmc);
                     }
                     foreach (var trigger in map.triggerZones ?? new List<TriggerZone>())
                     {
@@ -751,8 +783,27 @@ namespace MapLootEditorLite.Client
             return EPlayerSide.Savage;
         }
 
+        private void TryForcePlayerSpawn()
+        {
+            if (_forceSpawned || !_pendingForcePosition.HasValue)
+                return;
+
+            var player = Singleton<GameWorld>.Instance?.MainPlayer;
+            if (player == null || player.Transform == null)
+                return;
+
+            player.Transform.position = _pendingForcePosition.Value;
+            if (_pendingForceRotation.HasValue)
+                player.Transform.rotation = _pendingForceRotation.Value;
+
+            _forceSpawned = true;
+            Plugin.Log.LogInfo($"Force spawned player at {_pendingForcePosition.Value} rotation={_pendingForceRotation}.");
+        }
+
         private void Update()
         {
+            TryForcePlayerSpawn();
+
             if (_triggerZones.Count == 0)
                 return;
 

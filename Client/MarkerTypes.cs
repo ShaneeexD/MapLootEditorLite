@@ -545,6 +545,7 @@ namespace MapLootEditorLite.Client
         public List<string> randomSpawnTypes = new();
         public bool triggerActivated = false;
         public string triggerZoneName = "";
+        public bool forcePlayerSpawn = false;
 
         public override MarkerKind Kind => MarkerKind.BotSpawnPoint;
     }
@@ -592,6 +593,7 @@ namespace MapLootEditorLite.Client
         public bool questOnly = false;
         public bool questCompleted = false;
         public string questId = "";
+        public bool forcePlayerSpawn = false;
 
         public override MarkerKind Kind => MarkerKind.PmcSpawnZone;
     }

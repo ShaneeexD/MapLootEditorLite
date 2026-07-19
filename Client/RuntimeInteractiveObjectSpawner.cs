@@ -55,6 +55,7 @@ namespace MapLootEditorLite.Client
         }
 
         private static readonly Dictionary<string, Dictionary<string, List<LootItem>>> _bundledStaticContainersCache = new Dictionary<string, Dictionary<string, List<LootItem>>>(StringComparer.OrdinalIgnoreCase);
+        private static readonly Dictionary<string, Dictionary<string, int>> _bundledItemStackCountsCache = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
 
         private class BundledContainerFile
         {
@@ -88,7 +89,7 @@ namespace MapLootEditorLite.Client
 
         private class BundledContainerUpd
         {
-            public int StackObjectsCount;
+            public double StackObjectsCount;
         }
 
         private void Awake()
@@ -720,6 +721,8 @@ namespace MapLootEditorLite.Client
                 if (file == null)
                     return result;
 
+                var stackCounts = LoadBundledItemStackCounts(mapId);
+
                 foreach (var kvp in file)
                 {
                     var tpl = kvp.Key;
@@ -736,13 +739,14 @@ namespace MapLootEditorLite.Client
                     {
                         if (string.IsNullOrEmpty(item.tpl))
                             continue;
+                        int itemStack = stackCounts.TryGetValue(item.tpl, out var stack) ? stack : item.count;
                         dist.items.Add(new LootItem
                         {
                             template = item.tpl,
                             chance = (item.relativeProbability / total) * 100f,
                             randomRotation = true,
                             isDistribution = true,
-                            count = Math.Max(item.count, 1)
+                            count = Math.Max(itemStack, 1)
                         });
                     }
 
@@ -767,6 +771,53 @@ namespace MapLootEditorLite.Client
             {
                 Plugin.Log.LogWarning($"Failed to load bundled staticLoot.json for {mapId}: {ex.Message}");
                 return new Dictionary<string, BundledStaticLootDistribution>(StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
+        private string FindBundledItemStackCountsResourceName(string mapId)
+        {
+            var marker = $"locations.{mapId}.itemStackCounts.json";
+            var asm = typeof(RuntimeInteractiveObjectSpawner).Assembly;
+            return asm.GetManifestResourceNames().FirstOrDefault(n => n.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        private Dictionary<string, int> LoadBundledItemStackCounts(string mapId)
+        {
+            if (_bundledItemStackCountsCache.TryGetValue(mapId, out var cached))
+                return cached;
+
+            var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            _bundledItemStackCountsCache[mapId] = result;
+
+            var name = FindBundledItemStackCountsResourceName(mapId);
+            if (name == null)
+            {
+                Plugin.Log.LogWarning($"Bundled itemStackCounts.json resource not found for map '{mapId}'");
+                return result;
+            }
+
+            try
+            {
+                var asm = typeof(RuntimeInteractiveObjectSpawner).Assembly;
+                string json;
+                using (var stream = asm.GetManifestResourceStream(name))
+                using (var reader = new StreamReader(stream))
+                    json = reader.ReadToEnd();
+
+                var file = JsonConvert.DeserializeObject<Dictionary<string, int>>(json);
+                if (file != null)
+                {
+                    foreach (var kvp in file)
+                        result[kvp.Key] = kvp.Value;
+                }
+
+                Plugin.Log.LogInfo($"Loaded bundled itemStackCounts.json for {mapId}: {result.Count} entries");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"Failed to load bundled itemStackCounts.json for {mapId}: {ex.Message}");
+                return result;
             }
         }
 
@@ -844,7 +895,7 @@ namespace MapLootEditorLite.Client
                                 chance = 100f,
                                 randomRotation = true,
                                 isDistribution = false,
-                                count = Math.Max(item.upd?.StackObjectsCount ?? 1, 1)
+                                count = Math.Max((int)(item.upd?.StackObjectsCount ?? 1), 1)
                             });
                         }
 
@@ -1033,8 +1084,7 @@ namespace MapLootEditorLite.Client
                     var setMethod = prop.GetSetMethod(true);
                     if (setMethod != null)
                     {
-                        var underlying = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
-                        var value = Convert.ChangeType(count, underlying);
+                        var value = Convert.ChangeType(count, prop.PropertyType);
                         setMethod.Invoke(current, new[] { value });
                         return true;
                     }

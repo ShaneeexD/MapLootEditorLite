@@ -153,7 +153,7 @@ namespace MapLootEditorLite.Client
                                 template = item._tpl,
                                 chance = 100f,
                                 randomRotation = true,
-                                count = Math.Max(item.upd?.StackObjectsCount ?? 1, 1)
+                                count = Math.Max((int)(item.upd?.StackObjectsCount ?? 1), 1)
                             });
                         }
                     }
@@ -292,7 +292,7 @@ namespace MapLootEditorLite.Client
                             template = item._tpl,
                             chance = 100f,
                             randomRotation = true,
-                            count = Math.Max(item.upd?.StackObjectsCount ?? 1, 1)
+                            count = Math.Max((int)(item.upd?.StackObjectsCount ?? 1), 1)
                         });
                     }
                 }
@@ -648,7 +648,7 @@ namespace MapLootEditorLite.Client
 
         private class VanillaUpd
         {
-            public int StackObjectsCount;
+            public double StackObjectsCount;
         }
 
         private class StaticLootEntry
