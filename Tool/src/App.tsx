@@ -54,6 +54,7 @@ import {
   LightZoneList,
   BotSpawnPointList,
   BotSpawnZoneList,
+  PmcSpawnZoneList,
   WttQuestZoneList,
   WttStaticObjectList,
   TriggerZoneList,
@@ -68,6 +69,7 @@ type MarkerTab =
   | 'lights'
   | 'botpoints'
   | 'botzones'
+  | 'pmczones'
   | 'wttquests'
   | 'wttobjects'
   | 'triggers'
@@ -95,6 +97,7 @@ function migratePackData(pack: PackData): PackData {
       extractZones: map.extractZones ?? [],
       botSpawnPoints: map.botSpawnPoints ?? [],
       botSpawnZones: map.botSpawnZones ?? [],
+      pmcSpawnZones: map.pmcSpawnZones ?? [],
       lightZones: map.lightZones ?? [],
       triggerZones: map.triggerZones ?? [],
     }
@@ -105,6 +108,7 @@ function migratePackData(pack: PackData): PackData {
 const defaultInteractiveObjectItem: InteractiveObjectItem = {
   template: '',
   chance: 100,
+  count: 1,
   questOnly: false,
   questCompleted: false,
   questId: '',
@@ -404,6 +408,13 @@ export default function App() {
                   disabled={!currentMap}
                 />
                 <TabButton
+                  active={tab === 'pmczones'}
+                  onClick={() => setTab('pmczones')}
+                  icon={<Users size={16} />}
+                  label={`PMC Zones${currentMap ? ` (${currentMap.pmcSpawnZones.length})` : ''}`}
+                  disabled={!currentMap}
+                />
+                <TabButton
                   active={tab === 'wttquests'}
                   onClick={() => setTab('wttquests')}
                   icon={<MapPin size={16} />}
@@ -503,6 +514,15 @@ export default function App() {
                   <BotSpawnZoneList
                     data={currentMap.botSpawnZones}
                     onChange={(zones) => updateMap(selectedMapId, (m) => ({ ...m, botSpawnZones: zones }))}
+                  />
+                ) : (
+                  <NoMapMessage />
+                ))}
+              {tab === 'pmczones' &&
+                (currentMap ? (
+                  <PmcSpawnZoneList
+                    data={currentMap.pmcSpawnZones}
+                    onChange={(zones) => updateMap(selectedMapId, (m) => ({ ...m, pmcSpawnZones: zones }))}
                   />
                 ) : (
                   <NoMapMessage />
@@ -1170,6 +1190,8 @@ function InteractiveObjectList({
   }
 
   const isContainer = form.interactiveType === InteractiveObjectType.Container
+  const isStationaryWeapon = form.interactiveType === InteractiveObjectType.StationaryWeapon
+  const isSwitch = form.interactiveType === InteractiveObjectType.Switch
 
   return (
     <div className="space-y-4">
@@ -1183,6 +1205,8 @@ function InteractiveObjectList({
             options={[
               { value: InteractiveObjectType.Door, label: 'Door' },
               { value: InteractiveObjectType.Container, label: 'Container' },
+              { value: InteractiveObjectType.StationaryWeapon, label: 'Stationary Weapon' },
+              { value: InteractiveObjectType.Switch, label: 'Switch' },
             ]}
             onChange={(v) => setForm((f) => ({ ...f, interactiveType: v }))}
             tooltip="Kind of interactive object to spawn."
@@ -1263,6 +1287,8 @@ function InteractiveObjectList({
                 onChange={(v) => setForm((f) => ({ ...f, lootMode: v }))}
                 tooltip="How this container receives loot."
               />
+              <NumberField label="Item Count Min" value={form.itemCountMin ?? 0} onChange={(v) => setForm((f) => ({ ...f, itemCountMin: v }))} min={0} step={1} tooltip="Minimum number of items in the container." />
+              <NumberField label="Item Count Max" value={form.itemCountMax ?? 0} onChange={(v) => setForm((f) => ({ ...f, itemCountMax: v }))} min={0} step={1} tooltip="Maximum number of items in the container." />
             </>
           )}
           {isContainer && (
@@ -1273,6 +1299,31 @@ function InteractiveObjectList({
                 tooltip="Items injected into the container in Hybrid or Custom mode."
               />
             </div>
+          )}
+          {isStationaryWeapon && (
+            <TextField
+              label="Weapon Template"
+              value={form.weaponTemplate || ''}
+              onChange={(v) => setForm((f) => ({ ...f, weaponTemplate: v }))}
+              tooltip="Root template ID of the stationary weapon (e.g. NSV Utes)."
+            />
+          )}
+          {isSwitch && (
+            <>
+              <Toggle label="Start On" checked={form.switchInitialState ?? false} onChange={(v) => setForm((f) => ({ ...f, switchInitialState: v }))} />
+              <TextField
+                label="Linked Light Zones"
+                value={(form.linkedLightZoneNames ?? []).join(', ')}
+                onChange={(v) => setForm((f) => ({ ...f, linkedLightZoneNames: v.split(',').map((s) => s.trim()).filter(Boolean) }))}
+                tooltip="Comma-separated light zone names toggled by this switch."
+              />
+              <TextField
+                label="Linked Extracts"
+                value={(form.linkedExtractNames ?? []).join(', ')}
+                onChange={(v) => setForm((f) => ({ ...f, linkedExtractNames: v.split(',').map((s) => s.trim()).filter(Boolean) }))}
+                tooltip="Comma-separated extract zone names toggled by this switch."
+              />
+            </>
           )}
           <div className="flex items-end md:col-span-1 lg:col-span-3">
             <button onClick={add} className="btn-primary w-full flex items-center justify-center gap-2">
@@ -1373,6 +1424,8 @@ function InteractiveObjectList({
                     onChange={(v) => update(i, { lootMode: v })}
                     tooltip="How this container receives loot."
                   />
+                  <NumberField label="Item Count Min" value={obj.itemCountMin ?? 0} onChange={(v) => update(i, { itemCountMin: v })} min={0} step={1} tooltip="Minimum number of items in the container." />
+                  <NumberField label="Item Count Max" value={obj.itemCountMax ?? 0} onChange={(v) => update(i, { itemCountMax: v })} min={0} step={1} tooltip="Maximum number of items in the container." />
                 </>
               )}
               {obj.interactiveType === InteractiveObjectType.Container && (
@@ -1383,6 +1436,31 @@ function InteractiveObjectList({
                     tooltip="Items injected into the container in Hybrid or Custom mode."
                   />
                 </div>
+              )}
+              {obj.interactiveType === InteractiveObjectType.StationaryWeapon && (
+                <TextField
+                  label="Weapon Template"
+                  value={obj.weaponTemplate || ''}
+                  onChange={(v) => update(i, { weaponTemplate: v })}
+                  tooltip="Root template ID of the stationary weapon (e.g. NSV Utes)."
+                />
+              )}
+              {obj.interactiveType === InteractiveObjectType.Switch && (
+                <>
+                  <Toggle label="Start On" checked={obj.switchInitialState ?? false} onChange={(v) => update(i, { switchInitialState: v })} />
+                  <TextField
+                    label="Linked Light Zones"
+                    value={(obj.linkedLightZoneNames ?? []).join(', ')}
+                    onChange={(v) => update(i, { linkedLightZoneNames: v.split(',').map((s) => s.trim()).filter(Boolean) })}
+                    tooltip="Comma-separated light zone names toggled by this switch."
+                  />
+                  <TextField
+                    label="Linked Extracts"
+                    value={(obj.linkedExtractNames ?? []).join(', ')}
+                    onChange={(v) => update(i, { linkedExtractNames: v.split(',').map((s) => s.trim()).filter(Boolean) })}
+                    tooltip="Comma-separated extract zone names toggled by this switch."
+                  />
+                </>
               )}
               <div className="flex items-end justify-end md:col-span-1 lg:col-span-3">
                 <button onClick={() => onChange(removeAt(data, i))} className="btn-danger p-2">
@@ -1426,6 +1504,9 @@ function InteractiveItemListEditor({
             <div className="w-28">
               <NumberField label="%" value={item.chance} onChange={(v) => update(i, { chance: v })} min={0} max={100} tooltip="Percent chance this item is injected (0-100)." />
             </div>
+            <div className="w-20">
+              <NumberField label="Count" value={item.count ?? 1} onChange={(v) => update(i, { count: v })} min={0} step={1} tooltip="Stack count for this item." />
+            </div>
             <button onClick={() => onChange(removeAt(value, i))} className="btn-danger p-2">
               <Trash2 size={16} />
             </button>
@@ -1450,7 +1531,7 @@ function InteractiveItemListEditor({
           </div>
         </div>
       ))}
-      <button onClick={() => onChange([...value, { template: '', chance: 100, questOnly: false, questId: '' }])} className="btn-secondary text-sm flex items-center gap-1">
+      <button onClick={() => onChange([...value, { ...defaultInteractiveObjectItem }])} className="btn-secondary text-sm flex items-center gap-1">
         <Plus size={14} /> Add Item
       </button>
     </div>

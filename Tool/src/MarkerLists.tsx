@@ -7,6 +7,7 @@ import {
   type ExtractZoneRequirement,
   type LightColorData,
   type LightZone,
+  type PmcSpawnZone,
   type TransformData,
   type TriggerZone,
   type WTTQuestZone,
@@ -25,6 +26,7 @@ import {
   defaultExtractZone,
   defaultLightColor,
   defaultLightZone,
+  defaultPmcSpawnZone,
   defaultTransform,
   defaultTriggerZone,
   defaultWttQuestZone,
@@ -432,6 +434,12 @@ export function ExtractZoneList({
       <TextField label="Exit Name" value={item.exitName} onChange={(v) => update({ exitName: v })} />
       <NumberField label="Exfil Time" value={item.exfiltrationTime} onChange={(v) => update({ exfiltrationTime: v })} min={0} step={0.1} />
       <TextField label="Exfil Type" value={item.exfiltrationType} onChange={(v) => update({ exfiltrationType: v })} />
+      <TextField label="Side" value={item.side || 'Pmc'} onChange={(v) => update({ side: v })} />
+      <TextField label="Passage Requirement" value={item.passageRequirement || 'None'} onChange={(v) => update({ passageRequirement: v })} />
+      <TextField label="Requirement Tip" value={item.requirementTip || ''} onChange={(v) => update({ requirementTip: v })} />
+      <TextField label="Required Slot" value={item.requiredSlot || 'FirstPrimaryWeapon'} onChange={(v) => update({ requiredSlot: v })} />
+      <NumberField label="Count" value={item.count ?? 0} onChange={(v) => update({ count: v })} min={0} step={1} />
+      <NumberField label="Players Count" value={item.playersCount ?? 0} onChange={(v) => update({ playersCount: v })} min={0} step={1} />
       <Toggle label="Link Lights" checked={item.linkLights ?? false} onChange={(v) => update({ linkLights: v })} />
       <SelectField label="Light Action" value={item.lightAction ?? TriggerLightAction.Toggle} options={triggerLightActionOptions} onChange={(v) => update({ lightAction: v })} />
       <StringArrayField label="Light Zone Names" values={item.lightZoneNames ?? []} onChange={(v) => update({ lightZoneNames: v })} />
@@ -469,6 +477,19 @@ export function LightZoneList({
       <NumberField label="Spot Angle" value={item.spotAngle} onChange={(v) => update({ spotAngle: v })} min={0} max={180} step={1} />
       <SelectField label="Light Type" value={item.lightType ?? LightType.Point} options={lightTypeOptions} onChange={(v) => update({ lightType: v })} />
       <Toggle label="Enabled" checked={item.enabled ?? true} onChange={(v) => update({ enabled: v })} />
+      <SelectField
+        label="Shadows"
+        value={item.shadows ?? 'Soft'}
+        options={[
+          { value: 'None', label: 'None' },
+          { value: 'Hard', label: 'Hard' },
+          { value: 'Soft', label: 'Soft' },
+        ]}
+        onChange={(v) => update({ shadows: v })}
+      />
+      <NumberField label="Shadow Strength" value={item.shadowStrength ?? 1} onChange={(v) => update({ shadowStrength: v })} min={0} max={1} step={0.05} />
+      <NumberField label="Shadow Bias" value={item.shadowBias ?? 0.05} onChange={(v) => update({ shadowBias: v })} step={0.001} />
+      <NumberField label="Shadow Normal Bias" value={item.shadowNormalBias ?? 0.4} onChange={(v) => update({ shadowNormalBias: v })} step={0.001} />
     </>
   )
   return (
@@ -502,6 +523,7 @@ export function BotSpawnPointList({
       <NumberField label="Delay (sec)" value={item.delayToCanSpawnSec ?? 4} onChange={(v) => update({ delayToCanSpawnSec: v })} min={0} step={0.1} />
       <TextField label="Bot Zone Name" value={item.botZoneName || ''} onChange={(v) => update({ botZoneName: v })} />
       <TextField label="Spawn Mode" value={item.spawnMode || ''} onChange={(v) => update({ spawnMode: v })} />
+      <Toggle label="Force Player Spawn" checked={item.forcePlayerSpawn ?? false} onChange={(v) => update({ forcePlayerSpawn: v })} />
       <NumberField label="Bot Spawn Chance" value={item.botSpawnChance ?? 100} onChange={(v) => update({ botSpawnChance: v })} min={0} max={100} />
       <Toggle label="Trigger Activated" checked={item.triggerActivated ?? false} onChange={(v) => update({ triggerActivated: v })} />
       <TextField label="Trigger Zone Name" value={item.triggerZoneName || ''} onChange={(v) => update({ triggerZoneName: v })} />
@@ -554,6 +576,44 @@ export function BotSpawnZoneList({
       items={data}
       onChange={onChange as any}
       defaultItem={defaultBotSpawnZone()}
+      showSpawnChance
+      showQuest
+      renderAddExtra={extraFields}
+      renderItemExtra={extraFields}
+    />
+  )
+}
+
+export function PmcSpawnZoneList({
+  data,
+  onChange,
+}: {
+  data: PmcSpawnZone[]
+  onChange: (zones: PmcSpawnZone[]) => void
+}) {
+  const extraFields = (item: any, update: any) => (
+    <>
+      <NumberField label="Radius" value={item.radius} onChange={(v) => update({ radius: v })} min={0} step={0.1} />
+      <SelectField label="Shape" value={item.shape} options={zoneShapeOptions} onChange={(v) => update({ shape: v })} />
+      <TransformField label="Scale" value={item.scale} onChange={(v) => update({ scale: v })} />
+      <SelectField label="Side" value={item.side} options={botSpawnSideOptions} onChange={(v) => update({ side: v })} />
+      <SelectField label="Category" value={item.category} options={botSpawnCategoryOptions} onChange={(v) => update({ category: v })} />
+      <SelectField label="Preset" value={item.preset} options={botSpawnPresetOptions} onChange={(v) => update({ preset: v })} />
+      <TextField label="Wild Spawn Type" value={item.wildSpawnType || ''} onChange={(v) => update({ wildSpawnType: v })} />
+      <NumberField label="Min Group Size" value={item.minGroupSize ?? 1} onChange={(v) => update({ minGroupSize: v })} min={0} step={1} />
+      <NumberField label="Max Group Size" value={item.maxGroupSize ?? 1} onChange={(v) => update({ maxGroupSize: v })} min={0} step={1} />
+      <NumberField label="Spawn Chance" value={item.spawnChance ?? 100} onChange={(v) => update({ spawnChance: v })} min={0} max={100} />
+      <NumberField label="Delay (sec)" value={item.delayToCanSpawnSec ?? 4} onChange={(v) => update({ delayToCanSpawnSec: v })} min={0} step={0.1} />
+      <TextField label="Bot Zone Name" value={item.botZoneName || ''} onChange={(v) => update({ botZoneName: v })} />
+      <Toggle label="Force Player Spawn" checked={item.forcePlayerSpawn ?? false} onChange={(v) => update({ forcePlayerSpawn: v })} />
+    </>
+  )
+  return (
+    <SimpleMarkerList
+      title="PMC Spawn Zone"
+      items={data}
+      onChange={onChange as any}
+      defaultItem={defaultPmcSpawnZone()}
       showSpawnChance
       showQuest
       renderAddExtra={extraFields}

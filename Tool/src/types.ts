@@ -7,6 +7,7 @@
 export interface LootItem {
   template: string
   chance: number
+  count?: number
   rotation: TransformData
   randomRotation: boolean
   yOffset?: number
@@ -19,6 +20,7 @@ export function defaultLootItem(): LootItem {
   return {
     template: '',
     chance: 100,
+    count: 1,
     rotation: defaultTransform(),
     randomRotation: true,
     yOffset: 0,
@@ -89,6 +91,8 @@ export interface StaticObject {
 export enum InteractiveObjectType {
   Door = 'Door',
   Container = 'Container',
+  StationaryWeapon = 'StationaryWeapon',
+  Switch = 'Switch',
 }
 
 export enum ContainerLootMode {
@@ -100,6 +104,7 @@ export enum ContainerLootMode {
 export interface InteractiveObjectItem {
   template: string
   chance: number
+  count?: number
   questOnly?: boolean
   questCompleted?: boolean
   questId?: string
@@ -119,7 +124,13 @@ export interface InteractiveObject {
   containerId?: string
   containerTemplate?: string
   lootMode?: ContainerLootMode
+  itemCountMin?: number
+  itemCountMax?: number
   items: InteractiveObjectItem[]
+  weaponTemplate?: string
+  switchInitialState?: boolean
+  linkedLightZoneNames?: string[]
+  linkedExtractNames?: string[]
   spawnChance: number
   questOnly?: boolean
   questCompleted?: boolean
@@ -173,6 +184,12 @@ export interface ExtractZone {
   exitName: string
   exfiltrationTime: number
   exfiltrationType: string
+  side?: string
+  passageRequirement?: string
+  requirementTip?: string
+  requiredSlot?: string
+  count?: number
+  playersCount?: number
   spawnChance: number
   questOnly?: boolean
   questCompleted?: boolean
@@ -253,6 +270,7 @@ export interface BotSpawnPoint {
   randomSpawnTypes?: string[]
   triggerActivated?: boolean
   triggerZoneName?: string
+  forcePlayerSpawn?: boolean
 }
 
 export interface BotSpawnZone {
@@ -281,6 +299,30 @@ export interface BotSpawnZone {
   randomGroups?: BotSpawnGroup[]
   triggerActivated?: boolean
   triggerZoneName?: string
+}
+
+export interface PmcSpawnZone {
+  id: string
+  name: string
+  group?: string
+  position: TransformData
+  rotation: TransformData
+  radius: number
+  scale: TransformData
+  shape: ZoneShape
+  side: BotSpawnSide
+  category: BotSpawnCategory
+  preset: BotSpawnPreset
+  wildSpawnType?: string
+  minGroupSize?: number
+  maxGroupSize?: number
+  spawnChance: number
+  delayToCanSpawnSec?: number
+  botZoneName?: string
+  questOnly?: boolean
+  questCompleted?: boolean
+  questId?: string
+  forcePlayerSpawn?: boolean
 }
 
 export interface TriggerZone {
@@ -328,6 +370,10 @@ export interface LightZone {
   spotAngle: number
   lightType: LightType | string
   enabled: boolean
+  shadows?: string
+  shadowStrength?: number
+  shadowBias?: number
+  shadowNormalBias?: number
   spawnChance: number
   questOnly?: boolean
   questCompleted?: boolean
@@ -387,6 +433,7 @@ export interface MapData {
   extractZones: ExtractZone[]
   botSpawnPoints: BotSpawnPoint[]
   botSpawnZones: BotSpawnZone[]
+  pmcSpawnZones: PmcSpawnZone[]
   lightZones: LightZone[]
   triggerZones: TriggerZone[]
 }
@@ -482,6 +529,7 @@ export function defaultMapData(mapId: string): MapData {
     extractZones: [],
     botSpawnPoints: [],
     botSpawnZones: [],
+    pmcSpawnZones: [],
     lightZones: [],
     triggerZones: [],
   }
@@ -501,7 +549,13 @@ export function defaultInteractiveObject(): InteractiveObject {
     containerId: '',
     containerTemplate: '578f87a3245977356274f2cb',
     lootMode: ContainerLootMode.Default,
-    items: [{ template: '', chance: 100, questOnly: false, questCompleted: false, questId: '' }],
+    itemCountMin: 0,
+    itemCountMax: 0,
+    items: [{ template: '', chance: 100, count: 1, questOnly: false, questCompleted: false, questId: '' }],
+    weaponTemplate: '5cdeb229d7f00c000e7ce174',
+    switchInitialState: false,
+    linkedLightZoneNames: [],
+    linkedExtractNames: [],
     spawnChance: 100,
     questOnly: false,
     questCompleted: false,
@@ -521,6 +575,12 @@ export function defaultExtractZone(): ExtractZone {
     exitName: '',
     exfiltrationTime: 5,
     exfiltrationType: 'Individual',
+    side: 'Pmc',
+    passageRequirement: 'None',
+    requirementTip: '',
+    requiredSlot: 'FirstPrimaryWeapon',
+    count: 0,
+    playersCount: 0,
     spawnChance: 100,
     requirements: [],
     linkLights: false,
@@ -544,6 +604,10 @@ export function defaultLightZone(): LightZone {
     spotAngle: 30,
     lightType: LightType.Point,
     enabled: true,
+    shadows: 'Soft',
+    shadowStrength: 1,
+    shadowBias: 0.05,
+    shadowNormalBias: 0.4,
     spawnChance: 100,
     questOnly: false,
     questCompleted: false,
@@ -572,6 +636,32 @@ export function defaultBotSpawnPoint(): BotSpawnPoint {
     randomSpawnTypes: [],
     triggerActivated: false,
     triggerZoneName: '',
+    forcePlayerSpawn: false,
+  }
+}
+
+export function defaultPmcSpawnZone(): PmcSpawnZone {
+  return {
+    id: generateId(),
+    name: 'pmc_spawn_zone',
+    position: defaultTransform(),
+    rotation: defaultTransform(),
+    radius: 5,
+    scale: { x: 1, y: 1, z: 1 },
+    shape: ZoneShape.Sphere,
+    side: BotSpawnSide.Pmc,
+    category: BotSpawnCategory.BotPmc,
+    preset: BotSpawnPreset.PMC,
+    wildSpawnType: 'pmcBot',
+    minGroupSize: 1,
+    maxGroupSize: 1,
+    spawnChance: 100,
+    delayToCanSpawnSec: 4,
+    botZoneName: '',
+    questOnly: false,
+    questCompleted: false,
+    questId: '',
+    forcePlayerSpawn: false,
   }
 }
 
