@@ -434,10 +434,10 @@ namespace MapLootEditorLite.Client
 
         private float GetCheckInterval()
         {
-            float interval = 0.25f;
+            float interval = 1f;
             foreach (var v in _activeVolumes)
                 interval = Mathf.Min(interval, v.checkInterval);
-            return Mathf.Max(interval, 0.05f);
+            return Mathf.Max(interval, 1f);
         }
 
         private void RestoreRenderers()

@@ -235,22 +235,30 @@ namespace MapLootEditorLite.Client
         {
             Plugin.Log.LogInfo($"RemoveObjectsCoroutine waiting for player spawn; {removedObjects.Count} objects queued.");
             while (world == null || world.MainPlayer == null)
-                yield return new WaitForSecondsRealtime(1f);
+                yield return new WaitForSecondsRealtime(2f);
             yield return new WaitForSecondsRealtime(2f);
 
             var removedSet = new HashSet<GameObject>();
             Plugin.Log.LogInfo($"RemoveObjectsCoroutine starting for {removedObjects.Count} removed objects.");
+            var processedKeys = new HashSet<string>();
             foreach (var removed in removedObjects)
             {
                 if (removed == null) continue;
+                var key = $"{removed.name}|{removed.position.x:F2}|{removed.position.y:F2}|{removed.position.z:F2}";
+                if (processedKeys.Contains(key))
+                {
+                    Plugin.Log.LogInfo($"Skipping duplicate removed object entry '{removed.name}' at {removed.position.ToVector3()}.");
+                    continue;
+                }
+                processedKeys.Add(key);
                 GameObject target = null;
-                for (int attempt = 0; attempt < 60; attempt++)
+                for (int attempt = 0; attempt < 5; attempt++)
                 {
                     target = FindRemovedObject(removed, removedSet, 25f);
                     if (target != null) break;
                     if (attempt == 0)
                         Plugin.Log.LogInfo($"Removed object '{removed.name}' not found yet, waiting...");
-                    yield return new WaitForSecondsRealtime(1f);
+                    yield return new WaitForSecondsRealtime(2f);
                 }
                 if (target != null && !CustomEditorUI.IsEditorObject(target))
                 {
@@ -275,30 +283,44 @@ namespace MapLootEditorLite.Client
         {
             Plugin.Log.LogInfo($"RemoveBlockersCoroutine waiting for raid start; {removedObjects.Count} blockers queued.");
             while (world != null && !_raidStarted)
-                yield return new WaitForSecondsRealtime(1f);
+                yield return new WaitForSecondsRealtime(2f);
             if (world == null) yield break;
-            yield return new WaitForSecondsRealtime(2f);
+            yield return new WaitForSecondsRealtime(5f);
 
             var removedSet = new HashSet<GameObject>();
             Plugin.Log.LogInfo($"RemoveBlockersCoroutine starting for {removedObjects.Count} blockers.");
+            var processedKeys = new HashSet<string>();
             foreach (var removed in removedObjects)
             {
                 if (removed == null) continue;
+                var key = $"{removed.name}|{removed.position.x:F2}|{removed.position.y:F2}|{removed.position.z:F2}";
+                if (processedKeys.Contains(key))
+                {
+                    Plugin.Log.LogInfo($"Skipping duplicate blocker entry '{removed.name}' at {removed.position.ToVector3()}.");
+                    continue;
+                }
+                processedKeys.Add(key);
                 GameObject target = null;
-                for (int attempt = 0; attempt < 60; attempt++)
+                for (int attempt = 0; attempt < 5; attempt++)
                 {
                     target = FindRemovedObject(removed, removedSet, 25f);
                     if (target != null) break;
                     if (attempt == 0)
                         Plugin.Log.LogInfo($"Blocker '{removed.name}' not found yet, waiting...");
-                    yield return new WaitForSecondsRealtime(1f);
+                    yield return new WaitForSecondsRealtime(2f);
                 }
                 if (target != null && !CustomEditorUI.IsEditorObject(target))
                 {
-                    var state = RemovedObjectHelper.SoftRemove(target);
-                    removed.originalDoorState = state.OriginalDoorState;
-                    removedSet.Add(state.GameObject);
-                    Plugin.Log.LogInfo($"Soft-removed blocker '{removed.name}' at {removed.position.ToVector3()} per pack (renderers/colliders disabled).");
+                    removedSet.Add(target);
+                    UnityEngine.Object.Destroy(target);
+                    Plugin.Log.LogInfo($"Destroyed blocker '{removed.name}' at {removed.position.ToVector3()} per pack.");
+                    GameObject extra;
+                    while ((extra = FindRemovedObject(removed, removedSet, 1f)) != null && !CustomEditorUI.IsEditorObject(extra))
+                    {
+                        removedSet.Add(extra);
+                        UnityEngine.Object.Destroy(extra);
+                        Plugin.Log.LogInfo($"Destroyed duplicate blocker '{removed.name}' at {removed.position.ToVector3()} per pack.");
+                    }
                 }
                 else if (target == null)
                 {
@@ -331,7 +353,7 @@ namespace MapLootEditorLite.Client
                 if (attempt == 0)
                     Plugin.Log.LogInfo($"Source object '{obj.sourceObjectName}' for {obj.name} not ready, waiting...");
 
-                yield return new WaitForSecondsRealtime(1f);
+                yield return new WaitForSecondsRealtime(2f);
             }
 
             if (source == null)

@@ -2025,13 +2025,13 @@ namespace MapLootEditorLite.Client
             var previewRow = UIBuilder.CreatePanel("PreviewRow", _inspectorContent, new Color(0, 0, 0, 0));
             UIBuilder.AddHorizontalLayout(previewRow, 2, 2, false, false);
             UIBuilder.AddLayoutElement(previewRow, null, 22, null, 22, null, 0);
-            UIBuilder.CreateButton(previewRow, "Preview Item", () =>
+            UIBuilder.CreateButton(previewRow, "Preview Random", () =>
             {
-                if (selected is LooseLootSpawn s)
-                    previews.SpawnAtMarker(s);
+                if (selected is LooseLootSpawn s && s.items != null && s.items.Count > 0)
+                    previews.SpawnAtMarker(s, UnityEngine.Random.Range(0, s.items.Count));
                 else if (selected is LootZone z)
                     previews.SpawnAtZoneCenter(z);
-            }, 90, 22);
+            }, 110, 22);
             if (selected is LootZone lz)
                 UIBuilder.CreateButton(previewRow, "Preview Random In Zone", () => previews.SpawnAllInZone(lz), 140, 22);
         }

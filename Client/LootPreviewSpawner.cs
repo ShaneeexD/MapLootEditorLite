@@ -33,11 +33,6 @@ namespace MapLootEditorLite.Client
 
         public void SpawnAtMarker(LooseLootSpawn marker, int itemIndex = 0)
         {
-            if (marker.spawnChance < 100f && UnityEngine.Random.value * 100f >= marker.spawnChance)
-            {
-                Plugin.Log.LogInfo($"Loot spawn '{marker.name}' failed initial spawn chance roll ({marker.spawnChance:F2}%).");
-                return;
-            }
             var tpl = GetItemTpl(marker.items, itemIndex);
             var pos = marker.position.ToVector3();
             var ground = MarkerManager.GetGroundPosition(pos);
