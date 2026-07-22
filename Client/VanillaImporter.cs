@@ -151,7 +151,7 @@ namespace MapLootEditorLite.Client
                             marker.items.Add(new LootItem
                             {
                                 template = item._tpl,
-                                chance = 100f,
+                                chance = item.RelativeProbability.HasValue ? item.RelativeProbability.Value * 100f : 100f,
                                 randomRotation = true,
                                 count = Math.Max((int)(item.upd?.StackObjectsCount ?? 1), 1)
                             });
@@ -643,6 +643,7 @@ namespace MapLootEditorLite.Client
             public string _tpl;
             public string parentId;
             public string slotId;
+            public float? RelativeProbability;
             public VanillaUpd upd;
         }
 

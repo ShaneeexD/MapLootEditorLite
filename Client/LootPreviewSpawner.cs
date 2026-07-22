@@ -25,14 +25,19 @@ namespace MapLootEditorLite.Client
         private readonly List<GameObject> _effectPreviews = new List<GameObject>();
         private readonly Dictionary<string, GameObject> _staticSources = new Dictionary<string, GameObject>();
 
-        public LootPreviewSpawner(GameObject root)
+        public LootPreviewSpawner(GameObject root, MonoBehaviour runner)
         {
             _root = root;
-            _runner = root.GetComponent<CoroutineRunner>() ?? root.AddComponent<CoroutineRunner>();
+            _runner = runner.gameObject.GetComponent<CoroutineRunner>() ?? runner.gameObject.AddComponent<CoroutineRunner>();
         }
 
         public void SpawnAtMarker(LooseLootSpawn marker, int itemIndex = 0)
         {
+            if (marker.spawnChance < 100f && UnityEngine.Random.value * 100f >= marker.spawnChance)
+            {
+                Plugin.Log.LogInfo($"Loot spawn '{marker.name}' failed initial spawn chance roll ({marker.spawnChance:F2}%).");
+                return;
+            }
             var tpl = GetItemTpl(marker.items, itemIndex);
             var pos = marker.position.ToVector3();
             var ground = MarkerManager.GetGroundPosition(pos);
@@ -859,7 +864,8 @@ namespace MapLootEditorLite.Client
                     yield break;
                 }
 
-                Plugin.Log.LogWarning($"Could not find source scene object for WTT static preview: {marker.sourceObjectName}");
+                Plugin.Log.LogWarning($"Could not find source scene object for WTT static preview: {marker.sourceObjectName}, using fallback.");
+                SpawnFallbackStatic(marker, marker.scale, new Color(0.6f, 0.2f, 1f));
                 yield break;
             }
 
@@ -899,7 +905,8 @@ namespace MapLootEditorLite.Client
                 }
                 else
                 {
-                    Plugin.Log.LogWarning($"No GameObject asset found in WTT bundle: {path}");
+                    Plugin.Log.LogWarning($"No GameObject asset found in WTT bundle: {path}, using fallback.");
+                    SpawnFallbackStatic(marker, marker.scale, new Color(0.6f, 0.2f, 1f));
                 }
 
                 if (bundleOwned)
@@ -907,7 +914,8 @@ namespace MapLootEditorLite.Client
             }
             else
             {
-                Plugin.Log.LogWarning($"Failed to load WTT static object bundle: {path}");
+                Plugin.Log.LogWarning($"Failed to load WTT static object bundle: {path}, using fallback.");
+                SpawnFallbackStatic(marker, marker.scale, new Color(0.6f, 0.2f, 1f));
             }
         }
 
@@ -946,7 +954,8 @@ namespace MapLootEditorLite.Client
                 yield break;
             }
 
-            Plugin.Log.LogWarning($"Could not find source scene object for interactive preview: {marker.sourceObjectName}");
+            Plugin.Log.LogWarning($"Could not find source scene object for interactive preview: {marker.sourceObjectName}, using fallback.");
+            SpawnFallbackStatic(marker, marker.scale, new Color(0.2f, 0.6f, 1f));
         }
 
         private IEnumerator LoadStaticPreviewCoroutine(StaticObject marker)
@@ -1021,7 +1030,8 @@ namespace MapLootEditorLite.Client
                 yield break;
             }
 
-            Plugin.Log.LogWarning($"Cannot preview static object {marker.name}: no prefab path or source object set.");
+            Plugin.Log.LogWarning($"Cannot preview static object {marker.name}: no prefab path or source object set, using fallback.");
+            SpawnFallbackStatic(marker, marker.scale, new Color(1f, 0.92f, 0.016f));
         }
 
         private GameObject FindSourceObject(string name, Vector3 position)
@@ -1145,10 +1155,33 @@ namespace MapLootEditorLite.Client
             _staticPreviews.Add(instance);
         }
 
+        private void SpawnFallbackStatic(MarkerBase marker, TransformData scale, Color color)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = $"FallbackPreview_{marker.name}";
+            UnityEngine.Object.Destroy(go.GetComponent<Collider>());
+            go.transform.SetParent(_root.transform, false);
+            go.transform.position = marker.position.ToVector3();
+            go.transform.rotation = marker.rotation.ToQuaternion();
+            go.transform.localScale = scale.ToVector3();
+            var renderer = go.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                var mat = new Material(Shader.Find("Standard") ?? Shader.Find("Sprites/Default"));
+                mat.color = color;
+                renderer.material = mat;
+            }
+            var meta = go.AddComponent<PreviewStaticObjectMarker>();
+            meta.sourceMarkerId = marker.id;
+            meta.isFallback = true;
+            _staticPreviews.Add(go);
+        }
+
         private void DestroyPreview(GameObject preview)
         {
             var meta = preview.GetComponent<PreviewLootMarker>();
-            if (meta != null && meta.isFallback)
+            var staticMeta = preview.GetComponent<PreviewStaticObjectMarker>();
+            if ((meta != null && meta.isFallback) || (staticMeta != null && staticMeta.isFallback))
             {
                 UnityEngine.Object.Destroy(preview);
             }

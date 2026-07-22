@@ -95,7 +95,7 @@ namespace MapLootEditorLite.Client
             {
                 VanillaRenderDistance = Plugin.VanillaRenderDistance?.Value ?? 150f
             };
-            _previews = new LootPreviewSpawner(_previewRoot);
+            _previews = new LootPreviewSpawner(_previewRoot, this);
             _ui = gameObject.AddComponent<CustomEditorUI>();
             _ui.Init(this, _manager, _renderer, _previews);
             Plugin.Log.LogInfo($"MapEditorController awake: enabled={enabled} active={gameObject.activeInHierarchy} key={_toggleKey}");
@@ -616,6 +616,8 @@ namespace MapLootEditorLite.Client
 
         public Vector3 GetPlayerPosition()
         {
+            if (_freeCam && _freeCamCamera != null)
+                return _freeCamCamera.transform.position;
             var player = GetLocalPlayer();
             if (player != null)
                 return player.Position;
@@ -625,6 +627,8 @@ namespace MapLootEditorLite.Client
 
         public Vector3 GetPlayerRotation()
         {
+            if (_freeCam && _freeCamCamera != null)
+                return _freeCamCamera.transform.eulerAngles;
             var player = GetLocalPlayer();
             if (player != null)
                 return player.Transform.eulerAngles;
@@ -634,13 +638,20 @@ namespace MapLootEditorLite.Client
 
         public Vector3 GetLookPosition()
         {
-            var camera = Camera.main;
+            var camera = (_freeCam && _freeCamCamera != null) ? _freeCamCamera : Camera.main;
             if (camera == null)
                 return GetPlayerPosition();
+
             var ray = camera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
-            if (Physics.Raycast(ray, out RaycastHit hit, 100f))
+            if (Physics.Raycast(ray, out RaycastHit hit, 500f))
                 return hit.point;
-            return camera.transform.position + camera.transform.forward * 2f;
+
+            // If the center ray misses, try a downward ray from a point well in front of the camera.
+            var forward = camera.transform.position + camera.transform.forward * 100f;
+            if (Physics.Raycast(forward + Vector3.up * 250f, Vector3.down, out RaycastHit ground, 500f))
+                return ground.point;
+
+            return camera.transform.position;
         }
 
         private IPlayer GetLocalPlayer()
@@ -1939,10 +1950,6 @@ namespace MapLootEditorLite.Client
                 _manager.Snapshot();
 
                 var copies = new List<MarkerBase>();
-                var center = _manager.SelectionCenter;
-                var pastePos = GetLookPosition() + Vector3.up * 0.5f;
-                var offset = pastePos - center;
-
                 foreach (var entry in data.entries)
                 {
                     var copy = CreateMarkerFromClipboard(entry);
@@ -1951,21 +1958,28 @@ namespace MapLootEditorLite.Client
 
                     copy.id = Guid.NewGuid().ToString();
                     copy.name = copy.name + "_paste";
-                    copy.position = TransformData.FromVector3(copy.position.ToVector3() + offset);
                     _manager.AddMarker(copy);
                     copies.Add(copy);
                 }
 
-                if (copies.Count > 0)
+                if (copies.Count == 0)
+                    return;
+
+                var center = copies.Select(c => c.position.ToVector3()).Aggregate((a, b) => a + b) / copies.Count;
+                var pastePos = GetLookPosition() + Vector3.up * 0.5f;
+                var offset = pastePos - center;
+
+                foreach (var c in copies)
                 {
-                    foreach (var c in copies)
-                        c.isVanilla = false;
-                    _manager.SetSelection(copies);
-                    _manager.IsDirty = true;
-                    _renderer.Rebuild();
-                    foreach (var c in copies)
-                        _previews.SpawnPreviewForMarker(c);
+                    c.isVanilla = false;
+                    c.position = TransformData.FromVector3(c.position.ToVector3() + offset);
                 }
+
+                _manager.SetSelection(copies);
+                _manager.IsDirty = true;
+                _renderer.Rebuild();
+                foreach (var c in copies)
+                    _previews.SpawnPreviewForMarker(c);
             }
             catch (Exception ex)
             {

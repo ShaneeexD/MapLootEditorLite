@@ -10,6 +10,7 @@ using EFT.Interactive;
 using EFT.InventoryLogic;
 using EFT.Quests;
 using Newtonsoft.Json;
+using HarmonyLib;
 using UnityEngine;
 
 namespace MapLootEditorLite.Client
@@ -25,6 +26,7 @@ namespace MapLootEditorLite.Client
         private GameWorld _currentWorld;
         private string _currentMapId;
         private List<GameObject> _spawned = new List<GameObject>();
+        private static bool _raidStarted;
 
         private static readonly Dictionary<string, Dictionary<string, BundledStaticLootDistribution>> _bundledStaticLootCache = new Dictionary<string, Dictionary<string, BundledStaticLootDistribution>>(StringComparer.OrdinalIgnoreCase);
 
@@ -107,6 +109,13 @@ namespace MapLootEditorLite.Client
             ClearSpawned();
             _currentWorld = null;
             _currentMapId = null;
+            _raidStarted = false;
+        }
+
+        public static void MarkRaidStarted()
+        {
+            _raidStarted = true;
+            Plugin.Log.LogInfo("Raid start signal received (GameWorld.OnGameStarted).");
         }
 
         private void Update()
@@ -193,7 +202,14 @@ namespace MapLootEditorLite.Client
             if (removedObjects.Count > 0)
             {
                 Plugin.Log.LogInfo($"Queuing {removedObjects.Count} removed objects for map {mapId}.");
-                StartCoroutine(RemoveObjectsCoroutine(removedObjects));
+                var blockers = removedObjects.Where(r => r != null && r.name.IndexOf("BLOCKER", StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+                var normal = removedObjects.Except(blockers).ToList();
+
+                if (normal.Count > 0)
+                    StartCoroutine(RemoveObjectsCoroutine(normal, world));
+
+                if (blockers.Count > 0)
+                    StartCoroutine(RemoveBlockersCoroutine(blockers, world));
             }
 
             if (objects.Count == 0)
@@ -215,17 +231,22 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        private IEnumerator RemoveObjectsCoroutine(List<RemovedObject> removedObjects)
+        private IEnumerator RemoveObjectsCoroutine(List<RemovedObject> removedObjects, GameWorld world)
         {
+            Plugin.Log.LogInfo($"RemoveObjectsCoroutine waiting for player spawn; {removedObjects.Count} objects queued.");
+            while (world == null || world.MainPlayer == null)
+                yield return new WaitForSecondsRealtime(1f);
             yield return new WaitForSecondsRealtime(2f);
+
+            var removedSet = new HashSet<GameObject>();
             Plugin.Log.LogInfo($"RemoveObjectsCoroutine starting for {removedObjects.Count} removed objects.");
             foreach (var removed in removedObjects)
             {
                 if (removed == null) continue;
                 GameObject target = null;
-                for (int attempt = 0; attempt < 5; attempt++)
+                for (int attempt = 0; attempt < 60; attempt++)
                 {
-                    target = FindSourceObject(removed.name, removed.position.ToVector3());
+                    target = FindRemovedObject(removed, removedSet, 25f);
                     if (target != null) break;
                     if (attempt == 0)
                         Plugin.Log.LogInfo($"Removed object '{removed.name}' not found yet, waiting...");
@@ -235,7 +256,8 @@ namespace MapLootEditorLite.Client
                 {
                     var state = RemovedObjectHelper.SoftRemove(target);
                     removed.originalDoorState = state.OriginalDoorState;
-                    Plugin.Log.LogInfo($"Soft-removed vanilla object '{removed.name}' at {removed.position.ToVector3()} per pack (renderers/colliders disabled, culling group turned off).");
+                    removedSet.Add(state.GameObject);
+                    Plugin.Log.LogInfo($"Soft-removed vanilla object '{removed.name}' at {removed.position.ToVector3()} per pack (renderers/colliders disabled).");
                 }
                 else if (target == null)
                 {
@@ -248,6 +270,48 @@ namespace MapLootEditorLite.Client
             }
             Plugin.Log.LogInfo("RemoveObjectsCoroutine finished.");
         }
+
+        private IEnumerator RemoveBlockersCoroutine(List<RemovedObject> removedObjects, GameWorld world)
+        {
+            Plugin.Log.LogInfo($"RemoveBlockersCoroutine waiting for raid start; {removedObjects.Count} blockers queued.");
+            while (world != null && !_raidStarted)
+                yield return new WaitForSecondsRealtime(1f);
+            if (world == null) yield break;
+            yield return new WaitForSecondsRealtime(2f);
+
+            var removedSet = new HashSet<GameObject>();
+            Plugin.Log.LogInfo($"RemoveBlockersCoroutine starting for {removedObjects.Count} blockers.");
+            foreach (var removed in removedObjects)
+            {
+                if (removed == null) continue;
+                GameObject target = null;
+                for (int attempt = 0; attempt < 60; attempt++)
+                {
+                    target = FindRemovedObject(removed, removedSet, 25f);
+                    if (target != null) break;
+                    if (attempt == 0)
+                        Plugin.Log.LogInfo($"Blocker '{removed.name}' not found yet, waiting...");
+                    yield return new WaitForSecondsRealtime(1f);
+                }
+                if (target != null && !CustomEditorUI.IsEditorObject(target))
+                {
+                    var state = RemovedObjectHelper.SoftRemove(target);
+                    removed.originalDoorState = state.OriginalDoorState;
+                    removedSet.Add(state.GameObject);
+                    Plugin.Log.LogInfo($"Soft-removed blocker '{removed.name}' at {removed.position.ToVector3()} per pack (renderers/colliders disabled).");
+                }
+                else if (target == null)
+                {
+                    Plugin.Log.LogWarning($"Could not find blocker '{removed.name}' at {removed.position.ToVector3()} after multiple attempts.");
+                }
+                else
+                {
+                    Plugin.Log.LogWarning($"Skipping removal of editor-owned blocker '{removed.name}'.");
+                }
+            }
+            Plugin.Log.LogInfo("RemoveBlockersCoroutine finished.");
+        }
+
 
         private IEnumerator SpawnObjectCoroutine(InteractiveObject obj, GameWorld world)
         {
@@ -279,7 +343,7 @@ namespace MapLootEditorLite.Client
             SpawnObjectInstance(source, obj, world);
         }
 
-        private GameObject FindSourceObject(string name, Vector3 position)
+        private GameObject FindSourceObject(string name, Vector3 position, float maxSqr = float.MaxValue)
         {
             GameObject best = null;
             float bestDist = float.MaxValue;
@@ -297,6 +361,7 @@ namespace MapLootEditorLite.Client
                     {
                         if (t.name != name) continue;
                         var dist = (t.position - position).sqrMagnitude;
+                        if (dist > maxSqr) continue;
                         if (dist < bestDist)
                         {
                             bestDist = dist;
@@ -307,6 +372,75 @@ namespace MapLootEditorLite.Client
             }
 
             return best;
+        }
+
+        private GameObject FindRemovedObject(RemovedObject removed, HashSet<GameObject> excluded, float maxSqr = float.MaxValue)
+        {
+            GameObject bestPath = null;
+            GameObject bestActive = null;
+            GameObject bestInactive = null;
+            float bestActiveScore = float.MaxValue;
+            float bestInactiveScore = float.MaxValue;
+            var expectedPos = removed.position.ToVector3();
+            var expectedRot = removed.rotation.ToQuaternion();
+            var expectedScale = removed.scale.ToVector3();
+            bool hasPath = !string.IsNullOrEmpty(removed.path);
+
+            var sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
+            for (int i = 0; i < sceneCount; i++)
+            {
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
+                if (!scene.isLoaded) continue;
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                    {
+                        if (t.name != removed.name) continue;
+                        var go = t.gameObject;
+                        if (excluded != null && excluded.Contains(go)) continue;
+                        var dist = (t.position - expectedPos).sqrMagnitude;
+                        if (dist > maxSqr) continue;
+
+                        if (hasPath)
+                        {
+                            var path = t.name;
+                            var p = t;
+                            while (p.parent != null)
+                            {
+                                p = p.parent;
+                                path = p.name + "/" + path;
+                            }
+                            if (path == removed.path)
+                                bestPath = go;
+                        }
+
+                        float rotDiff = Quaternion.Angle(t.rotation, expectedRot);
+                        float scaleDiff = Vector3.Distance(t.localScale, expectedScale);
+                        float score = rotDiff * 10f + scaleDiff * 100f + Mathf.Sqrt(dist);
+
+                        if (go.activeInHierarchy)
+                        {
+                            if (score < bestActiveScore)
+                            {
+                                bestActiveScore = score;
+                                bestActive = go;
+                            }
+                        }
+                        else
+                        {
+                            if (score < bestInactiveScore)
+                            {
+                                bestInactiveScore = score;
+                                bestInactive = go;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (bestPath != null)
+                return bestPath;
+            return bestActive ?? bestInactive;
         }
 
         private void SpawnObjectInstance(GameObject source, InteractiveObject obj, GameWorld world)
@@ -1175,6 +1309,16 @@ namespace MapLootEditorLite.Client
             CustomStationaryWeapons.Remove(id);
 
             return stationaryWeapon;
+        }
+    }
+
+    [HarmonyPatch(typeof(GameWorld), "OnGameStarted")]
+    public static class GameWorldOnGameStartedPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix()
+        {
+            RuntimeInteractiveObjectSpawner.MarkRaidStarted();
         }
     }
 }

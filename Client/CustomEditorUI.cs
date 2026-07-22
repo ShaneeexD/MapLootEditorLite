@@ -62,9 +62,11 @@ namespace MapLootEditorLite.Client
                 if (c != null && c.enabled) { c.enabled = false; state.DisabledComponents.Add(c); }
             }
 
+            go.SetActive(false);
+
             int rendererCount = state.ForceOffRenderers.Count;
             int colliderCount = state.DisabledComponents.Count(c => c is Collider);
-            Plugin.Log.LogInfo($"SoftRemove '{go.name}' ({GetPath(go.transform)}): force-off {rendererCount} renderers, disabled {colliderCount} colliders, culling left intact.");
+            Plugin.Log.LogInfo($"SoftRemove '{go.name}' ({GetPath(go.transform)}): force-off {rendererCount} renderers, disabled {colliderCount} colliders.");
 
             return state;
         }
@@ -2051,6 +2053,20 @@ namespace MapLootEditorLite.Client
                     BuildReadOnlyLabel(_inspectorContent, "Forced", spawn.forced.ToString());
                     BuildReadOnlyLabel(_inspectorContent, "Use Gravity", spawn.useGravity.ToString());
                     BuildVanillaItemList(spawn.items);
+                    UIBuilder.CreateButton(_inspectorContent, "Clone to Pack", () =>
+                    {
+                        var clone = JsonConvert.DeserializeObject<LooseLootSpawn>(JsonConvert.SerializeObject(spawn));
+                        clone.id = Guid.NewGuid().ToString("N");
+                        clone.name = spawn.name + "_clone";
+                        clone.isVanilla = false;
+                        clone.group = "";
+                        manager.AddMarker(clone);
+                        manager.Selected = clone;
+                        RequestInspectorRefresh();
+                        RequestHierarchyRefresh();
+                        renderer.Rebuild();
+                        previews.SpawnPreviewForMarker(clone);
+                    }, 120, 22);
                     break;
                 case InteractiveObject obj:
                     BuildReadOnlyLabel(_inspectorContent, "Container Template", FormatContainerTemplate(obj.containerTemplate));
@@ -2142,6 +2158,7 @@ namespace MapLootEditorLite.Client
 
         private void BuildLooseLootSpawn(LooseLootSpawn spawn)
         {
+            BuildFloatField(_inspectorContent, "Spawn Chance", spawn.spawnChance, (v) => { spawn.spawnChance = v; manager.IsDirty = true; });
             BuildToggleField(_inspectorContent, "Respawnable", spawn.respawnable, (v) => { spawn.respawnable = v; manager.IsDirty = true; });
             BuildToggleField(_inspectorContent, "Use Gravity", spawn.useGravity, (v) => { spawn.useGravity = v; manager.IsDirty = true; });
             BuildToggleField(_inspectorContent, "Quest only", spawn.questOnly, (v) => { spawn.questOnly = v; manager.IsDirty = true; RefreshInspector(); });
