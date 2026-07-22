@@ -2788,6 +2788,7 @@ namespace MapLootEditorLite.Client
             ("5ad74cf586f774391278f6f0", "Cash register TAR2-2"),
             ("5d07b91b86f7745a077a9432", "Common fund stash"),
             ("5909e4b686f7747f5b744fa4", "Dead Scav"),
+            ("658420d8085fea07e674cdb6", "Civilian body"),
             ("578f87b7245977356274f2cd", "Drawer"),
             ("578f87a3245977356274f2cb", "Duffle bag"),
             ("5909d36d86f774660f0bb900", "Grenade box"),

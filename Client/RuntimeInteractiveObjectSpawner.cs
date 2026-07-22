@@ -518,18 +518,22 @@ namespace MapLootEditorLite.Client
                 }
                 else if (obj.interactiveType == InteractiveObjectType.Container && !string.IsNullOrEmpty(obj.containerId))
                 {
-                    var lootable = wio as LootableContainer ?? instance.GetComponentInChildren<LootableContainer>(true);
-                    if (lootable != null)
-                        wio = lootable;
-                    wio.Id = obj.containerId;
-                    if (lootable != null)
+                    var lootables = instance.GetComponentsInChildren<LootableContainer>(true);
+                    if (lootables == null || lootables.Length == 0)
                     {
-                        lootable.Template = string.IsNullOrWhiteSpace(obj.containerTemplate) ? "578f87a3245977356274f2cb" : obj.containerTemplate;
-                        StartCoroutine(InitializeContainerLootCoroutine(obj, lootable));
+                        Plugin.Log.LogWarning($"Container '{obj.name}' has no LootableContainer component; loot interface will not work.");
                     }
                     else
                     {
-                        Plugin.Log.LogWarning($"Container '{obj.name}' has no LootableContainer component; loot interface will not work.");
+                        for (int i = 0; i < lootables.Length; i++)
+                        {
+                            var lootable = lootables[i];
+                            string id = i == 0 ? obj.containerId : GenerateItemId();
+                            lootable.Id = id;
+                            lootable.Template = string.IsNullOrWhiteSpace(obj.containerTemplate) ? "578f87a3245977356274f2cb" : obj.containerTemplate;
+                            StartCoroutine(InitializeContainerLootCoroutine(obj, lootable, id, world));
+                        }
+                        wio = null;
                     }
                 }
                 else if (obj.interactiveType == InteractiveObjectType.StationaryWeapon && stationaryWeapon != null)
@@ -752,8 +756,9 @@ namespace MapLootEditorLite.Client
             return (questOnly && active) || (questCompleted && completed);
         }
 
-        private IEnumerator InitializeContainerLootCoroutine(InteractiveObject obj, LootableContainer lootable)
+        private IEnumerator InitializeContainerLootCoroutine(InteractiveObject obj, LootableContainer lootable, string containerId = null, GameWorld world = null)
         {
+            var cid = containerId ?? obj.containerId;
             var itemFactory = Singleton<ItemFactoryClass>.Instance;
             if (itemFactory == null)
             {
@@ -761,7 +766,7 @@ namespace MapLootEditorLite.Client
                 yield break;
             }
 
-            Item item = itemFactory.CreateItem(obj.containerId, lootable.Template, null);
+            Item item = itemFactory.CreateItem(cid, lootable.Template, null);
             if (item == null)
             {
                 Plugin.Log.LogWarning($"Failed to create item for container '{obj.name}'.");
@@ -777,7 +782,7 @@ namespace MapLootEditorLite.Client
             {
                 // Default/Hybrid: use the exact pre-rolled vanilla staticContainers.json for this
                 // container so StackObjectsCount (currency/ammo stacks) is preserved.
-                var preRolled = GetBundledStaticContainerItems(_currentMapId, obj.containerId);
+                var preRolled = GetBundledStaticContainerItems(_currentMapId, cid);
                 if (preRolled != null && preRolled.Count > 0)
                 {
                     var marker = new InteractiveObject
@@ -819,7 +824,7 @@ namespace MapLootEditorLite.Client
                 }
             }
 
-            var controller = new TraderControllerClass(item, item.Id, item.ShortName.Localized(null), true, EOwnerType.Profile);
+            var controller = new TraderControllerClass(item, item.Id, item.ShortName, true, EOwnerType.Profile);
             lootable.Init(controller);
             var finalGameWorld = Singleton<GameWorld>.Instance;
             if (finalGameWorld != null)
@@ -828,18 +833,19 @@ namespace MapLootEditorLite.Client
                 // remove it before registering our injected item to avoid duplicate IDs in the world.
                 if (finalGameWorld.AllLoot != null)
                 {
-                    var existing = finalGameWorld.AllLoot.FirstOrDefault(x => x.Id == obj.containerId);
+                    var existing = finalGameWorld.AllLoot.FirstOrDefault(x => x.Id == cid);
                     if (existing != null)
                     {
                         finalGameWorld.AllLoot.Remove(existing);
-                        Plugin.Log.LogInfo($"Removed existing AllLoot entry for container '{obj.name}' id={obj.containerId} before re-registration.");
+                        Plugin.Log.LogInfo($"Removed existing AllLoot entry for container '{obj.name}' id={cid} before re-registration.");
                     }
                 }
                 finalGameWorld.RegisterLoot<LootableContainer>(lootable);
+                RegisterWorldInteractiveObjectWhenReady(lootable, obj.name, finalGameWorld);
             }
             else
                 Plugin.Log.LogWarning($"GameWorld not available for container '{obj.name}' loot registration; container initialized but not registered with world.");
-            Plugin.Log.LogInfo($"Initialized lootable container '{obj.name}' id={obj.containerId}, template={lootable.Template}, itemId={item.Id}, mode={obj.lootMode}, injectedItems={addedItems}");
+            Plugin.Log.LogInfo($"Initialized lootable container '{obj.name}' id={cid}, template={lootable.Template}, itemId={item.Id}, mode={obj.lootMode}, injectedItems={addedItems}");
         }
 
         private string FindBundledStaticLootResourceName(string mapId)
