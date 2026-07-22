@@ -2354,6 +2354,7 @@ namespace MapLootEditorLite.Client
                     RequestInspectorRefresh();
                 });
                 BuildContainerTemplateDropdown(obj);
+                BuildStringField(_inspectorContent, "Key Template Id (optional)", obj.keyId ?? "", (v) => { obj.keyId = v; manager.IsDirty = true; });
                 BuildDropdownField(_inspectorContent, "Loot Mode", obj.lootMode.ToString(), new[] { "Default", "Hybrid", "Custom" }, (v) =>
                 {
                     obj.lootMode = (ContainerLootMode)System.Enum.Parse(typeof(ContainerLootMode), v);

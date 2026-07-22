@@ -273,6 +273,7 @@ namespace MapLootEditorLite.Client
                     interactiveType = InteractiveObjectType.Container,
                     containerTemplate = containerTpl,
                     containerId = root?._id ?? "",
+                    keyId = sceneContainer != null ? (sceneContainer.KeyId ?? "") : "",
                     spawnChance = sp.probability * 100f,
                     lootMode = ContainerLootMode.Default,
                     items = new List<LootItem>()

@@ -824,6 +824,12 @@ namespace MapLootEditorLite.Client
                 }
             }
 
+            if (!string.IsNullOrEmpty(obj.keyId))
+            {
+                lootable.KeyId = obj.keyId;
+                Plugin.Log.LogInfo($"Set container '{obj.name}' key to {obj.keyId}");
+            }
+
             var controller = new TraderControllerClass(item, item.Id, item.ShortName, true, EOwnerType.Profile);
             lootable.Init(controller);
             var finalGameWorld = Singleton<GameWorld>.Instance;
