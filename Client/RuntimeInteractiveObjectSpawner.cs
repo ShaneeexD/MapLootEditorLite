@@ -287,6 +287,31 @@ namespace MapLootEditorLite.Client
             if (world == null) yield break;
             yield return new WaitForSecondsRealtime(5f);
 
+            // Build a one-time name->transforms index so we don't re-scan the entire scene for every blocker.
+            var nameIndex = new Dictionary<string, List<Transform>>();
+            var sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
+            for (int s = 0; s < sceneCount; s++)
+            {
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(s);
+                if (!scene.isLoaded) continue;
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    var transforms = root.GetComponentsInChildren<Transform>(true);
+                    for (int i = 0; i < transforms.Length; i++)
+                    {
+                        var t = transforms[i];
+                        if (!nameIndex.TryGetValue(t.name, out var list))
+                        {
+                            list = new List<Transform>();
+                            nameIndex[t.name] = list;
+                        }
+                        list.Add(t);
+                    }
+                    yield return null; // spread index build across frames
+                }
+            }
+            Plugin.Log.LogInfo($"Built blocker name index with {nameIndex.Count} names.");
+
             var removedSet = new HashSet<GameObject>();
             Plugin.Log.LogInfo($"RemoveBlockersCoroutine starting for {removedObjects.Count} blockers.");
             var processedKeys = new HashSet<string>();
@@ -303,7 +328,7 @@ namespace MapLootEditorLite.Client
                 GameObject target = null;
                 for (int attempt = 0; attempt < 5; attempt++)
                 {
-                    target = FindRemovedObject(removed, removedSet, 25f);
+                    target = FindRemovedObject(removed, removedSet, 25f, nameIndex);
                     if (target != null) break;
                     if (attempt == 0)
                         Plugin.Log.LogInfo($"Blocker '{removed.name}' not found yet, waiting...");
@@ -315,11 +340,12 @@ namespace MapLootEditorLite.Client
                     UnityEngine.Object.Destroy(target);
                     Plugin.Log.LogInfo($"Destroyed blocker '{removed.name}' at {removed.position.ToVector3()} per pack.");
                     GameObject extra;
-                    while ((extra = FindRemovedObject(removed, removedSet, 1f)) != null && !CustomEditorUI.IsEditorObject(extra))
+                    while ((extra = FindRemovedObject(removed, removedSet, 1f, nameIndex)) != null && !CustomEditorUI.IsEditorObject(extra))
                     {
                         removedSet.Add(extra);
                         UnityEngine.Object.Destroy(extra);
                         Plugin.Log.LogInfo($"Destroyed duplicate blocker '{removed.name}' at {removed.position.ToVector3()} per pack.");
+                        yield return null; // spread duplicate destruction across frames
                     }
                 }
                 else if (target == null)
@@ -330,6 +356,7 @@ namespace MapLootEditorLite.Client
                 {
                     Plugin.Log.LogWarning($"Skipping removal of editor-owned blocker '{removed.name}'.");
                 }
+                yield return null; // spread blocker processing across frames
             }
             Plugin.Log.LogInfo("RemoveBlockersCoroutine finished.");
         }
@@ -396,7 +423,7 @@ namespace MapLootEditorLite.Client
             return best;
         }
 
-        private GameObject FindRemovedObject(RemovedObject removed, HashSet<GameObject> excluded, float maxSqr = float.MaxValue)
+        private GameObject FindRemovedObject(RemovedObject removed, HashSet<GameObject> excluded, float maxSqr = float.MaxValue, Dictionary<string, List<Transform>> nameIndex = null)
         {
             GameObject bestPath = null;
             GameObject bestActive = null;
@@ -408,54 +435,66 @@ namespace MapLootEditorLite.Client
             var expectedScale = removed.scale.ToVector3();
             bool hasPath = !string.IsNullOrEmpty(removed.path);
 
-            var sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
-            for (int i = 0; i < sceneCount; i++)
+            void Check(Transform t)
             {
-                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
-                if (!scene.isLoaded) continue;
-                foreach (var root in scene.GetRootGameObjects())
+                if (t == null || t.name != removed.name) return;
+                var go = t.gameObject;
+                if (go == null || (excluded != null && excluded.Contains(go))) return;
+                var dist = (t.position - expectedPos).sqrMagnitude;
+                if (dist > maxSqr) return;
+
+                if (hasPath)
                 {
-                    foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                    var path = t.name;
+                    var p = t;
+                    while (p.parent != null)
                     {
-                        if (t.name != removed.name) continue;
-                        var go = t.gameObject;
-                        if (excluded != null && excluded.Contains(go)) continue;
-                        var dist = (t.position - expectedPos).sqrMagnitude;
-                        if (dist > maxSqr) continue;
+                        p = p.parent;
+                        path = p.name + "/" + path;
+                    }
+                    if (path == removed.path)
+                        bestPath = go;
+                }
 
-                        if (hasPath)
-                        {
-                            var path = t.name;
-                            var p = t;
-                            while (p.parent != null)
-                            {
-                                p = p.parent;
-                                path = p.name + "/" + path;
-                            }
-                            if (path == removed.path)
-                                bestPath = go;
-                        }
+                float rotDiff = Quaternion.Angle(t.rotation, expectedRot);
+                float scaleDiff = Vector3.Distance(t.localScale, expectedScale);
+                float score = rotDiff * 10f + scaleDiff * 100f + Mathf.Sqrt(dist);
 
-                        float rotDiff = Quaternion.Angle(t.rotation, expectedRot);
-                        float scaleDiff = Vector3.Distance(t.localScale, expectedScale);
-                        float score = rotDiff * 10f + scaleDiff * 100f + Mathf.Sqrt(dist);
+                if (go.activeInHierarchy)
+                {
+                    if (score < bestActiveScore)
+                    {
+                        bestActiveScore = score;
+                        bestActive = go;
+                    }
+                }
+                else
+                {
+                    if (score < bestInactiveScore)
+                    {
+                        bestInactiveScore = score;
+                        bestInactive = go;
+                    }
+                }
+            }
 
-                        if (go.activeInHierarchy)
-                        {
-                            if (score < bestActiveScore)
-                            {
-                                bestActiveScore = score;
-                                bestActive = go;
-                            }
-                        }
-                        else
-                        {
-                            if (score < bestInactiveScore)
-                            {
-                                bestInactiveScore = score;
-                                bestInactive = go;
-                            }
-                        }
+            if (nameIndex != null && nameIndex.TryGetValue(removed.name, out var candidates))
+            {
+                for (int i = 0; i < candidates.Count; i++)
+                    Check(candidates[i]);
+            }
+            else
+            {
+                var sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
+                for (int i = 0; i < sceneCount; i++)
+                {
+                    var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
+                    if (!scene.isLoaded) continue;
+                    foreach (var root in scene.GetRootGameObjects())
+                    {
+                        var transforms = root.GetComponentsInChildren<Transform>(true);
+                        for (int j = 0; j < transforms.Length; j++)
+                            Check(transforms[j]);
                     }
                 }
             }
