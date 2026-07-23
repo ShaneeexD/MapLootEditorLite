@@ -1541,13 +1541,13 @@ namespace MapLootEditorLite.Client
                     continue;
                 }
 
-                if (!go.name.StartsWith("MLE_", StringComparison.Ordinal) && go.GetComponent<PreviewLootMarker>() == null)
+                if (!go.name.StartsWith("MLE_", StringComparison.Ordinal) && go.GetComponent<PreviewLootMarker>() == null && go.GetComponent<PreviewStaticObjectMarker>() == null)
                 {
                     var lod = go.GetComponent<LODGroup>();
                     if (lod != null)
                     {
-                        // Include LOD objects if they have any renderer or collider, even if currently culled
-                        if ((go.GetComponentInChildren<Renderer>(true) != null || go.GetComponentInChildren<Collider>(true) != null) && seen.Add(go.GetInstanceID()))
+                        // Include LOD objects only if they have a mesh in their children
+                        if (HasMeshInChildren(go) && seen.Add(go.GetInstanceID()))
                             _sceneObjectCache.Add(go);
                         // Never push children — sub-meshes belong to this LOD object
                     }
@@ -1556,8 +1556,8 @@ namespace MapLootEditorLite.Client
                         for (int i = 0; i < t.childCount; i++)
                             stack.Push(t.GetChild(i));
 
-                        // Include any object that has a renderer, collider, or mesh filter, regardless of enabled state
-                        if ((go.GetComponent<Renderer>() != null || go.GetComponent<Collider>() != null || go.GetComponent<MeshFilter>() != null) && seen.Add(go.GetInstanceID()))
+                        // Include any object that has an actual mesh (MeshFilter or SkinnedMeshRenderer), regardless of enabled state
+                        if (HasMesh(go) && seen.Add(go.GetInstanceID()))
                             _sceneObjectCache.Add(go);
                     }
                 }
@@ -1570,6 +1570,28 @@ namespace MapLootEditorLite.Client
             _scanning = false;
             RefreshObjectsList();
             renderer?.SetSceneObjects(_sceneObjectCache, _selectedSceneGO);
+        }
+
+        private bool HasMesh(GameObject go)
+        {
+            var mf = go.GetComponent<MeshFilter>();
+            if (mf != null && mf.sharedMesh != null)
+                return true;
+            var smr = go.GetComponent<SkinnedMeshRenderer>();
+            if (smr != null && smr.sharedMesh != null)
+                return true;
+            return false;
+        }
+
+        private bool HasMeshInChildren(GameObject go)
+        {
+            foreach (var mf in go.GetComponentsInChildren<MeshFilter>(true))
+                if (mf.sharedMesh != null)
+                    return true;
+            foreach (var smr in go.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                if (smr.sharedMesh != null)
+                    return true;
+            return false;
         }
 
         private void BuildDeleteConfirm()
@@ -2305,7 +2327,7 @@ namespace MapLootEditorLite.Client
                 UIBuilder.AddHorizontalLayout(pickRow, 2, 2, false, false);
                 UIBuilder.AddLayoutElement(pickRow, null, 22, null, 22, null, 0);
                 UIBuilder.CreateLabel(pickRow, "Click object in world...", 11, 132, 22);
-                UIBuilder.CreateButton(pickRow, "Cancel", () => { _isPickingSource = false; _pickingSourceTarget = null; RefreshInspector(); }, 54, 22);
+                UIBuilder.CreateButton(pickRow, "Cancel", () => { SetPickingSource(false, null); RefreshInspector(); }, 54, 22);
             }
             else
             {
@@ -2313,7 +2335,7 @@ namespace MapLootEditorLite.Client
                 var row1 = UIBuilder.CreatePanel("SourceRow1", _inspectorContent, new Color(0, 0, 0, 0));
                 UIBuilder.AddHorizontalLayout(row1, 4, 2, false, false);
                 UIBuilder.AddLayoutElement(row1, null, 22, null, 22, null, 0);
-                UIBuilder.CreateButton(row1, "Pick from Scene", () => { _isPickingSource = true; _pickingSourceTarget = obj; RefreshInspector(); }, 100, 22);
+                UIBuilder.CreateButton(row1, "Pick from Scene", () => { SetPickingSource(true, obj); RefreshInspector(); }, 100, 22);
                 UIBuilder.CreateToggle(row1, "Use Parent", _pickUseParent, (v) => _pickUseParent = v, 18);
 
                 // Row 2: From List
@@ -3489,6 +3511,13 @@ namespace MapLootEditorLite.Client
         {
             _isPickingSource = picking;
             _pickingSourceTarget = target;
+            if (picking && !_scanning)
+            {
+                if (_sceneObjectCache.Count == 0)
+                    ScanSceneObjects();
+                else
+                    renderer?.SetSceneObjects(_sceneObjectCache, _selectedSceneGO);
+            }
         }
 
         private bool IsMouseOverPanel(RectTransform panel)

@@ -818,6 +818,22 @@ namespace MapLootEditorLite.Client
             _fallbackCache[key] = backup;
         }
 
+        private void PreparePreviewInstance(GameObject instance)
+        {
+            if (instance == null)
+                return;
+            foreach (var renderer in instance.GetComponentsInChildren<Renderer>(true))
+            {
+                if (renderer != null)
+                    renderer.enabled = true;
+            }
+            foreach (var behaviour in instance.GetComponentsInChildren<Behaviour>(true))
+            {
+                if (behaviour != null && !(behaviour is PreviewStaticObjectMarker))
+                    behaviour.enabled = false;
+            }
+        }
+
         public void RegisterStaticSource(string markerId, GameObject source)
         {
             if (source == null) return;
@@ -1214,6 +1230,8 @@ namespace MapLootEditorLite.Client
             meta.prefabPath = marker.prefabPath;
             meta.isFallback = isFallback;
 
+            PreparePreviewInstance(instance);
+
             _staticPreviews.Add(instance);
 
             var cacheKey = !string.IsNullOrEmpty(marker.prefabPath) ? marker.prefabPath : GetStaticSourceKey(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
@@ -1234,6 +1252,8 @@ namespace MapLootEditorLite.Client
             meta.sourceMarkerId = marker.id;
             meta.prefabPath = $"{marker.bundleName}/{marker.prefabName}";
             meta.isFallback = isFallback;
+
+            PreparePreviewInstance(instance);
 
             _staticPreviews.Add(instance);
 
@@ -1263,6 +1283,8 @@ namespace MapLootEditorLite.Client
             meta.sourceMarkerId = marker.id;
             meta.prefabPath = marker.sourceObjectName;
             meta.isFallback = isFallback;
+
+            PreparePreviewInstance(instance);
 
             _staticPreviews.Add(instance);
 
