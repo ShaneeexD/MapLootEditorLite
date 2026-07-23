@@ -10,10 +10,12 @@ using EFT.Interactive;
 using EFT.InventoryLogic;
 using Koenigz.PerfectCulling.EFT;
 using Newtonsoft.Json;
+using System.IO;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using BepInEx;
 
 namespace MapLootEditorLite.Client
 {
@@ -115,6 +117,12 @@ namespace MapLootEditorLite.Client
         }
     }
 
+    public class ScenePickFilterConfig
+    {
+        public bool enabled = true;
+        public List<string> filters = new List<string> { "SPAWNS", "LOD", "BornPositions" };
+    }
+
     public class CustomEditorUI : MonoBehaviour
     {
         public MapEditorController controller;
@@ -173,6 +181,12 @@ namespace MapLootEditorLite.Client
         private bool _isPickingSource;
         private IHasSourceObject _pickingSourceTarget;
         private bool _pickUseParent;
+        private ScenePickFilterConfig _pickFilterConfig;
+        private string _pickFiltersPath;
+        private RectTransform _pickFiltersDialogPanel;
+        private RectTransform _pickFiltersContent;
+        private InputField _pickFiltersInput;
+        private Toggle _pickFiltersEnabledToggle;
         private bool _isPickingScatter;
         private string _prefabName = "MyPrefab";
         private string _scatterPrefabPath = "";
@@ -262,6 +276,7 @@ namespace MapLootEditorLite.Client
         public bool IsPickingSource => _isPickingSource;
         public bool IsPickingScatter => _isPickingScatter;
         public bool IsPickingSceneGO => _isPickingSceneGO;
+        public bool IsPickingSourceObject => _isPickingSource || _isPickingSceneGO || _goListTarget != null;
         public bool IsDeletePending => _isDeletePending;
         public bool IsDeleteConfirmed => _isDeleteConfirmed;
         public bool IsVisible => _isVisible;
@@ -270,6 +285,13 @@ namespace MapLootEditorLite.Client
         public void SetPickingSceneGO(bool picking)
         {
             _isPickingSceneGO = picking;
+            if (picking && !_scanning)
+            {
+                if (_sceneObjectCache.Count == 0)
+                    ScanSceneObjects();
+                else
+                    renderer?.SetSceneObjects(_sceneObjectCache, _selectedSceneGO);
+            }
             if (_scenePickerNotice != null)
                 _scenePickerNotice.gameObject.SetActive(picking);
             RefreshGOPickRow();
@@ -306,6 +328,7 @@ namespace MapLootEditorLite.Client
             manager = mgr;
             renderer = rnd;
             previews = prw;
+            LoadPickFilters();
         }
 
         private void Awake()
@@ -532,6 +555,7 @@ namespace MapLootEditorLite.Client
             SafeBuild("DeleteConfirm", BuildDeleteConfirm);
             SafeBuild("ExportDialog", BuildExportDialog);
             SafeBuild("RenderDistanceDialog", BuildRenderDistanceDialog);
+            SafeBuild("PickFiltersDialog", BuildPickFiltersDialog);
             SafeBuild("ContextMenu", BuildContextMenu);
             SafeBuild("ResizeHandles", BuildResizeHandles);
 
@@ -576,16 +600,20 @@ namespace MapLootEditorLite.Client
                 new MenuItem("Hierarchy", subItems: new List<MenuItem>
                 {
                     new MenuItem("Toggle Vanilla Gizmos", () => controller.ToggleVanillaGizmos()),
-                    new MenuItem("Toggle Pack Gizmos", () => controller.TogglePackGizmos())
+                    new MenuItem("Toggle Pack Gizmos", () => controller.TogglePackGizmos()),
+                    new MenuItem("Toggle 3D Scene Outlines", () => controller.Toggle3DSceneObjectOutlines())
                 }),
                 new MenuItem("Vanilla Render Distance", () => ShowRenderDistanceDialog())
             }, 40, 22);
             BuildMenuButton(row1, "Tools", new List<MenuItem>
             {
+                new MenuItem("Scene Pick Filters", () => ShowPickFiltersDialog()),
+                new MenuItem("Toggle Preview Mode", () => controller.TogglePreviewMode()),
                 new MenuItem("Debug", subItems: new List<MenuItem>
                 {
                     new MenuItem("Dump door IDs", () => controller.DumpDoorIds()),
-                    new MenuItem("Dump keyed door IDs", () => controller.DumpKeyedDoorIds())
+                    new MenuItem("Dump keyed door IDs", () => controller.DumpKeyedDoorIds()),
+                    new MenuItem("Extend Raid Timer (24h)", () => controller.ToggleRaidTimerPause())
                 })
             }, 40, 22);
             BuildMenuButton(row1, "Add Spawn", new List<MenuItem>
@@ -1020,6 +1048,15 @@ namespace MapLootEditorLite.Client
             UIBuilder.AddLayoutElement(scroll.gameObject, null, null, null, null, null, 1);
             UIBuilder.AddVerticalLayout(_objectsContent, 1, 2, true, true);
 
+            var et = _objectsContent.gameObject.AddComponent<EventTrigger>();
+            var deselectEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerClick };
+            deselectEntry.callback.AddListener((BaseEventData data) =>
+            {
+                if (data is PointerEventData ped && ped.button == PointerEventData.InputButton.Left)
+                    SelectSceneGO(null);
+            });
+            et.triggers.Add(deselectEntry);
+
             // ── Right: name label + action buttons ────────────────────────────
             var rightCol = UIBuilder.CreatePanel("GORight", _objectsTab, new Color(0.1f, 0.1f, 0.1f, 1f));
             UIBuilder.AddLayoutElement(rightCol, 120, null, 120, null, 0, 1);
@@ -1153,6 +1190,8 @@ namespace MapLootEditorLite.Client
             bool truncated = filtered.Count > maxShown;
             var list = truncated ? filtered.Take(maxShown).ToList() : filtered;
 
+            renderer?.SetSelectedSceneObject(_selectedSceneGO);
+
             if (list.Count == 0)
             {
                 UIBuilder.CreateText(_objectsContent,
@@ -1209,11 +1248,11 @@ namespace MapLootEditorLite.Client
             if (_isPickingSceneGO)
             {
                 UIBuilder.CreateLabel(_goPickRow, "Click object in world...", 11, 136, 22);
-                UIBuilder.CreateButton(_goPickRow, "Cancel", () => { _isPickingSceneGO = false; RefreshGOPickRow(); }, 54, 22);
+                UIBuilder.CreateButton(_goPickRow, "Cancel", () => SetPickingSceneGO(false), 54, 22);
             }
             else
             {
-                UIBuilder.CreateButton(_goPickRow, "Pick from Scene", () => { _isPickingSceneGO = true; RefreshGOPickRow(); }, 100, 22);
+                UIBuilder.CreateButton(_goPickRow, "Pick from Scene", () => SetPickingSceneGO(true), 100, 22);
                 UIBuilder.CreateToggle(_goPickRow, "Use Parent", _pickUseParent, (v) => _pickUseParent = v, 18);
             }
         }
@@ -1239,6 +1278,12 @@ namespace MapLootEditorLite.Client
                 {
                     _goListTarget.sourceObjectName = _selectedSceneGO.name;
                     _goListTarget.sourceObjectPosition = TransformData.FromVector3(_selectedSceneGO.transform.position);
+                    if (_goListTarget is MarkerBase markerBase)
+                    {
+                        markerBase.rotation = TransformData.FromVector3(_selectedSceneGO.transform.rotation.eulerAngles);
+                        previews?.RegisterStaticSource(markerBase.id, _selectedSceneGO);
+                        previews?.SpawnPreviewForMarker(markerBase);
+                    }
                     manager.IsDirty = true;
                     _goListTarget = null;
                     RefreshInspector();
@@ -1334,6 +1379,7 @@ namespace MapLootEditorLite.Client
             manager.Data.removedObjects.Add(removed);
             _sceneObjectCache.Remove(go);
             _selectedSceneGO = null;
+            renderer?.SetSceneObjects(_sceneObjectCache, _selectedSceneGO);
             manager.IsDirty = true;
             if (_goPreviewNameText != null)
                 _goPreviewNameText.text = "No selection";
@@ -1499,13 +1545,9 @@ namespace MapLootEditorLite.Client
                     var lod = go.GetComponent<LODGroup>();
                     if (lod != null)
                     {
-                        // Only add LOD objects whose LOD group is enabled and have at least one enabled renderer
-                        if (lod.enabled)
-                        {
-                            var mr = go.GetComponentInChildren<MeshRenderer>();
-                            if (mr != null && mr.enabled && seen.Add(go.GetInstanceID()))
-                                _sceneObjectCache.Add(go);
-                        }
+                        // Include LOD objects if they have any renderer or collider, even if currently culled
+                        if ((go.GetComponentInChildren<Renderer>(true) != null || go.GetComponentInChildren<Collider>(true) != null) && seen.Add(go.GetInstanceID()))
+                            _sceneObjectCache.Add(go);
                         // Never push children — sub-meshes belong to this LOD object
                     }
                     else
@@ -1513,14 +1555,9 @@ namespace MapLootEditorLite.Client
                         for (int i = 0; i < t.childCount; i++)
                             stack.Push(t.GetChild(i));
 
-                        // Only add if the renderer is enabled and has an actual mesh assigned
-                        var mr = go.GetComponent<MeshRenderer>();
-                        if (mr != null && mr.enabled)
-                        {
-                            var mf = go.GetComponent<MeshFilter>();
-                            if ((mf == null || mf.sharedMesh != null) && seen.Add(go.GetInstanceID()))
-                                _sceneObjectCache.Add(go);
-                        }
+                        // Include any object that has a renderer, collider, or mesh filter, regardless of enabled state
+                        if ((go.GetComponent<Renderer>() != null || go.GetComponent<Collider>() != null || go.GetComponent<MeshFilter>() != null) && seen.Add(go.GetInstanceID()))
+                            _sceneObjectCache.Add(go);
                     }
                 }
 
@@ -1531,6 +1568,7 @@ namespace MapLootEditorLite.Client
             _sceneObjectCache.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.OrdinalIgnoreCase));
             _scanning = false;
             RefreshObjectsList();
+            renderer?.SetSceneObjects(_sceneObjectCache, _selectedSceneGO);
         }
 
         private void BuildDeleteConfirm()
@@ -3459,7 +3497,10 @@ namespace MapLootEditorLite.Client
                 return null;
             }
             var ray = cam.ScreenPointToRay(Input.mousePosition);
-            if (Physics.Raycast(ray, out var hit, 100f))
+            var hits = Physics.RaycastAll(ray, 100f);
+            GameObject closest = null;
+            float closestDist = float.MaxValue;
+            foreach (var hit in hits)
             {
                 var picked = hit.transform.gameObject;
                 if (_pickUseParent && picked.transform.parent != null)
@@ -3469,17 +3510,59 @@ namespace MapLootEditorLite.Client
                         picked = parent;
                 }
 
-                if (IsEditorObject(picked))
-                {
-                    Plugin.Log.LogInfo($"Scene picker ignored editor-owned object '{picked.name}'.");
-                    return null;
-                }
+                if (!IsValidPick(picked))
+                    continue;
 
-                Plugin.Log.LogInfo($"Picked scene object: {picked.name} at {picked.transform.position}");
-                return picked;
+                if (hit.distance < closestDist)
+                {
+                    closestDist = hit.distance;
+                    closest = picked;
+                }
+            }
+
+            if (closest != null)
+            {
+                Plugin.Log.LogInfo($"Picked scene object: {closest.name} at {closest.transform.position}");
+                return closest;
             }
             Plugin.Log.LogWarning("Scene picker raycast did not hit anything.");
             return null;
+        }
+
+        private bool IsValidPick(GameObject go)
+        {
+            return go != null && !IsEditorObject(go) && !ShouldIgnorePick(go);
+        }
+
+        private bool ShouldIgnorePick(GameObject go)
+        {
+            if (_pickFilterConfig == null || !_pickFilterConfig.enabled)
+                return false;
+            if (go == null)
+                return true;
+            var path = GetGameObjectPath(go);
+            foreach (var filter in _pickFilterConfig.filters)
+            {
+                if (string.IsNullOrWhiteSpace(filter))
+                    continue;
+                if (path.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            }
+            return false;
+        }
+
+        private static string GetGameObjectPath(GameObject go)
+        {
+            if (go == null)
+                return string.Empty;
+            var t = go.transform;
+            var sb = new StringBuilder(t.name);
+            while (t.parent != null)
+            {
+                t = t.parent;
+                sb.Insert(0, t.name + "/");
+            }
+            return "/" + sb.ToString();
         }
 
         public static bool IsEditorObject(GameObject go)
@@ -3499,6 +3582,166 @@ namespace MapLootEditorLite.Client
                 t = t.parent;
             }
             return false;
+        }
+
+        public static bool IsScreenPointOverEditorUI(Vector2 screenPoint)
+        {
+            var ui = _outputInstance;
+            if (ui == null || !ui._isVisible || ui._canvas == null)
+                return false;
+
+            if (IsPointOver(ui._topPanel, screenPoint)) return true;
+            if (IsPointOver(ui._hierarchyPanel, screenPoint)) return true;
+            if (IsPointOver(ui._inspectorPanel, screenPoint)) return true;
+            if (IsPointOver(ui._bottomPanel, screenPoint)) return true;
+            if (IsPointOver(ui._scenePickerNotice, screenPoint)) return true;
+            if (IsPointOver(ui._scenePickerCursorTooltip, screenPoint)) return true;
+            if (IsPointOver(ui._deleteConfirmPanel, screenPoint)) return true;
+            if (IsPointOver(ui._exportDialogPanel, screenPoint)) return true;
+            if (IsPointOver(ui._renderDistanceDialogPanel, screenPoint)) return true;
+            if (IsPointOver(ui._pickFiltersDialogPanel, screenPoint)) return true;
+            if (IsPointOver(ui._contextMenuPanel, screenPoint)) return true;
+            return false;
+        }
+
+        private static bool IsPointOver(RectTransform rt, Vector2 screenPoint)
+        {
+            if (rt == null || !rt.gameObject.activeInHierarchy)
+                return false;
+            return RectTransformUtility.RectangleContainsScreenPoint(rt, screenPoint, null);
+        }
+
+        private void LoadPickFilters()
+        {
+            var configDir = Path.GetDirectoryName(Plugin.Instance.Config.ConfigFilePath);
+            _pickFiltersPath = Path.Combine(configDir, "MapEditorLite", "scenePickFilters.json");
+            if (File.Exists(_pickFiltersPath))
+            {
+                try
+                {
+                    var settings = new JsonSerializerSettings { ObjectCreationHandling = ObjectCreationHandling.Replace };
+                    _pickFilterConfig = JsonConvert.DeserializeObject<ScenePickFilterConfig>(File.ReadAllText(_pickFiltersPath), settings);
+                }
+                catch (System.Exception ex)
+                {
+                    Plugin.Log.LogWarning($"Failed to load scene pick filters: {ex.Message}");
+                }
+            }
+            if (_pickFilterConfig == null)
+                _pickFilterConfig = new ScenePickFilterConfig();
+            _pickFilterConfig.filters = _pickFilterConfig.filters.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        private void SavePickFilters()
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(_pickFiltersPath))
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(_pickFiltersPath));
+                    File.WriteAllText(_pickFiltersPath, JsonConvert.SerializeObject(_pickFilterConfig, Formatting.Indented));
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogWarning($"Failed to save scene pick filters: {ex.Message}");
+            }
+        }
+
+        private void BuildPickFiltersDialog()
+        {
+            _pickFiltersDialogPanel = UIBuilder.CreatePanel("PickFiltersDialog", _canvas.transform, new Color(0.08f, 0.08f, 0.08f, 0.95f));
+            _pickFiltersDialogPanel.anchorMin = new Vector2(0.5f, 0.5f);
+            _pickFiltersDialogPanel.anchorMax = new Vector2(0.5f, 0.5f);
+            _pickFiltersDialogPanel.pivot = new Vector2(0.5f, 0.5f);
+            _pickFiltersDialogPanel.sizeDelta = new Vector2(360, 420);
+            UIBuilder.AddVerticalLayout(_pickFiltersDialogPanel, 12, 8, true, true);
+
+            UIBuilder.CreateText(_pickFiltersDialogPanel, "Scene Pick Filters", 13, Color.white, FontStyle.Bold);
+
+            var toggleRow = UIBuilder.CreatePanel("ToggleRow", _pickFiltersDialogPanel, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(toggleRow, 4, 4, false, false);
+            UIBuilder.AddLayoutElement(toggleRow, null, 24, null, 24, null, 0);
+            _pickFiltersEnabledToggle = UIBuilder.CreateToggle(toggleRow, "Filters Enabled", true, null, 22);
+
+            var addRow = UIBuilder.CreatePanel("AddRow", _pickFiltersDialogPanel, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(addRow, 4, 4, false, false);
+            UIBuilder.AddLayoutElement(addRow, null, 26, null, 26, null, 0);
+            _pickFiltersInput = UIBuilder.CreateInputField(addRow, "new filter keyword...", "", null, 220, 22);
+            UIBuilder.CreateButton(addRow, "Add", () => AddPickFilter(), 60, 22);
+
+            var scroll = UIBuilder.CreateScrollView(_pickFiltersDialogPanel, out _pickFiltersContent, out _, 330, 250);
+            UIBuilder.AddLayoutElement(scroll.gameObject, null, 250, null, 250, null, 1);
+            UIBuilder.AddVerticalLayout(_pickFiltersContent, 4, 4, true, false);
+
+            var btnRow = UIBuilder.CreatePanel("BtnRow", _pickFiltersDialogPanel, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(btnRow, 8, 8, false, false);
+            UIBuilder.AddLayoutElement(btnRow, null, 32, null, 32, null, 0);
+            UIBuilder.CreateButton(btnRow, "Save", () => ConfirmPickFilters(), 100, 28);
+            UIBuilder.CreateButton(btnRow, "Cancel", () => CancelPickFilters(), 100, 28);
+
+            _pickFiltersDialogPanel.gameObject.SetActive(false);
+        }
+
+        private void ShowPickFiltersDialog()
+        {
+            CloseAllMenus();
+            if (_pickFiltersDialogPanel == null || _pickFilterConfig == null) return;
+            _pickFiltersEnabledToggle.isOn = _pickFilterConfig.enabled;
+            _pickFiltersInput.text = "";
+            RefreshPickFiltersList();
+            _pickFiltersDialogPanel.gameObject.SetActive(true);
+        }
+
+        private void RefreshPickFiltersList()
+        {
+            if (_pickFiltersContent == null || _pickFilterConfig == null) return;
+            ClearChildren(_pickFiltersContent);
+            foreach (var filter in _pickFilterConfig.filters)
+            {
+                if (string.IsNullOrWhiteSpace(filter)) continue;
+                var row = UIBuilder.CreatePanel("FilterRow", _pickFiltersContent, new Color(1f, 1f, 1f, 0.04f));
+                UIBuilder.AddHorizontalLayout(row, 4, 4, true, false);
+                UIBuilder.AddLayoutElement(row, null, 20, null, 20, null, 0);
+                UIBuilder.CreateLabel(row, filter, 11, 200, 20);
+                var captured = filter;
+                UIBuilder.CreateButton(row, "X", () => RemovePickFilter(captured), 24, 20);
+            }
+        }
+
+        private void AddPickFilter()
+        {
+            if (_pickFilterConfig == null || _pickFiltersInput == null) return;
+            var text = _pickFiltersInput.text?.Trim();
+            if (string.IsNullOrWhiteSpace(text)) return;
+            if (!_pickFilterConfig.filters.Any(f => f.Equals(text, StringComparison.OrdinalIgnoreCase)))
+            {
+                _pickFilterConfig.filters.Add(text);
+                _pickFiltersInput.text = "";
+                RefreshPickFiltersList();
+            }
+        }
+
+        private void RemovePickFilter(string filter)
+        {
+            if (_pickFilterConfig == null || string.IsNullOrEmpty(filter)) return;
+            _pickFilterConfig.filters.RemoveAll(f => f.Equals(filter, StringComparison.OrdinalIgnoreCase));
+            RefreshPickFiltersList();
+        }
+
+        private void ConfirmPickFilters()
+        {
+            if (_pickFilterConfig == null || _pickFiltersEnabledToggle == null || _pickFiltersDialogPanel == null) return;
+            _pickFilterConfig.enabled = _pickFiltersEnabledToggle.isOn;
+            SavePickFilters();
+            _pickFiltersDialogPanel.gameObject.SetActive(false);
+        }
+
+        private void CancelPickFilters()
+        {
+            LoadPickFilters();
+            if (_pickFiltersDialogPanel != null)
+                _pickFiltersDialogPanel.gameObject.SetActive(false);
         }
 
         public void UpdateGizmoButtons()

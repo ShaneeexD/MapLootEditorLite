@@ -24,6 +24,7 @@ namespace MapLootEditorLite.Client
         private readonly List<GameObject> _staticPreviews = new List<GameObject>();
         private readonly List<GameObject> _effectPreviews = new List<GameObject>();
         private readonly Dictionary<string, GameObject> _staticSources = new Dictionary<string, GameObject>();
+        private readonly Dictionary<string, GameObject> _fallbackCache = new Dictionary<string, GameObject>();
 
         public LootPreviewSpawner(GameObject root, MonoBehaviour runner)
         {
@@ -563,6 +564,8 @@ namespace MapLootEditorLite.Client
                 var screenPos = camera.WorldToScreenPoint(preview.transform.position);
                 if (screenPos.z <= 0)
                     continue;
+                if (CustomEditorUI.IsScreenPointOverEditorUI(new Vector2(screenPos.x, screenPos.y + 30f)))
+                    continue;
 
                 var rect = new Rect(screenPos.x - 60f, Screen.height - screenPos.y - 45f, 120f, 30f);
                 GUI.Label(rect, label, style);
@@ -577,6 +580,8 @@ namespace MapLootEditorLite.Client
                 var label = meta != null ? $"{meta.markerName}\n{meta.label}" : "effect";
                 var screenPos = camera.WorldToScreenPoint(preview.transform.position);
                 if (screenPos.z <= 0)
+                    continue;
+                if (CustomEditorUI.IsScreenPointOverEditorUI(new Vector2(screenPos.x, screenPos.y + 30f)))
                     continue;
 
                 var rect = new Rect(screenPos.x - 60f, Screen.height - screenPos.y - 45f, 120f, 30f);
@@ -705,7 +710,15 @@ namespace MapLootEditorLite.Client
             _effectPreviews.Clear();
 
             if (clearStaticSources)
+            {
                 _staticSources.Clear();
+                foreach (var kvp in _fallbackCache)
+                {
+                    if (kvp.Value != null)
+                        UnityEngine.Object.Destroy(kvp.Value);
+                }
+                _fallbackCache.Clear();
+            }
         }
 
         public void ClearByMarkerId(string markerId)
@@ -791,6 +804,20 @@ namespace MapLootEditorLite.Client
             return $"{name}@{position.x:F4},{position.y:F4},{position.z:F4}";
         }
 
+        private void CacheSourceInstance(string key, GameObject source)
+        {
+            if (source == null || _fallbackCache.Values.Contains(source))
+                return;
+            if (_fallbackCache.TryGetValue(key, out var existing) && existing != null)
+                return;
+            var backup = UnityEngine.Object.Instantiate(source);
+            backup.name = $"CachedSource_{key}";
+            backup.transform.SetParent(_root.transform, false);
+            backup.transform.position = Vector3.zero;
+            backup.SetActive(false);
+            _fallbackCache[key] = backup;
+        }
+
         public void RegisterStaticSource(string markerId, GameObject source)
         {
             if (source == null) return;
@@ -806,13 +833,32 @@ namespace MapLootEditorLite.Client
                 return;
             }
 
+            ClearByMarkerId(marker.id);
+
+            if (!string.IsNullOrEmpty(marker.sourceObjectName))
+            {
+                var sourceKey = GetStaticSourceKey(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
+                if (_fallbackCache.TryGetValue(sourceKey, out var cached) && cached != null)
+                {
+                    SpawnStaticInstance(cached, marker, true);
+                    return;
+                }
+            }
+            if (!string.IsNullOrEmpty(marker.prefabPath))
+            {
+                if (_fallbackCache.TryGetValue(marker.prefabPath, out var cached) && cached != null)
+                {
+                    SpawnStaticInstance(cached, marker, false);
+                    return;
+                }
+            }
+
             if (string.IsNullOrEmpty(marker.prefabPath) && string.IsNullOrEmpty(marker.sourceObjectName))
             {
                 Plugin.Log.LogWarning("Cannot preview static object: no prefab path or source object set.");
                 return;
             }
 
-            ClearByMarkerId(marker.id);
             _runner.StartCoroutine(LoadStaticPreviewCoroutine(marker));
         }
 
@@ -824,19 +870,38 @@ namespace MapLootEditorLite.Client
                 return;
             }
 
+            ClearByMarkerId(marker.id);
+
+            if (marker.spawnType == "clone" && !string.IsNullOrEmpty(marker.sourceObjectName))
+            {
+                var sourceKey = GetStaticSourceKey(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
+                if (_fallbackCache.TryGetValue(sourceKey, out var cached) && cached != null)
+                {
+                    SpawnWTTStaticInstance(cached, marker, true);
+                    return;
+                }
+            }
+            if (marker.spawnType == "bundle" && !string.IsNullOrEmpty(marker.bundleName) && !string.IsNullOrEmpty(marker.prefabName))
+            {
+                var cacheKey = $"{marker.bundleName}/{marker.prefabName}";
+                if (_fallbackCache.TryGetValue(cacheKey, out var cached) && cached != null)
+                {
+                    SpawnWTTStaticInstance(cached, marker, false);
+                    return;
+                }
+            }
+
             if (marker.spawnType == "clone" && string.IsNullOrEmpty(marker.sourceObjectName))
             {
                 Plugin.Log.LogWarning("Cannot preview WTT static object: clone mode but no source object set.");
                 return;
             }
-
             if (marker.spawnType == "bundle" && (string.IsNullOrEmpty(marker.bundleName) || string.IsNullOrEmpty(marker.prefabName)))
             {
                 Plugin.Log.LogWarning("Cannot preview WTT static object: bundle mode but bundle/prefab name not set.");
                 return;
             }
 
-            ClearByMarkerId(marker.id);
             _runner.StartCoroutine(LoadWTTStaticPreviewCoroutine(marker));
         }
 
@@ -859,8 +924,7 @@ namespace MapLootEditorLite.Client
                     yield break;
                 }
 
-                Plugin.Log.LogWarning($"Could not find source scene object for WTT static preview: {marker.sourceObjectName}, using fallback.");
-                SpawnFallbackStatic(marker, marker.scale, new Color(0.6f, 0.2f, 1f));
+                Plugin.Log.LogWarning($"Could not find source scene object for WTT static preview: {marker.sourceObjectName}.");
                 yield break;
             }
 
@@ -900,8 +964,7 @@ namespace MapLootEditorLite.Client
                 }
                 else
                 {
-                    Plugin.Log.LogWarning($"No GameObject asset found in WTT bundle: {path}, using fallback.");
-                    SpawnFallbackStatic(marker, marker.scale, new Color(0.6f, 0.2f, 1f));
+                    Plugin.Log.LogWarning($"No GameObject asset found in WTT bundle: {path}.");
                 }
 
                 if (bundleOwned)
@@ -909,8 +972,7 @@ namespace MapLootEditorLite.Client
             }
             else
             {
-                Plugin.Log.LogWarning($"Failed to load WTT static object bundle: {path}, using fallback.");
-                SpawnFallbackStatic(marker, marker.scale, new Color(0.6f, 0.2f, 1f));
+                Plugin.Log.LogWarning($"Failed to load WTT static object bundle: {path}.");
             }
         }
 
@@ -922,13 +984,24 @@ namespace MapLootEditorLite.Client
                 return;
             }
 
+            ClearByMarkerId(marker.id);
+
+            if (!string.IsNullOrEmpty(marker.sourceObjectName))
+            {
+                var sourceKey = GetStaticSourceKey(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
+                if (_fallbackCache.TryGetValue(sourceKey, out var cached) && cached != null)
+                {
+                    SpawnInteractiveInstance(cached, marker, true);
+                    return;
+                }
+            }
+
             if (string.IsNullOrEmpty(marker.sourceObjectName))
             {
                 Plugin.Log.LogWarning("Cannot preview interactive object: no source object set.");
                 return;
             }
 
-            ClearByMarkerId(marker.id);
             _runner.StartCoroutine(LoadInteractivePreviewCoroutine(marker));
         }
 
@@ -949,8 +1022,7 @@ namespace MapLootEditorLite.Client
                 yield break;
             }
 
-            Plugin.Log.LogWarning($"Could not find source scene object for interactive preview: {marker.sourceObjectName}, using fallback.");
-            SpawnFallbackStatic(marker, marker.scale, new Color(0.2f, 0.6f, 1f));
+            Plugin.Log.LogWarning($"Could not find source scene object for interactive preview: {marker.sourceObjectName}.");
         }
 
         private IEnumerator LoadStaticPreviewCoroutine(StaticObject marker)
@@ -1012,7 +1084,7 @@ namespace MapLootEditorLite.Client
                     }
                     else
                     {
-                        Plugin.Log.LogWarning($"No GameObject asset found in bundle: {path}");
+                        Plugin.Log.LogWarning($"No GameObject asset found in bundle: {path}.");
                     }
 
                     if (bundleOwned)
@@ -1020,19 +1092,22 @@ namespace MapLootEditorLite.Client
                 }
                 else
                 {
-                    Plugin.Log.LogWarning($"Failed to load static object bundle: {path}");
+                    Plugin.Log.LogWarning($"Failed to load static object bundle: {path}.");
                 }
                 yield break;
             }
 
-            Plugin.Log.LogWarning($"Cannot preview static object {marker.name}: no prefab path or source object set, using fallback.");
-            SpawnFallbackStatic(marker, marker.scale, new Color(1f, 0.92f, 0.016f));
+            Plugin.Log.LogWarning($"Cannot preview static object {marker.name}: no prefab path or source object set.");
         }
 
         private GameObject FindSourceObject(string name, Vector3 position)
         {
             if (string.IsNullOrEmpty(name))
                 return null;
+
+            var sourceKey = GetStaticSourceKey(name, position);
+            if (_fallbackCache.TryGetValue(sourceKey, out var cached) && cached != null)
+                return cached;
 
             GameObject best = null;
             float bestDist = float.MaxValue;
@@ -1095,6 +1170,7 @@ namespace MapLootEditorLite.Client
         {
             var instance = UnityEngine.Object.Instantiate(source);
             instance.name = $"StaticPreview_{marker.name}";
+            instance.SetActive(true);
             instance.transform.SetParent(_root.transform, false);
             instance.transform.position = marker.position.ToVector3();
             instance.transform.rotation = marker.rotation.ToQuaternion();
@@ -1106,12 +1182,16 @@ namespace MapLootEditorLite.Client
             meta.isFallback = isFallback;
 
             _staticPreviews.Add(instance);
+
+            var cacheKey = !string.IsNullOrEmpty(marker.prefabPath) ? marker.prefabPath : GetStaticSourceKey(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
+            CacheSourceInstance(cacheKey, source);
         }
 
         private void SpawnWTTStaticInstance(GameObject source, WTTStaticObject marker, bool isFallback)
         {
             var instance = UnityEngine.Object.Instantiate(source);
             instance.name = $"WTTStaticPreview_{marker.name}";
+            instance.SetActive(true);
             instance.transform.SetParent(_root.transform, false);
             instance.transform.position = marker.position.ToVector3();
             instance.transform.rotation = marker.rotation.ToQuaternion();
@@ -1123,12 +1203,16 @@ namespace MapLootEditorLite.Client
             meta.isFallback = isFallback;
 
             _staticPreviews.Add(instance);
+
+            var cacheKey = marker.spawnType == "bundle" ? $"{marker.bundleName}/{marker.prefabName}" : GetStaticSourceKey(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
+            CacheSourceInstance(cacheKey, source);
         }
 
         private void SpawnInteractiveInstance(GameObject source, InteractiveObject marker, bool isFallback)
         {
             var instance = UnityEngine.Object.Instantiate(source);
             instance.name = $"InteractivePreview_{marker.name}";
+            instance.SetActive(true);
             instance.transform.SetParent(_root.transform, false);
             instance.transform.position = marker.position.ToVector3();
             instance.transform.rotation = marker.rotation.ToQuaternion();
@@ -1148,28 +1232,9 @@ namespace MapLootEditorLite.Client
             meta.isFallback = isFallback;
 
             _staticPreviews.Add(instance);
-        }
 
-        private void SpawnFallbackStatic(MarkerBase marker, TransformData scale, Color color)
-        {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = $"FallbackPreview_{marker.name}";
-            UnityEngine.Object.Destroy(go.GetComponent<Collider>());
-            go.transform.SetParent(_root.transform, false);
-            go.transform.position = marker.position.ToVector3();
-            go.transform.rotation = marker.rotation.ToQuaternion();
-            go.transform.localScale = scale.ToVector3();
-            var renderer = go.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                var mat = new Material(Shader.Find("Standard") ?? Shader.Find("Sprites/Default"));
-                mat.color = color;
-                renderer.material = mat;
-            }
-            var meta = go.AddComponent<PreviewStaticObjectMarker>();
-            meta.sourceMarkerId = marker.id;
-            meta.isFallback = true;
-            _staticPreviews.Add(go);
+            var cacheKey = GetStaticSourceKey(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
+            CacheSourceInstance(cacheKey, source);
         }
 
         private void DestroyPreview(GameObject preview)

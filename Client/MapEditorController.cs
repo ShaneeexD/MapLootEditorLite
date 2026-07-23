@@ -8,7 +8,9 @@ using EFT;
 using EFT.Ballistics;
 using EFT.Interactive;
 using EFT.HealthSystem;
+using EFT.UI.BattleTimer;
 using HarmonyLib;
+using System.Reflection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -28,6 +30,7 @@ namespace MapLootEditorLite.Client
         private GameObject _previewRoot;
 
         private bool _editorOpen;
+        private bool _previewMode;
         private KeyCode _toggleKey => Plugin.ToggleKey;
         private GameWorld _currentGameWorld;
         private string _currentMapId;
@@ -301,7 +304,7 @@ namespace MapLootEditorLite.Client
             if (_visualRoot != null)
                 _visualRoot.SetActive(_editorOpen);
             if (_previewRoot != null)
-                _previewRoot.SetActive(_editorOpen);
+                _previewRoot.SetActive(_editorOpen || _previewMode);
 
             if (Input.GetKeyDown(_toggleKey) && _lastToggleFrame != Time.frameCount)
             {
@@ -313,6 +316,12 @@ namespace MapLootEditorLite.Client
                 _ui.Show();
             else if (!_editorOpen && _ui != null && _ui.IsVisible)
                 _ui.Hide();
+
+            if (_renderer != null && _ui != null)
+                _renderer.ShowSceneObjectOutlines = _ui.IsPickingSourceObject;
+
+            if (_editorOpen && _renderer != null && _renderer.Use3DSceneObjectOutlines)
+                _renderer.Update3DSceneObjectOutlines(Camera.main);
 
             if (!_editorOpen && _freeCam)
                 ToggleFreeCam();
@@ -413,6 +422,7 @@ namespace MapLootEditorLite.Client
             if (_editorOpen)
             {
                 _renderer.DrawLabels(true);
+                _renderer.DrawSceneObjectOutlines(true);
                 _previews.DrawLabels(true);
             }
         }
@@ -934,6 +944,63 @@ namespace MapLootEditorLite.Client
             Plugin.Log.LogInfo($"Pack gizmos: {(_renderer.ShowPackGizmos ? "ON" : "OFF")}");
         }
 
+        public void ToggleSceneObjectOutlines()
+        {
+            if (_renderer == null)
+                return;
+            _renderer.ShowSceneObjectOutlines = !_renderer.ShowSceneObjectOutlines;
+            Plugin.Log.LogInfo($"Scene object outlines: {(_renderer.ShowSceneObjectOutlines ? "ON" : "OFF")}");
+        }
+
+        public void Toggle3DSceneObjectOutlines()
+        {
+            if (_renderer == null)
+                return;
+            _renderer.Use3DSceneObjectOutlines = !_renderer.Use3DSceneObjectOutlines;
+            Plugin.Log.LogInfo($"3D scene object outlines: {(_renderer.Use3DSceneObjectOutlines ? "ON" : "OFF")}");
+        }
+
+        public void TogglePreviewMode()
+        {
+            _previewMode = !_previewMode;
+            if (_previewRoot != null)
+                _previewRoot.SetActive(_editorOpen || _previewMode);
+            Plugin.Log.LogInfo($"Preview mode: {(_previewMode ? "ON" : "OFF")}");
+        }
+
+        public void ToggleRaidTimerPause()
+        {
+            var gameTimer = Singleton<AbstractGame>.Instance?.GameTimer;
+            if (gameTimer == null)
+            {
+                Plugin.Log.LogWarning("No raid game timer found.");
+                return;
+            }
+            if (gameTimer.Status != GameTimerClass.EGameTimerStatus.Started)
+            {
+                Plugin.Log.LogWarning($"Raid timer is not started (status: {gameTimer.Status}).");
+                return;
+            }
+            gameTimer.ChangeSessionTime(TimeSpan.FromHours(72));
+            Plugin.Log.LogInfo("Raid timer session time set to 72 hours.");
+
+            var mainTimerPanel = UnityEngine.Object.FindObjectOfType<MainTimerPanel>();
+            if (mainTimerPanel != null)
+            {
+                var escapeDateTime = gameTimer.EscapeDateTime;
+                if (escapeDateTime.HasValue)
+                {
+                    var dateTimeField = typeof(TimerPanel).GetField("dateTime_0", BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (dateTimeField != null)
+                    {
+                        dateTimeField.SetValue(mainTimerPanel, escapeDateTime.Value);
+                        mainTimerPanel.DisplayTimer();
+                        mainTimerPanel.UpdateTimer();
+                    }
+                }
+            }
+        }
+
         public void DumpDoorIds()
         {
             DumpDoorIdsInternal(false);
@@ -1303,8 +1370,7 @@ namespace MapLootEditorLite.Client
                 if (Input.GetMouseButtonDown(0))
                 {
                     var picked = _ui.TryPickSourceSceneObject();
-                    if (picked != null)
-                        _ui.SelectSceneGO(picked);
+                    _ui.SelectSceneGO(picked);
                     _ui.SetPickingSceneGO(false);
                 }
                 return;
@@ -1340,6 +1406,7 @@ namespace MapLootEditorLite.Client
                     else if (!Input.GetKey(KeyCode.LeftControl) && !Input.GetKey(KeyCode.RightControl))
                     {
                         _manager.ClearSelection();
+                        _ui.SelectSceneGO(null);
                     }
                 }
             }
@@ -1718,7 +1785,12 @@ namespace MapLootEditorLite.Client
             _manager.Snapshot();
             _manager.DuplicateSelection();
             _renderer.Rebuild();
-            _previews.SpawnAllPreviews(_manager.Data);
+            foreach (var id in _manager.SelectedIds)
+            {
+                var m = _manager.FindById(id);
+                if (m != null)
+                    _previews.SpawnPreviewForMarker(m);
+            }
         }
 
         public void DeleteSelected()
@@ -1756,6 +1828,8 @@ namespace MapLootEditorLite.Client
             _renderer.Rebuild();
             _previews.ClearAll();
             _previews.SpawnAllPreviews(_manager.Data);
+            _ui?.RequestRefresh();
+            _ui?.RequestHierarchyRefresh();
         }
 
         public void Redo()
@@ -1764,6 +1838,8 @@ namespace MapLootEditorLite.Client
             _renderer.Rebuild();
             _previews.ClearAll();
             _previews.SpawnAllPreviews(_manager.Data);
+            _ui?.RequestRefresh();
+            _ui?.RequestHierarchyRefresh();
         }
 
         public void SavePrefab(string name, string description)

@@ -13,6 +13,8 @@ namespace MapLootEditorLite.Client
         private readonly MarkerManager _manager;
         private readonly GameObject _root;
         private readonly Dictionary<string, GameObject> _visuals = new Dictionary<string, GameObject>();
+        private readonly Dictionary<GameObject, GameObject> _sceneObject3DVisuals = new Dictionary<GameObject, GameObject>();
+        private bool _use3DSceneObjectOutlines = true;
 
         private readonly Color _looseColor = new Color(0f, 1f, 0f, 0.6f);
         private readonly Color _zoneColor = new Color(1f, 1f, 0f, 0.15f);
@@ -54,11 +56,31 @@ namespace MapLootEditorLite.Client
         private Material _wireMaterial;
         private Material _gizmoMaterial;
         private readonly Dictionary<string, ZoneShape> _zoneShapeCache = new Dictionary<string, ZoneShape>();
+        private readonly List<SceneObjectOutline> _sceneObjectOutlines = new List<SceneObjectOutline>();
+
+        private struct SceneObjectOutline
+        {
+            public GameObject go;
+            public Bounds bounds;
+            public bool selected;
+        }
 
         public GizmoMode GizmoMode { get; set; } = GizmoMode.Translate;
         public bool ShowGizmo { get; set; } = true;
         public bool ShowVanillaGizmos { get; set; } = true;
         public bool ShowPackGizmos { get; set; } = true;
+        public bool ShowSceneObjectOutlines { get; set; }
+        public bool Use3DSceneObjectOutlines
+        {
+            get => _use3DSceneObjectOutlines;
+            set
+            {
+                if (_use3DSceneObjectOutlines == value) return;
+                _use3DSceneObjectOutlines = value;
+                if (!_use3DSceneObjectOutlines)
+                    DestroySceneObject3DVisuals();
+            }
+        }
         public float VanillaRenderDistance { get; set; } = 150f;
         public GizmoAxis HoveredAxis { get; private set; }
         public GizmoAxis ActiveAxis { get; set; }
@@ -354,6 +376,8 @@ namespace MapLootEditorLite.Client
                 var screenPos = camera.WorldToScreenPoint(marker.position.ToVector3());
                 if (screenPos.z <= 0)
                     continue;
+                if (CustomEditorUI.IsScreenPointOverEditorUI(new Vector2(screenPos.x, screenPos.y + 20f)))
+                    continue;
 
                 var rect = new Rect(screenPos.x - 50f, Screen.height - screenPos.y - 30f, 100f, 20f);
                 GUI.Label(rect, GetMarkerLabel(marker), style);
@@ -383,6 +407,286 @@ namespace MapLootEditorLite.Client
             }
             _visuals.Clear();
             _zoneShapeCache.Clear();
+            _sceneObjectOutlines.Clear();
+            DestroySceneObject3DVisuals();
+        }
+
+        public void SetSceneObjects(List<GameObject> objects, GameObject selected)
+        {
+            _sceneObjectOutlines.Clear();
+            DestroySceneObject3DVisuals();
+            if (objects == null)
+                return;
+
+            foreach (var go in objects)
+            {
+                if (go == null)
+                    continue;
+
+                var bounds = CalculateBounds(go);
+                if (bounds.size.sqrMagnitude < 0.0001f)
+                    continue;
+
+                _sceneObjectOutlines.Add(new SceneObjectOutline
+                {
+                    go = go,
+                    bounds = bounds,
+                    selected = go == selected
+                });
+            }
+        }
+
+        public void SetSelectedSceneObject(GameObject selected)
+        {
+            if (_sceneObjectOutlines == null)
+                return;
+
+            for (int i = 0; i < _sceneObjectOutlines.Count; i++)
+            {
+                var e = _sceneObjectOutlines[i];
+                e.selected = e.go == selected;
+                _sceneObjectOutlines[i] = e;
+            }
+        }
+
+        public GameObject PickSceneObject(Ray ray, float maxDistance, Func<GameObject, bool> predicate)
+        {
+            if (_sceneObjectOutlines == null || _sceneObjectOutlines.Count == 0)
+                return null;
+
+            GameObject closest = null;
+            float closestDist = float.MaxValue;
+
+            foreach (var entry in _sceneObjectOutlines)
+            {
+                if (entry.go == null)
+                    continue;
+                if (predicate != null && !predicate(entry.go))
+                    continue;
+                if (entry.bounds.IntersectRay(ray, out float dist) && dist <= maxDistance && dist < closestDist)
+                {
+                    closestDist = dist;
+                    closest = entry.go;
+                }
+            }
+
+            return closest;
+        }
+
+        private static Bounds CalculateBounds(GameObject go)
+        {
+            var colliders = go.GetComponentsInChildren<Collider>(true);
+            var renderers = go.GetComponentsInChildren<Renderer>(true);
+            if (colliders.Length == 0 && renderers.Length == 0)
+                return new Bounds(go.transform.position, Vector3.zero);
+
+            Bounds b = new Bounds(go.transform.position, Vector3.zero);
+            bool has = false;
+            foreach (var c in colliders)
+            {
+                if (c == null)
+                    continue;
+                if (!has)
+                {
+                    b = c.bounds;
+                    has = true;
+                }
+                else
+                {
+                    b.Encapsulate(c.bounds);
+                }
+            }
+
+            if (has)
+                return b;
+
+            foreach (var r in renderers)
+            {
+                if (r == null)
+                    continue;
+                if (!has)
+                {
+                    b = r.bounds;
+                    has = true;
+                }
+                else
+                {
+                    b.Encapsulate(r.bounds);
+                }
+            }
+
+            return b;
+        }
+
+        public void DrawSceneObjectOutlines(bool editorOpen)
+        {
+            if (Use3DSceneObjectOutlines || !editorOpen || _sceneObjectOutlines == null || _sceneObjectOutlines.Count == 0)
+                return;
+
+            if (Event.current == null || Event.current.type != EventType.Repaint)
+                return;
+
+            var camera = Camera.main;
+            if (camera == null)
+                return;
+
+            var cameraPos = camera.transform.position;
+            var oldColor = GUI.color;
+            const float thickness = 1f;
+            var whiteTexture = Texture2D.whiteTexture;
+
+            foreach (var entry in _sceneObjectOutlines)
+            {
+                if (entry.go == null)
+                    continue;
+
+                if (!entry.selected && !ShowSceneObjectOutlines)
+                    continue;
+
+                if (VanillaRenderDistance > 0f && Vector3.Distance(cameraPos, entry.bounds.center) > VanillaRenderDistance)
+                    continue;
+
+                var bmin = entry.bounds.min;
+                var bmax = entry.bounds.max;
+                var corners = new Vector3[]
+                {
+                    new Vector3(bmin.x, bmin.y, bmin.z),
+                    new Vector3(bmin.x, bmin.y, bmax.z),
+                    new Vector3(bmin.x, bmax.y, bmin.z),
+                    new Vector3(bmin.x, bmax.y, bmax.z),
+                    new Vector3(bmax.x, bmin.y, bmin.z),
+                    new Vector3(bmax.x, bmin.y, bmax.z),
+                    new Vector3(bmax.x, bmax.y, bmin.z),
+                    new Vector3(bmax.x, bmax.y, bmax.z)
+                };
+
+                Vector2? minS = null;
+                Vector2? maxS = null;
+                bool valid = true;
+                foreach (var corner in corners)
+                {
+                    var s = camera.WorldToScreenPoint(corner);
+                    if (s.z <= 0f)
+                    {
+                        valid = false;
+                        break;
+                    }
+                    var screen = new Vector2(s.x, Screen.height - s.y);
+                    if (minS == null)
+                    {
+                        minS = screen;
+                        maxS = screen;
+                    }
+                    else
+                    {
+                        minS = Vector2.Min(minS.Value, screen);
+                        maxS = Vector2.Max(maxS.Value, screen);
+                    }
+                }
+
+                if (!valid || !minS.HasValue || !maxS.HasValue)
+                    continue;
+
+                var min = minS.Value;
+                var max = maxS.Value;
+                if (CustomEditorUI.IsScreenPointOverEditorUI(new Vector2((min.x + max.x) * 0.5f, Screen.height - (min.y + max.y) * 0.5f)))
+                    continue;
+
+                GUI.color = entry.selected ? new Color(1f, 0.25f, 0.25f, 0.9f) : new Color(0.25f, 0.9f, 0.25f, 0.9f);
+
+                GUI.DrawTexture(new Rect(min.x, min.y, max.x - min.x, thickness), whiteTexture, ScaleMode.StretchToFill, true, 1f);
+                GUI.DrawTexture(new Rect(min.x, max.y, max.x - min.x, thickness), whiteTexture, ScaleMode.StretchToFill, true, 1f);
+                GUI.DrawTexture(new Rect(min.x, min.y, thickness, max.y - min.y), whiteTexture, ScaleMode.StretchToFill, true, 1f);
+                GUI.DrawTexture(new Rect(max.x, min.y, thickness, max.y - min.y), whiteTexture, ScaleMode.StretchToFill, true, 1f);
+            }
+
+            GUI.color = oldColor;
+        }
+
+        public void Update3DSceneObjectOutlines(Camera camera)
+        {
+            if (!Use3DSceneObjectOutlines || camera == null || _sceneObjectOutlines == null)
+                return;
+
+            var cameraPos = camera.transform.position;
+            var wanted = new HashSet<GameObject>();
+
+            foreach (var entry in _sceneObjectOutlines)
+            {
+                if (entry.go == null)
+                    continue;
+
+                if (!entry.selected && !ShowSceneObjectOutlines)
+                    continue;
+
+                if (VanillaRenderDistance > 0f && Vector3.Distance(cameraPos, entry.bounds.center) > VanillaRenderDistance)
+                    continue;
+
+                wanted.Add(entry.go);
+
+                if (!_sceneObject3DVisuals.TryGetValue(entry.go, out var visual) || visual == null)
+                {
+                    visual = CreateSceneObject3DVisual(entry);
+                    _sceneObject3DVisuals[entry.go] = visual;
+                }
+
+                UpdateSceneObject3DVisual(visual, entry);
+            }
+
+            var toRemove = new List<GameObject>();
+            foreach (var kvp in _sceneObject3DVisuals)
+            {
+                if (kvp.Value == null || !wanted.Contains(kvp.Key))
+                    toRemove.Add(kvp.Key);
+            }
+
+            foreach (var key in toRemove)
+            {
+                if (_sceneObject3DVisuals.TryGetValue(key, out var visual) && visual != null)
+                    UnityEngine.Object.Destroy(visual);
+                _sceneObject3DVisuals.Remove(key);
+            }
+        }
+
+        private GameObject CreateSceneObject3DVisual(SceneObjectOutline entry)
+        {
+            var go = new GameObject($"MLE_SceneOutline_{entry.go.name}");
+            go.transform.SetParent(_root.transform, false);
+            var lr = go.AddComponent<LineRenderer>();
+            lr.useWorldSpace = false;
+            lr.startWidth = 0.04f;
+            lr.endWidth = 0.04f;
+            lr.positionCount = 0;
+            lr.material = GetWireMaterial();
+            DrawWireBox(lr, 0.5f);
+            SetLayerRecursive(go, 2);
+            return go;
+        }
+
+        private void UpdateSceneObject3DVisual(GameObject visual, SceneObjectOutline entry)
+        {
+            visual.SetActive(true);
+            visual.transform.position = entry.bounds.center;
+            visual.transform.rotation = Quaternion.identity;
+            visual.transform.localScale = entry.bounds.size;
+
+            var color = entry.selected ? new Color(1f, 0.25f, 0.25f, 0.9f) : new Color(0.25f, 0.9f, 0.25f, 0.9f);
+            var lr = visual.GetComponent<LineRenderer>();
+            if (lr != null)
+            {
+                lr.startColor = color;
+                lr.endColor = color;
+            }
+        }
+
+        private void DestroySceneObject3DVisuals()
+        {
+            foreach (var kvp in _sceneObject3DVisuals)
+            {
+                if (kvp.Value != null)
+                    UnityEngine.Object.Destroy(kvp.Value);
+            }
+            _sceneObject3DVisuals.Clear();
         }
 
         private GameObject CreateVisual(MarkerBase marker)
