@@ -377,6 +377,24 @@ namespace MapLootEditorLite.Client
             defaults["Zone Location"] = "Zone Location";
             defaults["Zone Name"] = "Zone Name";
             defaults["Zone Type"] = "Zone Type";
+            defaults["Cut Volume"] = "Cut Volume";
+            defaults["File"] = "File";
+            defaults["Import Vanilla Loot"] = "Import Vanilla Loot";
+            defaults["Language"] = "Language";
+            defaults["Max Group Size"] = "Max Group Size";
+            defaults["Max H"] = "Max H";
+            defaults["meters"] = "meters";
+            defaults["Min Group Size"] = "Min Group Size";
+            defaults["Min H"] = "Min H";
+            defaults["New name"] = "New name";
+            defaults["Pack name"] = "Pack name";
+            defaults["Players Count"] = "Players Count";
+            defaults["Required Level"] = "Required Level";
+            defaults["Spawn Count"] = "Spawn Count";
+            defaults["Toggle Pack Gizmos"] = "Toggle Pack Gizmos";
+            defaults["Toggle Vanilla Gizmos"] = "Toggle Vanilla Gizmos";
+            defaults["type to filter..."] = "type to filter...";
+            defaults["View"] = "View";
             try
             {
                 File.WriteAllText(path, JsonConvert.SerializeObject(defaults, Formatting.Indented));
