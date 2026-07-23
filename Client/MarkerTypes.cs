@@ -335,6 +335,8 @@ namespace MapLootEditorLite.Client
         public string questId = "";
         public bool isDistribution = false; // True when chance is a relative weight from staticLoot.json
         public int count = 1; // Stack count for currency/ammo/etc
+        public int minCount = 1;
+        public int maxCount = 1;
     }
 
     public class LooseLootSpawn : MarkerBase

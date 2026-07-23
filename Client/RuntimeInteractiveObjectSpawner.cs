@@ -1218,8 +1218,39 @@ namespace MapLootEditorLite.Client
                 return false;
             }
 
-            if (loot.count > 1)
-                SetItemStackCount(childItem, loot.count);
+            var stackCount = loot.count;
+            if (stackCount <= 1 && loot.isDistribution)
+            {
+                var parent = ItemNameResolver.GetParent(loot.template);
+                if (parent == "5485a8684bdc2da71d8b4567" ||
+                    string.Equals(loot.template, "5d235b4d86f7742e017bc88a", StringComparison.OrdinalIgnoreCase))
+                {
+                    stackCount = ItemNameResolver.GetStackMaxSize(loot.template);
+                }
+            }
+
+            if (loot.isDistribution)
+            {
+                if (stackCount > 1)
+                    stackCount = rng.Next(1, stackCount + 1);
+            }
+            else if (loot.maxCount > loot.minCount)
+            {
+                int min = Math.Max(loot.minCount, 1);
+                int max = Math.Max(loot.maxCount, min);
+                stackCount = rng.Next(min, max + 1);
+            }
+            else if (stackCount <= 1)
+            {
+                if (string.Equals(loot.template, "5d235b4d86f7742e017bc88a", StringComparison.OrdinalIgnoreCase) ||
+                    ItemNameResolver.GetParent(loot.template) == "5485a8684bdc2da71d8b4567")
+                {
+                    stackCount = ItemNameResolver.GetStackMaxSize(loot.template);
+                }
+            }
+
+            if (stackCount > 1)
+                SetItemStackCount(childItem, stackCount);
 
             if (compoundItem.Grids != null)
             {

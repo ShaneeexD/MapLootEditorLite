@@ -2982,7 +2982,16 @@ namespace MapLootEditorLite.Client
 
                 UIBuilder.CreateLabel(row, "Tpl", 11, 26, 20);
                 var tplField = BuildInputFieldInline(row, item.template ?? "", (v) => { item.template = v; manager.IsDirty = true; }, 100, 20);
-                tplField.onEndEdit.AddListener(_ => RequestInspectorRefresh());
+                tplField.onEndEdit.AddListener(_ =>
+                {
+                    var stackMax = ItemNameResolver.GetStackMaxSize(item.template);
+                    if (stackMax > 1 && item.maxCount <= 1)
+                    {
+                        item.minCount = 1;
+                        item.maxCount = stackMax;
+                    }
+                    RequestInspectorRefresh();
+                });
                 UIBuilder.CreateLabel(row, "%", 11, 18, 20);
                 BuildInputFieldInline(row, item.chance.ToString("F1", CultureInfo.InvariantCulture), (v) => { if (float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var r)) item.chance = r; manager.IsDirty = true; }, 40, 20);
                 if (onPreview != null)
@@ -3011,6 +3020,18 @@ namespace MapLootEditorLite.Client
                 var name = GetItemName(item.template);
                 if (!string.IsNullOrEmpty(name))
                     UIBuilder.CreateText(_inspectorContent, $"  {name}", 11, new Color(0.6f, 0.6f, 0.6f, 1f));
+
+                var stackMax = ItemNameResolver.GetStackMaxSize(item.template);
+                if (stackMax > 1)
+                {
+                    var countRow = UIBuilder.CreatePanel("ItemCountRow", _inspectorContent, new Color(0, 0, 0, 0));
+                    UIBuilder.AddHorizontalLayout(countRow, 2, 2, false, false);
+                    UIBuilder.AddLayoutElement(countRow, null, 22, null, 22, null, 0);
+                    UIBuilder.CreateLabel(countRow, "Min", 11, 26, 20);
+                    BuildInputFieldInline(countRow, item.minCount.ToString(), (v) => { if (int.TryParse(v, out var r)) { item.minCount = Math.Max(r, 1); manager.IsDirty = true; } }, 36, 20);
+                    UIBuilder.CreateLabel(countRow, "Max", 11, 30, 20);
+                    BuildInputFieldInline(countRow, item.maxCount.ToString(), (v) => { if (int.TryParse(v, out var r)) { item.maxCount = Math.Max(r, 1); manager.IsDirty = true; } }, 40, 20);
+                }
 
                 if (showRotation)
                 {

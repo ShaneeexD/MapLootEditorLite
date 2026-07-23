@@ -12,6 +12,8 @@ namespace MapLootEditorLite.Client
     public static class ItemNameResolver
     {
         private static Dictionary<string, string> _names;
+        private static Dictionary<string, string> _parents;
+        private static Dictionary<string, int> _stackMaxSizes;
         private static Dictionary<string, string> _apiNames;
         private static bool _apiLoadAttempted;
 
@@ -138,6 +140,8 @@ namespace MapLootEditorLite.Client
                 return;
 
             _names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            _parents = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            _stackMaxSizes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
             var path = Path.Combine(Plugin.GameRoot, "SPT_Data", "database", "templates", "items.json");
             if (!File.Exists(path))
@@ -153,8 +157,15 @@ namespace MapLootEditorLite.Client
                     {
                         var id = kvp.Value?._id ?? kvp.Key;
                         var name = kvp.Value?._name;
-                        if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(name))
-                            _names[id] = name;
+                        var parent = kvp.Value?._parent;
+                        if (!string.IsNullOrEmpty(id))
+                        {
+                            if (!string.IsNullOrEmpty(name))
+                                _names[id] = name;
+                            if (!string.IsNullOrEmpty(parent))
+                                _parents[id] = parent;
+                            _stackMaxSizes[id] = Math.Max(kvp.Value?._props?.StackMaxSize ?? 1, 1);
+                        }
                     }
                 }
             }
@@ -162,6 +173,22 @@ namespace MapLootEditorLite.Client
             {
                 Plugin.Log.LogWarning($"Failed to load item name database: {ex.Message}");
             }
+        }
+
+        public static string GetParent(string templateId)
+        {
+            if (string.IsNullOrEmpty(templateId))
+                return null;
+            EnsureLoaded();
+            return _parents != null && _parents.TryGetValue(templateId, out var parent) ? parent : null;
+        }
+
+        public static int GetStackMaxSize(string templateId)
+        {
+            if (string.IsNullOrEmpty(templateId))
+                return 1;
+            EnsureLoaded();
+            return _stackMaxSizes != null && _stackMaxSizes.TryGetValue(templateId, out var size) ? size : 1;
         }
 
         private class ApiNameEntry
@@ -191,6 +218,13 @@ namespace MapLootEditorLite.Client
         {
             public string _id;
             public string _name;
+            public string _parent;
+            public ItemProps _props;
+        }
+
+        private class ItemProps
+        {
+            public int StackMaxSize;
         }
     }
 }
