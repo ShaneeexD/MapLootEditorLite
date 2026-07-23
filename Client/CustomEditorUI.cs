@@ -1219,11 +1219,7 @@ namespace MapLootEditorLite.Client
 
                 var btn = UIBuilder.CreateButton(row, go.name, () =>
                 {
-                    _selectedSceneGO = captured;
-                    if (_goPreviewNameText != null)
-                        _goPreviewNameText.text = captured.name;
-                    RefreshObjectsList();
-                    RefreshGOActionRow();
+                    SelectSceneGO(captured);
                 }, 0, 12, 10);
                 UIBuilder.AddLayoutElement(btn.gameObject, null, 12, null, 12, 1, 0);
                 btn.GetComponent<Image>().color = new Color(0, 0, 0, 0);
@@ -2044,6 +2040,7 @@ namespace MapLootEditorLite.Client
                     actionRow.GetComponent<Image>().raycastTarget = false;
                     UIBuilder.AddHorizontalLayout(actionRow, 4, 2, false, false);
                     UIBuilder.AddLayoutElement(actionRow.gameObject, null, 26, null, 26, null, 0);
+                    UIBuilder.CreateButton(actionRow, "Go To", () => controller?.GoToSceneObject(_selectedSceneGO), 50, 22);
                     UIBuilder.CreateButton(actionRow, "Place Here", () => controller?.PlaceStaticFromSceneGO(_selectedSceneGO), 80, 22);
                     UIBuilder.CreateButton(actionRow, "Remove", () => RemoveSelectedSceneGO(), 60, 22);
                 }

@@ -17,6 +17,7 @@ namespace MapLootEditorLite.Client
         private GameWorld _currentWorld;
         private string _currentMapId;
         private List<GameObject> _spawned = new List<GameObject>();
+        private List<GameObject> _previewBlockers = new List<GameObject>();
 
         private void Awake()
         {
@@ -72,6 +73,8 @@ namespace MapLootEditorLite.Client
             var directories = new List<string>();
             if (!string.IsNullOrEmpty(Plugin.ServerModPacksDirectory) && Directory.Exists(Plugin.ServerModPacksDirectory))
                 directories.Add(Plugin.ServerModPacksDirectory);
+            if (!string.IsNullOrEmpty(Plugin.ServerModExportsDirectory) && Directory.Exists(Plugin.ServerModExportsDirectory))
+                directories.Add(Plugin.ServerModExportsDirectory);
 
             if (directories.Count == 0)
             {
@@ -144,14 +147,14 @@ namespace MapLootEditorLite.Client
                 case ZoneShape.Box:
                     {
                         var col = go.AddComponent<BoxCollider>();
-                        col.size = new Vector3(scale.x, scale.y, scale.z);
+                        col.size = new Vector3(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
                         col.isTrigger = false;
                         break;
                     }
                 case ZoneShape.Sphere:
                     {
                         var col = go.AddComponent<SphereCollider>();
-                        col.radius = scale.x * 0.5f;
+                        col.radius = Mathf.Abs(scale.x) * 0.5f;
                         col.isTrigger = false;
                         break;
                     }
@@ -159,9 +162,10 @@ namespace MapLootEditorLite.Client
                 case ZoneShape.Capsule:
                     {
                         // Cylinder has no built-in primitive collider; use a capsule as the closest approximation.
+                        // Unity capsule/cylinder primitives are 2 units tall and 1 unit in diameter at scale 1.
                         var col = go.AddComponent<CapsuleCollider>();
-                        col.height = scale.y;
-                        col.radius = scale.x * 0.5f;
+                        col.height = 2f * Mathf.Abs(scale.y);
+                        col.radius = Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.z)) * 0.5f;
                         col.direction = 1; // Y-axis
                         col.isTrigger = false;
                         break;
@@ -169,11 +173,45 @@ namespace MapLootEditorLite.Client
                 default:
                     {
                         var col = go.AddComponent<BoxCollider>();
-                        col.size = new Vector3(scale.x, scale.y, scale.z);
+                        col.size = new Vector3(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
                         col.isTrigger = false;
                         break;
                     }
             }
+        }
+
+        public void SpawnPreviewBlockers(List<Blocker> blockers)
+        {
+            ClearPreviewBlockers();
+            if (blockers == null || blockers.Count == 0)
+                return;
+
+            Plugin.Log.LogInfo($"Spawning {blockers.Count} preview blockers.");
+            foreach (var blocker in blockers)
+            {
+                try
+                {
+                    var go = new GameObject($"PreviewBlocker_{blocker.name}");
+                    go.transform.SetParent(transform, false);
+                    go.transform.position = blocker.position.ToVector3();
+                    go.transform.rotation = blocker.rotation.ToQuaternion();
+                    go.transform.localScale = Vector3.one;
+
+                    AddCollider(go, blocker);
+                    _previewBlockers.Add(go);
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogError($"Failed to create preview blocker '{blocker.name}': {ex.Message}");
+                }
+            }
+        }
+
+        public void ClearPreviewBlockers()
+        {
+            foreach (var go in _previewBlockers.Where(x => x != null))
+                UnityEngine.Object.Destroy(go);
+            _previewBlockers.Clear();
         }
 
         private void ClearSpawned()

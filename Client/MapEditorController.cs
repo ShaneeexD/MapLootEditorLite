@@ -31,6 +31,7 @@ namespace MapLootEditorLite.Client
 
         private bool _editorOpen;
         private bool _previewMode;
+        private int _lastPreviewBlockerHash;
         private KeyCode _toggleKey => Plugin.ToggleKey;
         private GameWorld _currentGameWorld;
         private string _currentMapId;
@@ -416,6 +417,8 @@ namespace MapLootEditorLite.Client
 
             if (_editorOpen && _manager.Selected != null)
                 UpdatePreviewsForSelection();
+
+            UpdatePreviewBlockers();
         }
 
         private void OnGUI()
@@ -434,6 +437,7 @@ namespace MapLootEditorLite.Client
             Instance = null;
             _previews?.ClearAll(true);
             _renderer?.Clear();
+            RuntimeBlockerSpawner.Instance?.ClearPreviewBlockers();
         }
 
         private void OnCameraPreRender(Camera cam)
@@ -771,6 +775,32 @@ namespace MapLootEditorLite.Client
             _ui?.RequestRefresh();
         }
 
+        public void GoToSceneObject(GameObject go)
+        {
+            if (go == null) return;
+            var target = go.transform.position + Vector3.up * 1.5f;
+            if (_freeCam && _freeCamCamera != null)
+            {
+                _freeCamCamera.transform.position = target;
+                Plugin.Log.LogInfo($"Moved free cam to {go.name}");
+            }
+            else
+            {
+                var player = GetLocalPlayer();
+                if (player != null)
+                {
+                    player.Transform.position = target;
+                    Plugin.Log.LogInfo($"Teleported player to {go.name}");
+                }
+                else
+                {
+                    var camera = Camera.main;
+                    if (camera != null)
+                        camera.transform.position = target;
+                }
+            }
+        }
+
         public void CreateStaticObjectAtLook()
         {
             if (!EnsureMapLoaded()) return;
@@ -966,6 +996,11 @@ namespace MapLootEditorLite.Client
             _previewMode = !_previewMode;
             if (_previewRoot != null)
                 _previewRoot.SetActive(_editorOpen || _previewMode);
+            if (!_previewMode)
+            {
+                _lastPreviewBlockerHash = 0;
+                RuntimeBlockerSpawner.Instance?.ClearPreviewBlockers();
+            }
             Plugin.Log.LogInfo($"Preview mode: {(_previewMode ? "ON" : "OFF")}");
         }
 
@@ -1640,6 +1675,49 @@ namespace MapLootEditorLite.Client
 
             UpdatePreviewsForSelection();
             _manager.IsDirty = true;
+        }
+
+        private void UpdatePreviewBlockers()
+        {
+            if (!_previewMode)
+            {
+                _lastPreviewBlockerHash = 0;
+                return;
+            }
+            if (Input.GetMouseButton(0) || Input.GetMouseButton(1))
+                return;
+
+            var blockers = _manager.Data?.blockers;
+            var hash = ComputeBlockerHash(blockers);
+            if (hash != _lastPreviewBlockerHash)
+            {
+                _lastPreviewBlockerHash = hash;
+                RuntimeBlockerSpawner.Instance?.SpawnPreviewBlockers(blockers);
+            }
+        }
+
+        private int ComputeBlockerHash(List<Blocker> blockers)
+        {
+            if (blockers == null)
+                return 0;
+            int hash = 17;
+            hash = hash * 31 + blockers.Count;
+            foreach (var b in blockers)
+            {
+                if (b == null)
+                    continue;
+                hash = hash * 31 + (b.position?.x.GetHashCode() ?? 0);
+                hash = hash * 31 + (b.position?.y.GetHashCode() ?? 0);
+                hash = hash * 31 + (b.position?.z.GetHashCode() ?? 0);
+                hash = hash * 31 + (b.rotation?.x.GetHashCode() ?? 0);
+                hash = hash * 31 + (b.rotation?.y.GetHashCode() ?? 0);
+                hash = hash * 31 + (b.rotation?.z.GetHashCode() ?? 0);
+                hash = hash * 31 + (b.scale?.x.GetHashCode() ?? 0);
+                hash = hash * 31 + (b.scale?.y.GetHashCode() ?? 0);
+                hash = hash * 31 + (b.scale?.z.GetHashCode() ?? 0);
+                hash = hash * 31 + b.shape.GetHashCode();
+            }
+            return hash;
         }
 
         private void UpdatePreviewsForSelection()
