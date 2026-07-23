@@ -362,6 +362,7 @@ namespace MapLootEditorLite.Client
             defaults["Vanilla"] = "Vanilla";
             defaults["Vanilla reference (read-only)"] = "Vanilla reference (read-only)";
             defaults["Vanilla Render Distance"] = "Vanilla Render Distance";
+            defaults["Object Render Distance"] = "Object Render Distance";
             defaults["visit"] = "visit";
             defaults["Volume Name"] = "Volume Name";
             defaults["Weapon Template"] = "Weapon Template";

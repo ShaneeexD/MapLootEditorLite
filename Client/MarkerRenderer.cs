@@ -82,6 +82,7 @@ namespace MapLootEditorLite.Client
             }
         }
         public float VanillaRenderDistance { get; set; } = 150f;
+        public float ObjectRenderDistance { get; set; } = 150f;
         public GizmoAxis HoveredAxis { get; private set; }
         public GizmoAxis ActiveAxis { get; set; }
 
@@ -543,7 +544,7 @@ namespace MapLootEditorLite.Client
                 if (!entry.selected && !ShowSceneObjectOutlines)
                     continue;
 
-                if (VanillaRenderDistance > 0f && Vector3.Distance(cameraPos, entry.bounds.center) > VanillaRenderDistance)
+                if (ObjectRenderDistance > 0f && Vector3.Distance(cameraPos, entry.bounds.center) > ObjectRenderDistance)
                     continue;
 
                 var bmin = entry.bounds.min;
@@ -619,7 +620,7 @@ namespace MapLootEditorLite.Client
                 if (!entry.selected && !ShowSceneObjectOutlines)
                     continue;
 
-                if (VanillaRenderDistance > 0f && Vector3.Distance(cameraPos, entry.bounds.center) > VanillaRenderDistance)
+                if (ObjectRenderDistance > 0f && Vector3.Distance(cameraPos, entry.bounds.center) > ObjectRenderDistance)
                     continue;
 
                 wanted.Add(entry.go);

@@ -96,7 +96,8 @@ namespace MapLootEditorLite.Client
 
             _renderer = new MarkerRenderer(_manager, _visualRoot)
             {
-                VanillaRenderDistance = Plugin.VanillaRenderDistance?.Value ?? 150f
+                VanillaRenderDistance = Plugin.VanillaRenderDistance?.Value ?? 150f,
+                ObjectRenderDistance = Plugin.ObjectRenderDistance?.Value ?? 150f
             };
             _previews = new LootPreviewSpawner(_previewRoot, this);
             _ui = gameObject.AddComponent<CustomEditorUI>();

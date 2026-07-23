@@ -157,6 +157,7 @@ namespace MapLootEditorLite.Client
         private Text _deleteConfirmText;
         private InputField _exportPackInput;
         private InputField _renderDistanceInput;
+        private InputField _objectRenderDistanceInput;
         private InputField _searchInput;
         private InputField _groupInput;
         private InputField _prefabNameInput;
@@ -1281,7 +1282,8 @@ namespace MapLootEditorLite.Client
                     if (_goListTarget is MarkerBase markerBase)
                     {
                         markerBase.rotation = TransformData.FromVector3(_selectedSceneGO.transform.rotation.eulerAngles);
-                        previews?.SpawnSourcePreview(markerBase, _selectedSceneGO);
+                        previews?.RegisterStaticSource(markerBase.id, _selectedSceneGO);
+                        previews?.SpawnPreviewForMarker(markerBase);
                     }
                     manager.IsDirty = true;
                     _goListTarget = null;
@@ -1665,12 +1667,16 @@ namespace MapLootEditorLite.Client
             _renderDistanceDialogPanel.anchorMin = new Vector2(0.5f, 0.5f);
             _renderDistanceDialogPanel.anchorMax = new Vector2(0.5f, 0.5f);
             _renderDistanceDialogPanel.pivot = new Vector2(0.5f, 0.5f);
-            _renderDistanceDialogPanel.sizeDelta = new Vector2(340, 140);
+            _renderDistanceDialogPanel.sizeDelta = new Vector2(340, 220);
             UIBuilder.AddVerticalLayout(_renderDistanceDialogPanel, 12, 8, true, true);
 
             UIBuilder.CreateText(_renderDistanceDialogPanel, "Vanilla Render Distance", 13, Color.white, FontStyle.Bold);
             UIBuilder.CreateText(_renderDistanceDialogPanel, "Max distance to render vanilla gizmos (0 = unlimited):", 11, new Color(0.7f, 0.7f, 0.7f, 1f));
             _renderDistanceInput = UIBuilder.CreateInputField(_renderDistanceDialogPanel, "meters", (Plugin.VanillaRenderDistance?.Value ?? 50f).ToString("F0", CultureInfo.InvariantCulture), null, 240, 22);
+
+            UIBuilder.CreateText(_renderDistanceDialogPanel, "Object Render Distance", 13, Color.white, FontStyle.Bold);
+            UIBuilder.CreateText(_renderDistanceDialogPanel, "Max distance to render scene object picker outlines (0 = unlimited):", 11, new Color(0.7f, 0.7f, 0.7f, 1f));
+            _objectRenderDistanceInput = UIBuilder.CreateInputField(_renderDistanceDialogPanel, "meters", (Plugin.ObjectRenderDistance?.Value ?? 50f).ToString("F0", CultureInfo.InvariantCulture), null, 240, 22);
 
             var row = UIBuilder.CreatePanel("RenderDistanceDialogRow", _renderDistanceDialogPanel, new Color(0, 0, 0, 0));
             UIBuilder.AddHorizontalLayout(row, 8, 8, false, false);
@@ -1685,14 +1691,15 @@ namespace MapLootEditorLite.Client
         private void ShowRenderDistanceDialog()
         {
             CloseAllMenus();
-            if (_renderDistanceDialogPanel == null || _renderDistanceInput == null) return;
+            if (_renderDistanceDialogPanel == null || _renderDistanceInput == null || _objectRenderDistanceInput == null) return;
             _renderDistanceInput.text = (Plugin.VanillaRenderDistance?.Value ?? 50f).ToString("F0", CultureInfo.InvariantCulture);
+            _objectRenderDistanceInput.text = (Plugin.ObjectRenderDistance?.Value ?? 50f).ToString("F0", CultureInfo.InvariantCulture);
             _renderDistanceDialogPanel.gameObject.SetActive(true);
         }
 
         private void ConfirmRenderDistance()
         {
-            if (_renderDistanceDialogPanel == null || _renderDistanceInput == null) return;
+            if (_renderDistanceDialogPanel == null || _renderDistanceInput == null || _objectRenderDistanceInput == null) return;
             if (float.TryParse(_renderDistanceInput.text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value))
             {
                 value = Mathf.Clamp(value, 0f, 500f);
@@ -1701,6 +1708,17 @@ namespace MapLootEditorLite.Client
                 if (renderer != null)
                 {
                     renderer.VanillaRenderDistance = value;
+                    renderer.Rebuild();
+                }
+            }
+            if (float.TryParse(_objectRenderDistanceInput.text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var objectValue))
+            {
+                objectValue = Mathf.Clamp(objectValue, 0f, 500f);
+                if (Plugin.ObjectRenderDistance != null)
+                    Plugin.ObjectRenderDistance.Value = objectValue;
+                if (renderer != null)
+                {
+                    renderer.ObjectRenderDistance = objectValue;
                     renderer.Rebuild();
                 }
             }
