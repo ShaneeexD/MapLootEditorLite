@@ -234,6 +234,9 @@ namespace MapLootEditorLite.Client
             if (Data.cutVolumes != null)
                 foreach (var m in Data.cutVolumes)
                     yield return m;
+            if (Data.blockers != null)
+                foreach (var m in Data.blockers)
+                    yield return m;
         }
 
         public MarkerBase FindById(string id)
@@ -359,6 +362,10 @@ namespace MapLootEditorLite.Client
                     Data.cutVolumes ??= new List<CutVolume>();
                     Data.cutVolumes.Add(cv);
                     break;
+                case Blocker b:
+                    Data.blockers ??= new List<Blocker>();
+                    Data.blockers.Add(b);
+                    break;
             }
             IsDirty = true;
         }
@@ -424,6 +431,7 @@ namespace MapLootEditorLite.Client
                 case TriggerZone tz: Data.triggerZones.Remove(tz); break;
                 case OcclusionRepairVolume orv: Data.occlusionRepairVolumes.Remove(orv); break;
                 case CutVolume cv: Data.cutVolumes.Remove(cv); break;
+                case Blocker b: Data.blockers.Remove(b); break;
                 }
             }
             ClearSelection();
@@ -498,6 +506,10 @@ namespace MapLootEditorLite.Client
                     case CutVolume cv:
                         copy = JsonConvert.DeserializeObject<CutVolume>(json);
                         Data.cutVolumes.Add((CutVolume)copy);
+                        break;
+                    case Blocker b:
+                        copy = JsonConvert.DeserializeObject<Blocker>(json);
+                        Data.blockers.Add((Blocker)copy);
                         break;
                     default:
                         continue;
@@ -778,6 +790,22 @@ namespace MapLootEditorLite.Client
             return marker;
         }
 
+        public Blocker CreateBlocker(Vector3 position)
+        {
+            Data.blockers ??= new List<Blocker>();
+            var marker = new Blocker
+            {
+                name = "blocker",
+                position = TransformData.FromVector3(position),
+                rotation = TransformData.FromVector3(Vector3.zero),
+                scale = new TransformData { x = 1f, y = 1f, z = 1f },
+                shape = ZoneShape.Box
+            };
+            Data.blockers.Add(marker);
+            IsDirty = true;
+            return marker;
+        }
+
         public void DeleteSelected()
         {
             if (Selected == null || Data == null || IsVanilla(Selected))
@@ -799,6 +827,7 @@ namespace MapLootEditorLite.Client
                 case TriggerZone tz: Data.triggerZones.Remove(tz); break;
                 case OcclusionRepairVolume orv: Data.occlusionRepairVolumes.Remove(orv); break;
                 case CutVolume cv: Data.cutVolumes.Remove(cv); break;
+                case Blocker b: Data.blockers.Remove(b); break;
             }
 
             Selected = null;
@@ -862,6 +891,10 @@ namespace MapLootEditorLite.Client
                 case CutVolume cv:
                     copy = JsonConvert.DeserializeObject<CutVolume>(json);
                     Data.cutVolumes.Add((CutVolume)copy);
+                    break;
+                case Blocker b:
+                    copy = JsonConvert.DeserializeObject<Blocker>(json);
+                    Data.blockers.Add((Blocker)copy);
                     break;
                 default:
                     return null;

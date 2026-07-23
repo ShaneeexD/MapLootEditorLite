@@ -41,6 +41,8 @@ namespace MapLootEditorLite.Client
         private readonly Color _occlusionRepairWireColor = new Color(0.2f, 1f, 1f, 1.0f);
         private readonly Color _cutVolumeColor = new Color(1f, 0.2f, 0.2f, 0.15f);
         private readonly Color _cutVolumeWireColor = new Color(1f, 0.2f, 0.2f, 1.0f);
+        private readonly Color _blockerColor = new Color(0.8f, 0.2f, 0.8f, 0.25f);
+        private readonly Color _blockerWireColor = new Color(0.8f, 0.2f, 0.8f, 1.0f);
         private readonly Color _selectedColor = new Color(0.2f, 0.6f, 1f, 0.25f);
         private readonly Color _selectedWireColor = new Color(0.2f, 0.6f, 1f, 1.0f);
         private readonly Color _vanillaColor = new Color(0.8f, 0.8f, 0.8f, 0.35f);
@@ -213,6 +215,15 @@ namespace MapLootEditorLite.Client
                     }
                 }
 
+                if (marker is Blocker currentBlocker && _visuals.TryGetValue(marker.id, out GameObject existingBlockerVisual))
+                {
+                    if (_zoneShapeCache.TryGetValue(marker.id, out ZoneShape cachedBlockerShape) && cachedBlockerShape != currentBlocker.shape)
+                    {
+                        UnityEngine.Object.Destroy(existingBlockerVisual);
+                        _visuals.Remove(marker.id);
+                    }
+                }
+
                 if (!_visuals.TryGetValue(marker.id, out GameObject visual))
                 {
                     visual = CreateVisual(marker);
@@ -284,6 +295,11 @@ namespace MapLootEditorLite.Client
                     {
                         ApplyZoneScale(visual, cv);
                         _zoneShapeCache[marker.id] = cv.shape;
+                    }
+                    else if (marker is Blocker b)
+                    {
+                        ApplyZoneScale(visual, b);
+                        _zoneShapeCache[marker.id] = b.shape;
                     }
 
                     bool isSelected = _manager.IsSelected(marker);
@@ -415,6 +431,9 @@ namespace MapLootEditorLite.Client
                     break;
                 case CutVolume cv:
                     visual = CreateCutVolumeVisual(cv);
+                    break;
+                case Blocker b:
+                    visual = CreateBlockerVisual(b);
                     break;
                 default:
                     return null;
@@ -630,6 +649,11 @@ namespace MapLootEditorLite.Client
         private GameObject CreateCutVolumeVisual(CutVolume cv)
         {
             return CreateZoneVisualWithColor(cv.shape, _cutVolumeWireColor);
+        }
+
+        private GameObject CreateBlockerVisual(Blocker blocker)
+        {
+            return CreateZoneVisualWithColor(blocker.shape, _blockerWireColor);
         }
 
         private GameObject CreateZoneVisualWithColor(ZoneShape shape, Color wireColor)
@@ -1005,6 +1029,26 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        private void ApplyZoneScale(GameObject visual, Blocker blocker)
+        {
+            var scale = blocker.scale ?? new TransformData { x = 1f, y = 1f, z = 1f };
+            switch (blocker.shape)
+            {
+                case ZoneShape.Box:
+                    visual.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
+                    break;
+                case ZoneShape.Cylinder:
+                    visual.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
+                    break;
+                case ZoneShape.Capsule:
+                    visual.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
+                    break;
+                default:
+                    visual.transform.localScale = Vector3.one * scale.x;
+                    break;
+            }
+        }
+
         private void ApplyColor(GameObject visual, MarkerBase marker, bool selected)
         {
             var renderer = visual.GetComponent<Renderer>();
@@ -1080,6 +1124,10 @@ namespace MapLootEditorLite.Client
             {
                 color = _cutVolumeColor;
             }
+            else if (marker is Blocker)
+            {
+                color = _blockerColor;
+            }
             else
             {
                 color = _objectColor;
@@ -1122,6 +1170,8 @@ namespace MapLootEditorLite.Client
                         wireColor = _occlusionRepairWireColor;
                     else if (marker is CutVolume)
                         wireColor = _cutVolumeWireColor;
+                    else if (marker is Blocker)
+                        wireColor = _blockerWireColor;
                     else
                         wireColor = _zoneWireColor;
 

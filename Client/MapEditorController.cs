@@ -873,6 +873,15 @@ namespace MapLootEditorLite.Client
             _renderer.Rebuild();
         }
 
+        public void CreateBlocker()
+        {
+            if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
+            var marker = _manager.CreateBlocker(GetLookPosition());
+            _manager.Selected = marker;
+            _renderer.Rebuild();
+        }
+
         public bool IsFreeCam => _freeCam;
         public bool IsFreeCamCursorLocked => _freeCamCursorLocked;
 
@@ -2003,6 +2012,7 @@ namespace MapLootEditorLite.Client
                 case "LightZone": return entry.data.ToObject<LightZone>();
                 case "TriggerZone": return entry.data.ToObject<TriggerZone>();
                 case "OcclusionRepairVolume": return entry.data.ToObject<OcclusionRepairVolume>();
+                case "Blocker": return entry.data.ToObject<Blocker>();
                 default: return null;
             }
         }

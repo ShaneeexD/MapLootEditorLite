@@ -592,6 +592,10 @@ namespace MapLootEditorLite.Client
                     new MenuItem("Custom Door", () => controller.CreateInteractiveObject(InteractiveObjectType.Door)),
                     new MenuItem("Custom Container", () => controller.CreateInteractiveObject(InteractiveObjectType.Container)),
                     new MenuItem("Custom Stationary Weapon", () => controller.CreateInteractiveObject(InteractiveObjectType.StationaryWeapon))
+                }),
+                new MenuItem("Other", subItems: new List<MenuItem>
+                {
+                    new MenuItem("Blocker", () => controller.CreateBlocker())
                 })
             }, 84, 22);
             UIBuilder.CreateButton(row1, "Snap",         () => controller.SnapSelected(),     46, 22);
@@ -2020,6 +2024,9 @@ namespace MapLootEditorLite.Client
                 case CutVolume cv:
                     BuildCutVolume(cv);
                     break;
+                case Blocker blocker:
+                    BuildBlocker(blocker);
+                    break;
             }
 
             var previewRow = UIBuilder.CreatePanel("PreviewRow", _inspectorContent, new Color(0, 0, 0, 0));
@@ -2779,6 +2786,29 @@ namespace MapLootEditorLite.Client
 
             BuildVector3Field(_inspectorContent, "Scale", cv.scale.ToVector3(), (v) => { cv.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
             BuildToggleField(_inspectorContent, "Invert (keep inside)", cv.invert, (v) => { cv.invert = v; manager.IsDirty = true; });
+        }
+
+        private void BuildBlocker(Blocker blocker)
+        {
+            if (blocker.scale == null)
+                blocker.scale = new TransformData { x = 1f, y = 1f, z = 1f };
+
+            BuildStringField(_inspectorContent, "Blocker Name", blocker.name ?? "", (v) => { blocker.name = v; manager.IsDirty = true; });
+
+            var shapeRow = UIBuilder.CreatePanel("ShapeRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(shapeRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(shapeRow, null, 20, null, 20, null, 0);
+            UIBuilder.CreateLabel(shapeRow, "Shape", 11, 44, 20);
+            var shapes = new[] { "Sphere", "Box", "Cylinder", "Capsule" };
+            for (int i = 0; i < shapes.Length; i++)
+            {
+                int idx = i;
+                var btn = UIBuilder.CreateButton(shapeRow, shapes[idx], () => { blocker.shape = (ZoneShape)idx; manager.IsDirty = true; RefreshInspector(); }, 52, 20, 10);
+                if ((int)blocker.shape == idx)
+                    btn.GetComponent<Image>().color = new Color(0.25f, 0.45f, 0.75f, 1f);
+            }
+
+            BuildVector3Field(_inspectorContent, "Scale", blocker.scale.ToVector3(), (v) => { blocker.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
         }
 
         public static readonly (string id, string name)[] LootContainerTemplates = new (string, string)[]

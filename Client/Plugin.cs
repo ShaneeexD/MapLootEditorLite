@@ -91,6 +91,8 @@ namespace MapLootEditorLite.Client
             Log.LogInfo("Runtime occlusion repair spawner attached");
             gameObject.AddComponent<RuntimeCutVolumeSpawner>();
             Log.LogInfo("Runtime cut volume spawner attached");
+            gameObject.AddComponent<RuntimeBlockerSpawner>();
+            Log.LogInfo("Runtime blocker spawner attached");
 
             var raidResetHarmony = new Harmony("com.shane.mapeditorlite.raidreset");
             raidResetHarmony.PatchAll();
