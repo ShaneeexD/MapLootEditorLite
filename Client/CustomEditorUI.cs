@@ -1281,8 +1281,7 @@ namespace MapLootEditorLite.Client
                     if (_goListTarget is MarkerBase markerBase)
                     {
                         markerBase.rotation = TransformData.FromVector3(_selectedSceneGO.transform.rotation.eulerAngles);
-                        previews?.RegisterStaticSource(markerBase.id, _selectedSceneGO);
-                        previews?.SpawnPreviewForMarker(markerBase);
+                        previews?.SpawnSourcePreview(markerBase, _selectedSceneGO);
                     }
                     manager.IsDirty = true;
                     _goListTarget = null;

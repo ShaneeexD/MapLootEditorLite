@@ -823,6 +823,39 @@ namespace MapLootEditorLite.Client
             if (source == null) return;
             var key = GetStaticSourceKey(source.name, source.transform.position);
             _staticSources[key] = source;
+            CacheSourceInstance(key, source);
+        }
+
+        public void SpawnSourcePreview(MarkerBase marker, GameObject source)
+        {
+            if (marker == null || source == null)
+                return;
+
+            ClearByMarkerId(marker.id);
+
+            var instance = UnityEngine.Object.Instantiate(source);
+            instance.name = $"SourcePreview_{marker.name}";
+            instance.SetActive(true);
+            instance.transform.SetParent(_root.transform, false);
+            instance.transform.position = marker.position.ToVector3();
+            instance.transform.rotation = marker.rotation.ToQuaternion();
+            var scale = Vector3.one;
+            if (marker is StaticObject so) scale = so.scale.ToVector3();
+            else if (marker is WTTStaticObject wtt) scale = wtt.scale.ToVector3();
+            else if (marker is InteractiveObject io) scale = io.scale.ToVector3();
+            else if (marker is CutVolume cv) scale = cv.scale.ToVector3();
+            instance.transform.localScale = scale;
+
+            var meta = instance.AddComponent<PreviewStaticObjectMarker>();
+            meta.sourceMarkerId = marker.id;
+            meta.prefabPath = (marker as IHasSourceObject)?.sourceObjectName ?? "";
+            meta.isFallback = true;
+
+            _staticPreviews.Add(instance);
+
+            var key = GetStaticSourceKey(source.name, source.transform.position);
+            _staticSources[key] = source;
+            CacheSourceInstance(key, source);
         }
 
         public void SpawnStaticPreview(StaticObject marker)
