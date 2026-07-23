@@ -479,6 +479,24 @@ namespace MapLootEditorLite.Client
                 _canvasScaler.scaleFactor = scale;
         }
 
+        private void SetLanguage(string code)
+        {
+            if (string.Equals(code, Locale.Current, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            Plugin.Language.Value = code;
+            Locale.Initialize(code, Plugin.LocalizationDirectory);
+            CloseAllMenus();
+            var wasVisible = _isVisible;
+            if (_canvas != null)
+                Destroy(_canvas.gameObject);
+            BuildUI();
+            if (wasVisible)
+                Show();
+            else
+                Hide();
+        }
+
         private void BuildUI()
         {
             _canvas = UIBuilder.CreateCanvas("MLE_Canvas", transform, 1000);
@@ -548,7 +566,10 @@ namespace MapLootEditorLite.Client
             {
                 new MenuItem("Export", () => DirectExport()),
                 new MenuItem("Export As", () => ShowExportDialog()),
-                new MenuItem("Import Vanilla Loot", () => controller.ImportVanillaLoot())
+                new MenuItem("Import Vanilla Loot", () => controller.ImportVanillaLoot()),
+                new MenuItem("Language", subItems: Locale.GetAvailableLanguages(Plugin.LocalizationDirectory)
+                    .Select(lang => new MenuItem(lang.name, () => SetLanguage(lang.code)))
+                    .ToList())
             }, 40, 22);
             BuildMenuButton(row1, "View", new List<MenuItem>
             {

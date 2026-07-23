@@ -20,11 +20,13 @@ namespace MapLootEditorLite.Client
         public static string ServerModDirectory { get; private set; } = string.Empty;
         public static string ServerModPacksDirectory { get; private set; } = string.Empty;
         public static string ServerModExportsDirectory { get; private set; } = string.Empty;
+        public static string LocalizationDirectory { get; private set; } = string.Empty;
         public static ConfigEntry<bool> EnableEditor;
         public static ConfigEntry<bool> EnableDebugVisuals;
         public static ConfigEntry<float> UIScale;
         public static ConfigEntry<float> VanillaRenderDistance;
         public static ConfigEntry<int> UnlockCursorMouseButton;
+        public static ConfigEntry<string> Language;
         public static MapEditorController Controller { get; private set; }
 
         private void Awake()
@@ -41,6 +43,7 @@ namespace MapLootEditorLite.Client
             ModDataDirectory = ServerModDirectory;
             ServerModPacksDirectory = Path.Combine(ServerModDirectory, "packs");
             ServerModExportsDirectory = Path.Combine(ServerModDirectory, "exports");
+            LocalizationDirectory = Path.Combine(ServerModDirectory, "lang");
 
             Log.LogInfo($"Detected game root: {GameRoot}");
             Log.LogInfo($"Server mod directory: {ServerModDirectory}");
@@ -66,6 +69,8 @@ namespace MapLootEditorLite.Client
             UIScale = base.Config.Bind("General", "UIScale", 1.0f, new ConfigDescription("Scale of the editor UI window", new AcceptableValueRange<float>(0.5f, 2.0f)));
             VanillaRenderDistance = base.Config.Bind("General", "VanillaRenderDistance", 50f, new ConfigDescription("Maximum distance to render vanilla gizmos (0 = unlimited)", new AcceptableValueRange<float>(0f, 500f)));
             UnlockCursorMouseButton = base.Config.Bind("General", "UnlockCursorMouseButton", 2, new ConfigDescription("Mouse button that unlocks the editor cursor (2 = middle, 3 = button 4, 4 = button 5)", new AcceptableValueRange<int>(2, 4)));
+            Language = base.Config.Bind("General", "Language", "en", "Language code for UI localization (e.g. en, fr, cn). Place .json files in the lang folder.");
+            Locale.Initialize(Language.Value, LocalizationDirectory);
 
             if (EnableEditor.Value)
             {

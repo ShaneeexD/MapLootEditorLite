@@ -75,7 +75,7 @@ namespace MapLootEditorLite.Client
             go.transform.SetParent(parent, false);
             var t = go.AddComponent<Text>();
             t.font = GetFont();
-            t.text = text;
+            t.text = Locale.Get(text);
             t.fontSize = fontSize;
             t.color = color ?? new Color(0.82f, 0.82f, 0.82f, 1f);
             t.fontStyle = style;
@@ -145,7 +145,7 @@ namespace MapLootEditorLite.Client
             placeholderGo.transform.SetParent(go.transform, false);
             var placeholderText = placeholderGo.AddComponent<Text>();
             placeholderText.font = GetFont();
-            placeholderText.text = placeholder;
+            placeholderText.text = Locale.Get(placeholder);
             placeholderText.fontSize = 12;
             placeholderText.color = new Color(0.45f, 0.45f, 0.45f, 1f);
             placeholderText.alignment = TextAnchor.MiddleLeft;
