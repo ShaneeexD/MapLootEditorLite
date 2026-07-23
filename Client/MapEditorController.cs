@@ -1563,6 +1563,10 @@ namespace MapLootEditorLite.Client
                                 mtz.scale = TransformData.FromVector3(startScale + centerScaleDelta);
                             else if (m is OcclusionRepairVolume morv)
                                 morv.scale = TransformData.FromVector3(startScale + centerScaleDelta);
+                            else if (m is PmcSpawnZone mpsz)
+                                mpsz.scale = TransformData.FromVector3(startScale + centerScaleDelta);
+                            else if (m is Blocker mbl)
+                                mbl.scale = TransformData.FromVector3(startScale + centerScaleDelta);
                         }
                         _renderer.Rebuild();
                     }
@@ -1620,6 +1624,16 @@ namespace MapLootEditorLite.Client
                             orv.scale = TransformData.FromVector3(newScale);
                             _renderer.Rebuild();
                         }
+                        else if (_manager.Selected is PmcSpawnZone psz)
+                        {
+                            psz.scale = TransformData.FromVector3(newScale);
+                            _renderer.Rebuild();
+                        }
+                        else if (_manager.Selected is Blocker bl)
+                        {
+                            bl.scale = TransformData.FromVector3(newScale);
+                            _renderer.Rebuild();
+                        }
                     }
                     break;
             }
@@ -1672,6 +1686,10 @@ namespace MapLootEditorLite.Client
                 _gizmoDragStartMarkerScale = tz.scale?.ToVector3() ?? Vector3.one;
             else if (_manager.Selected is OcclusionRepairVolume orv)
                 _gizmoDragStartMarkerScale = orv.scale?.ToVector3() ?? Vector3.one;
+            else if (_manager.Selected is PmcSpawnZone psz)
+                _gizmoDragStartMarkerScale = psz.scale?.ToVector3() ?? Vector3.one;
+            else if (_manager.Selected is Blocker bl)
+                _gizmoDragStartMarkerScale = bl.scale?.ToVector3() ?? Vector3.one;
 
             _gizmoDragStartCenter = _manager.SelectedIds.Count > 1 ? _manager.SelectionCenter : _gizmoDragStartMarkerPos;
             _gizmoDragStartCenterRot = _manager.SelectedIds.Count > 1 ? Quaternion.identity : _manager.Selected.rotation.ToQuaternion();
@@ -1704,6 +1722,10 @@ namespace MapLootEditorLite.Client
                     _gizmoDragStartScales[id] = mtz.scale?.ToVector3() ?? Vector3.one;
                 else if (m is OcclusionRepairVolume morv)
                     _gizmoDragStartScales[id] = morv.scale?.ToVector3() ?? Vector3.one;
+                else if (m is PmcSpawnZone mpsz)
+                    _gizmoDragStartScales[id] = mpsz.scale?.ToVector3() ?? Vector3.one;
+                else if (m is Blocker mbl)
+                    _gizmoDragStartScales[id] = mbl.scale?.ToVector3() ?? Vector3.one;
                 else
                     _gizmoDragStartScales[id] = Vector3.one;
             }
