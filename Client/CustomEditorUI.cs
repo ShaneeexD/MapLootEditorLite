@@ -187,6 +187,12 @@ namespace MapLootEditorLite.Client
         private RectTransform _pickFiltersDialogPanel;
         private RectTransform _pickFiltersContent;
         private InputField _pickFiltersInput;
+
+        private RectTransform _addComponentDialogPanel;
+        private RectTransform _addComponentListPanel;
+        private GameObject _addComponentTarget;
+        private List<string> _addComponentTargetList;
+        private string _addComponentSearch = "";
         private Toggle _pickFiltersEnabledToggle;
         private bool _isPickingScatter;
         private string _prefabName = "MyPrefab";
@@ -1527,14 +1533,23 @@ namespace MapLootEditorLite.Client
                 var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(s);
                 if (!scene.isLoaded) continue;
                 foreach (var root in scene.GetRootGameObjects())
+                {
+                    if (root == null)
+                        continue;
                     stack.Push(root.transform);
+                }
             }
 
             int processed = 0;
             while (stack.Count > 0)
             {
                 var t = stack.Pop();
+                if (t == null)
+                    continue;
+
                 var go = t.gameObject;
+                if (go == null)
+                    continue;
 
                 // Skip inactive objects — they're not visible and we skip their entire subtree
                 if (!go.activeSelf)
@@ -1556,7 +1571,11 @@ namespace MapLootEditorLite.Client
                     else
                     {
                         for (int i = 0; i < t.childCount; i++)
-                            stack.Push(t.GetChild(i));
+                        {
+                            var child = t.GetChild(i);
+                            if (child != null)
+                                stack.Push(child);
+                        }
 
                         // Include any object that has an actual mesh (MeshFilter or SkinnedMeshRenderer), regardless of enabled state
                         if (HasMesh(go) && seen.Add(go.GetInstanceID()))
@@ -1587,12 +1606,20 @@ namespace MapLootEditorLite.Client
 
         private bool HasMeshInChildren(GameObject go)
         {
+            if (go == null)
+                return false;
             foreach (var mf in go.GetComponentsInChildren<MeshFilter>(true))
-                if (mf.sharedMesh != null)
-                    return true;
+            {
+                if (mf == null || mf.sharedMesh == null)
+                    continue;
+                return true;
+            }
             foreach (var smr in go.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-                if (smr.sharedMesh != null)
-                    return true;
+            {
+                if (smr == null || smr.sharedMesh == null)
+                    continue;
+                return true;
+            }
             return false;
         }
 
@@ -1961,16 +1988,21 @@ namespace MapLootEditorLite.Client
             if (source == null)
                 return;
 
+            var overrides = GetChildInteractables(marker);
             foreach (Transform child in source.transform)
             {
                 if (child == null)
                     continue;
-                AppendChildEntries(marker, child, child.name, 1, entries);
+                AppendChildEntries(marker, child, child.name, 1, overrides, entries);
             }
         }
 
-        private void AppendChildEntries(MarkerBase marker, Transform child, string childPath, int depth, List<HierarchyEntry> entries)
+        private void AppendChildEntries(MarkerBase marker, Transform child, string childPath, int depth, List<ChildInteractableData> overrides, List<HierarchyEntry> entries)
         {
+            bool deleted = overrides != null && overrides.Any(x => x.childPath == childPath && x.deleted);
+            if (deleted)
+                return;
+
             bool canExpand = child.childCount > 0;
             bool expanded = _expandedChildNodes.Contains(marker.id + ":" + childPath);
             bool isDoor = child.GetComponent<WorldInteractiveObject>() != null;
@@ -1983,7 +2015,7 @@ namespace MapLootEditorLite.Client
                 {
                     if (sub == null)
                         continue;
-                    AppendChildEntries(marker, sub, childPath + "/" + sub.name, depth + 1, entries);
+                    AppendChildEntries(marker, sub, childPath + "/" + sub.name, depth + 1, overrides, entries);
                 }
             }
         }
@@ -2038,6 +2070,8 @@ namespace MapLootEditorLite.Client
                     manager.SelectOnly(marker);
                     _selectedChildMarker = null;
                     _selectedChildPath = null;
+                    manager.SelectedChild = null;
+                    manager.SelectedChildPath = null;
                     if (_expandedChildNodes.Contains(marker.id)) _expandedChildNodes.Remove(marker.id);
                     else _expandedChildNodes.Add(marker.id);
                     RequestHierarchyRefresh();
@@ -2067,6 +2101,8 @@ namespace MapLootEditorLite.Client
                         manager.SelectOnly(capturedMarker);
                     _selectedChildMarker = null;
                     _selectedChildPath = null;
+                    manager.SelectedChild = null;
+                    manager.SelectedChildPath = null;
                     RequestHierarchyRefresh();
                     RequestInspectorRefresh();
                 },
@@ -2122,36 +2158,35 @@ namespace MapLootEditorLite.Client
             bool selected = _selectedChildMarker == c.Parent && _selectedChildPath == c.Path;
             var label = c.DisplayName + (c.IsDoor ? " (Door)" : c.IsContainer ? " (Container)" : "");
 
-            if (c.IsInteractable)
+            var captured = c;
+            var selBtn = UIBuilder.CreateButton(row, label, () =>
             {
-                var captured = c;
-                var selBtn = UIBuilder.CreateButton(row, label, () =>
-                {
-                    _selectedChildMarker = captured.Parent;
-                    _selectedChildPath = captured.Path;
-                    _selectedChildIsDoor = captured.IsDoor;
-                    _selectedChildIsContainer = captured.IsContainer;
-                    RequestInspectorRefresh();
-                    RequestHierarchyRefresh();
-                }, 0, 16, 10);
-                UIBuilder.AddLayoutElement(selBtn.gameObject, null, 16, null, 16, 1, 0);
-                selBtn.GetComponent<Image>().color = new Color(0, 0, 0, 0);
-                var bc = selBtn.colors;
-                bc.normalColor = Color.white;
-                bc.highlightedColor = new Color(0.85f, 0.9f, 1f, 1f);
-                bc.pressedColor = new Color(0.7f, 0.8f, 1f, 1f);
-                selBtn.colors = bc;
-                var lblText = selBtn.GetComponentInChildren<Text>();
-                if (lblText != null)
-                {
-                    lblText.fontSize = 10;
-                    lblText.alignment = TextAnchor.MiddleLeft;
-                    lblText.color = selected ? new Color(0.9f, 0.9f, 0.9f, 1f) : new Color(0.72f, 0.72f, 0.72f, 1f);
-                }
-            }
-            else
+                manager.SelectOnly(captured.Parent);
+                _selectedChildMarker = captured.Parent;
+                _selectedChildPath = captured.Path;
+                _selectedChildIsDoor = captured.IsDoor;
+                _selectedChildIsContainer = captured.IsContainer;
+                previews?.SpawnPreviewForMarker(captured.Parent);
+                var preview = previews?.GetPreviewInstance(captured.Parent);
+                var childTransform = preview?.transform.Find(captured.Path);
+                manager.SelectedChild = childTransform;
+                manager.SelectedChildPath = captured.Path;
+                RequestInspectorRefresh();
+                RequestHierarchyRefresh();
+            }, 0, 16, 10);
+            UIBuilder.AddLayoutElement(selBtn.gameObject, null, 16, null, 16, 1, 0);
+            selBtn.GetComponent<Image>().color = new Color(0, 0, 0, 0);
+            var bc = selBtn.colors;
+            bc.normalColor = Color.white;
+            bc.highlightedColor = new Color(0.85f, 0.9f, 1f, 1f);
+            bc.pressedColor = new Color(0.7f, 0.8f, 1f, 1f);
+            selBtn.colors = bc;
+            var lblText = selBtn.GetComponentInChildren<Text>();
+            if (lblText != null)
             {
-                UIBuilder.CreateLabel(row, label, 10, 0, 16);
+                lblText.fontSize = 10;
+                lblText.alignment = TextAnchor.MiddleLeft;
+                lblText.color = selected ? new Color(0.9f, 0.9f, 0.9f, 1f) : new Color(0.72f, 0.72f, 0.72f, 1f);
             }
 
             row.GetComponent<Image>().color = selected
@@ -2171,6 +2206,8 @@ namespace MapLootEditorLite.Client
             {
                 _selectedChildMarker = null;
                 _selectedChildPath = null;
+                manager.SelectedChild = null;
+                manager.SelectedChildPath = null;
             }
 
             var selected = manager.Selected;
@@ -2215,6 +2252,7 @@ namespace MapLootEditorLite.Client
                     UIBuilder.AddLayoutElement(actionRow.gameObject, null, 26, null, 26, null, 0);
                     UIBuilder.CreateButton(actionRow, "Go To", () => controller?.GoToSceneObject(_selectedSceneGO), 50, 22);
                     UIBuilder.CreateButton(actionRow, "Place Here", () => controller?.PlaceStaticFromSceneGO(_selectedSceneGO), 80, 22);
+                    UIBuilder.CreateButton(actionRow, "Add Component", () => ShowAddComponentDialog(_selectedSceneGO, null), 90, 22);
                     UIBuilder.CreateButton(actionRow, "Remove", () => RemoveSelectedSceneGO(), 60, 22);
                 }
                 else
@@ -2253,6 +2291,14 @@ namespace MapLootEditorLite.Client
 
             BuildVector3Field(_inspectorContent, "Position", selected.position.ToVector3(), (v) => { selected.position = TransformData.FromVector3(v); manager.IsDirty = true; });
             BuildVector3Field(_inspectorContent, "Rotation", selected.rotation.ToVector3(), (v) => { selected.rotation = TransformData.FromVector3(v); manager.IsDirty = true; });
+
+            if (selectedCount == 1)
+            {
+                previews?.SpawnPreviewForMarker(selected);
+                var preview = previews?.GetPreviewInstance(selected);
+                if (preview != null)
+                    UIBuilder.CreateButton(_inspectorContent, "Add Component", () => ShowAddComponentDialog(preview, selected.addedComponents), 110, 24);
+            }
 
             switch (selected)
             {
@@ -2621,25 +2667,81 @@ namespace MapLootEditorLite.Client
 
         private void BuildChildInspector(MarkerBase marker, string childPath, bool isDoor, bool isContainer)
         {
-            UIBuilder.CreateText(_inspectorContent, "Child Interactable", 12, Color.white, FontStyle.Bold);
+            UIBuilder.CreateText(_inspectorContent, "Child Object", 12, Color.white, FontStyle.Bold);
             UIBuilder.CreateText(_inspectorContent, childPath, 10, new Color(0.75f, 0.75f, 0.75f, 1f));
             UIBuilder.CreateText(_inspectorContent, isDoor ? "Door" : isContainer ? "Container" : "Object", 10, new Color(0.75f, 0.75f, 0.75f, 1f));
 
-            var overrides = GetChildInteractables(marker);
-            if (overrides != null && (isDoor || isContainer))
+            var sourceObj = marker as IHasSourceObject;
+            Transform child = manager.SelectedChild;
+            if (child == null && sourceObj != null && !string.IsNullOrEmpty(sourceObj.sourceObjectName))
             {
+                var source = previews?.FindSourceObject(sourceObj.sourceObjectName, sourceObj.sourceObjectPosition.ToVector3());
+                child = source?.transform.Find(childPath);
+            }
+
+            if (child == null)
+            {
+                UIBuilder.CreateText(_inspectorContent, "Child not found in preview or source.", 10, new Color(0.7f, 0.3f, 0.3f, 1f));
+            }
+            else
+            {
+                var comps = child.GetComponents<Component>();
+                var names = new List<string>();
+                foreach (var comp in comps)
+                {
+                    if (comp == null)
+                        continue;
+                    var n = comp.GetType().Name;
+                    if (n == "Transform")
+                        continue;
+                    names.Add(n);
+                }
+                if (names.Count > 0)
+                    UIBuilder.CreateText(_inspectorContent, "Components: " + string.Join(", ", names.ToArray()), 10, new Color(0.75f, 0.75f, 0.75f, 1f));
+
+                var overrides = GetChildInteractables(marker);
+                if (overrides != null)
+                {
+                    ChildInteractableData data = overrides.FirstOrDefault(x => x.childPath == childPath);
+                    var currentPos = data?.position != null ? data.position.ToVector3() : child.localPosition;
+                    var currentRot = data?.rotation != null ? data.rotation.ToVector3() : child.localEulerAngles;
+                    var currentScl = data?.scale != null ? data.scale.ToVector3() : child.localScale;
+
+                    BuildVector3Field(_inspectorContent, "Local Position", currentPos, (v) =>
+                    {
+                        if (data == null) { data = new ChildInteractableData { childPath = childPath }; overrides.Add(data); }
+                        data.position = TransformData.FromVector3(v);
+                        manager.IsDirty = true;
+                        RequestInspectorRefresh();
+                    });
+                    BuildVector3Field(_inspectorContent, "Local Rotation", currentRot, (v) =>
+                    {
+                        if (data == null) { data = new ChildInteractableData { childPath = childPath }; overrides.Add(data); }
+                        data.rotation = TransformData.FromVector3(v);
+                        manager.IsDirty = true;
+                        RequestInspectorRefresh();
+                    });
+                    BuildVector3Field(_inspectorContent, "Local Scale", currentScl, (v) =>
+                    {
+                        if (data == null) { data = new ChildInteractableData { childPath = childPath }; overrides.Add(data); }
+                        data.scale = TransformData.FromVector3(v);
+                        manager.IsDirty = true;
+                        RequestInspectorRefresh();
+                    });
+                }
+            }
+
+            var overrides2 = GetChildInteractables(marker);
+            if (overrides2 != null && (isDoor || isContainer))
+            {
+                ChildInteractableData data = overrides2.FirstOrDefault(x => x.childPath == childPath);
+
                 if (isDoor)
                 {
-                    var existing = overrides.FirstOrDefault(x => x.childPath == childPath);
-                    var value = existing?.keyId ?? "";
+                    var value = data?.keyId ?? "";
                     BuildStringField(_inspectorContent, "Key Id", value, (v) =>
                     {
-                        var data = overrides.FirstOrDefault(x => x.childPath == childPath);
-                        if (data == null)
-                        {
-                            data = new ChildInteractableData { childPath = childPath };
-                            overrides.Add(data);
-                        }
+                        if (data == null) { data = new ChildInteractableData { childPath = childPath }; overrides2.Add(data); }
                         data.keyId = v;
                         manager.IsDirty = true;
                     });
@@ -2647,26 +2749,59 @@ namespace MapLootEditorLite.Client
 
                 if (isContainer)
                 {
-                    var existing = overrides.FirstOrDefault(x => x.childPath == childPath);
-                    var value = existing?.containerId ?? "";
+                    var value = data?.containerId ?? "";
                     BuildStringField(_inspectorContent, "Container Id", value, (v) =>
                     {
-                        var data = overrides.FirstOrDefault(x => x.childPath == childPath);
-                        if (data == null)
-                        {
-                            data = new ChildInteractableData { childPath = childPath };
-                            overrides.Add(data);
-                        }
+                        if (data == null) { data = new ChildInteractableData { childPath = childPath }; overrides2.Add(data); }
                         data.containerId = v;
                         manager.IsDirty = true;
                     });
                 }
             }
 
+            if (child != null)
+            {
+                var addOverrides = GetChildInteractables(marker);
+                ChildInteractableData addData = addOverrides?.FirstOrDefault(x => x.childPath == childPath);
+                if (addData == null && addOverrides != null)
+                {
+                    addData = new ChildInteractableData { childPath = childPath };
+                    addOverrides.Add(addData);
+                }
+                if (addData != null)
+                    UIBuilder.CreateButton(_inspectorContent, "Add Component", () => ShowAddComponentDialog(child.gameObject, addData.addedComponents), 110, 24);
+            }
+
+            UIBuilder.CreateButton(_inspectorContent, "Delete Child", () =>
+            {
+                var delOverrides = GetChildInteractables(marker);
+                if (delOverrides != null)
+                {
+                    ChildInteractableData delData = delOverrides.FirstOrDefault(x => x.childPath == childPath);
+                    if (delData == null)
+                    {
+                        delData = new ChildInteractableData { childPath = childPath };
+                        delOverrides.Add(delData);
+                    }
+                    delData.deleted = true;
+                }
+                if (manager.SelectedChild != null)
+                    manager.SelectedChild.gameObject.SetActive(false);
+                manager.IsDirty = true;
+                _selectedChildMarker = null;
+                _selectedChildPath = null;
+                manager.SelectedChild = null;
+                manager.SelectedChildPath = null;
+                RequestInspectorRefresh();
+                RequestHierarchyRefresh();
+            }, 90, 24);
+
             UIBuilder.CreateButton(_inspectorContent, "Back to Parent", () =>
             {
                 _selectedChildMarker = null;
                 _selectedChildPath = null;
+                manager.SelectedChild = null;
+                manager.SelectedChildPath = null;
                 RequestInspectorRefresh();
                 RequestHierarchyRefresh();
             }, 110, 24);
@@ -4314,6 +4449,107 @@ namespace MapLootEditorLite.Client
                     Destroy(menu.gameObject);
                 _openMenus.RemoveAt(i);
             }
+        }
+
+        private void ShowAddComponentDialog(GameObject target, List<string> targetList)
+        {
+            if (target == null)
+                return;
+
+            if (_addComponentDialogPanel != null)
+                Destroy(_addComponentDialogPanel.gameObject);
+
+            _addComponentTarget = target;
+            _addComponentTargetList = targetList;
+            _addComponentSearch = "";
+
+            var panel = UIBuilder.CreatePanel("AddComponentDialog", _canvas.transform, new Color(0.15f, 0.15f, 0.15f, 1f));
+            _addComponentDialogPanel = panel.GetComponent<RectTransform>();
+            _addComponentDialogPanel.anchorMin = new Vector2(0.5f, 0.5f);
+            _addComponentDialogPanel.anchorMax = new Vector2(0.5f, 0.5f);
+            _addComponentDialogPanel.pivot = new Vector2(0.5f, 0.5f);
+            _addComponentDialogPanel.anchoredPosition = Vector2.zero;
+            _addComponentDialogPanel.sizeDelta = new Vector2(320f, 400f);
+
+            UIBuilder.AddVerticalLayout(_addComponentDialogPanel, 6, 6, true, true);
+
+            UIBuilder.CreateText(_addComponentDialogPanel, "Add Component", 13, Color.white, FontStyle.Bold);
+
+            UIBuilder.CreateInputField(_addComponentDialogPanel, "Search...", _addComponentSearch, (v) =>
+            {
+                _addComponentSearch = v;
+                RebuildAddComponentList();
+            }, 300, 22);
+
+            var listPanel = UIBuilder.CreatePanel("AddComponentList", _addComponentDialogPanel, new Color(0.1f, 0.1f, 0.1f, 1f));
+            _addComponentListPanel = listPanel.GetComponent<RectTransform>();
+            UIBuilder.AddVerticalLayout(_addComponentListPanel, 2, 2, true, true);
+            UIBuilder.AddLayoutElement(_addComponentListPanel, null, 300, null, 300, null, 0);
+
+            UIBuilder.CreateButton(_addComponentDialogPanel, "Close", () =>
+            {
+                if (_addComponentDialogPanel != null)
+                    Destroy(_addComponentDialogPanel.gameObject);
+                _addComponentDialogPanel = null;
+                _addComponentListPanel = null;
+            }, 80, 24);
+
+            RebuildAddComponentList();
+        }
+
+        private void RebuildAddComponentList()
+        {
+            if (_addComponentListPanel == null)
+                return;
+            ClearChildren(_addComponentListPanel);
+
+            var search = _addComponentSearch ?? "";
+            var all = ComponentHelper.GetAllComponentTypes();
+            var matches = all.Where(t => string.IsNullOrEmpty(search) ||
+                                         t.Name.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                         (t.Namespace != null && t.Namespace.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                         t.FullName.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)
+                             .Take(50)
+                             .ToList();
+
+            if (matches.Count == 0)
+            {
+                UIBuilder.CreateText(_addComponentListPanel, "No matching components.", 10, new Color(0.6f, 0.6f, 0.6f, 1f));
+                return;
+            }
+
+            foreach (var type in matches)
+            {
+                var captured = type;
+                var label = string.IsNullOrEmpty(captured.Namespace) ? captured.Name : $"{captured.Namespace}.{captured.Name}";
+                UIBuilder.CreateButton(_addComponentListPanel, label, () =>
+                {
+                    AddSelectedComponent(captured);
+                }, 0, 20, 10);
+            }
+        }
+
+        private void AddSelectedComponent(Type type)
+        {
+            if (_addComponentTarget == null || type == null)
+                return;
+
+            var comp = ComponentHelper.AddComponentByName(_addComponentTarget, type.AssemblyQualifiedName);
+            if (comp == null)
+                return;
+
+            if (_addComponentTargetList != null && !_addComponentTargetList.Contains(type.AssemblyQualifiedName))
+                _addComponentTargetList.Add(type.AssemblyQualifiedName);
+
+            manager.IsDirty = true;
+
+            if (_addComponentDialogPanel != null)
+                Destroy(_addComponentDialogPanel.gameObject);
+            _addComponentDialogPanel = null;
+            _addComponentListPanel = null;
+
+            RequestInspectorRefresh();
+            RequestHierarchyRefresh();
         }
     }
 }

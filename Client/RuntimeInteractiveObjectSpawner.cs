@@ -642,6 +642,8 @@ namespace MapLootEditorLite.Client
                 Plugin.Log.LogWarning($"Spawned interactive object '{obj.name}' has no WorldInteractiveObject component in its prefab; interaction will not work.");
             }
 
+            ComponentHelper.ApplyAddedComponents(instance, obj.addedComponents);
+
             Plugin.Log.LogInfo($"Spawned interactive object {obj.name} (type={obj.interactiveType})");
         }
 
@@ -1494,6 +1496,8 @@ namespace MapLootEditorLite.Client
 
             // Remove from the dictionary so we don't spawn it again
             CustomStationaryWeapons.Remove(id);
+
+            ComponentHelper.ApplyAddedComponents(instance, obj.addedComponents);
 
             return stationaryWeapon;
         }

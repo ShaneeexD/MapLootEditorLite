@@ -83,6 +83,9 @@ namespace MapLootEditorLite.Client
         private Vector3 _gizmoDragStartCenter;
         private Quaternion _gizmoDragStartCenterRot;
         private Vector3 _gizmoDragStartCenterScale;
+        private Vector3 _gizmoDragStartChildWorldPos;
+        private Quaternion _gizmoDragStartChildWorldRot;
+        private Vector3 _gizmoDragStartChildLocalScale;
         private readonly Dictionary<string, Vector3> _gizmoDragStartPositions = new Dictionary<string, Vector3>();
         private readonly Dictionary<string, Quaternion> _gizmoDragStartRotations = new Dictionary<string, Quaternion>();
         private readonly Dictionary<string, Vector3> _gizmoDragStartScales = new Dictionary<string, Vector3>();
@@ -1464,7 +1467,7 @@ namespace MapLootEditorLite.Client
                 }
             }
 
-            if (Input.GetMouseButton(0) && _manager.Selected != null && !_manager.Selected.isVanilla)
+            if (Input.GetMouseButton(0) && ((_manager.Selected != null && !_manager.Selected.isVanilla) || _manager.SelectedChild != null))
             {
                 if (_activeGizmoAxis != GizmoAxis.None)
                 {
@@ -1525,6 +1528,14 @@ namespace MapLootEditorLite.Client
             var point = ray.GetPoint(d);
             var axisDir = GetGizmoAxisDirection(_activeGizmoAxis, GetGizmoOrientation());
             var offset = Vector3.Dot(point - _gizmoDragStartWorld, axisDir);
+
+            var child = _manager.SelectedChild;
+            if (child != null)
+            {
+                ApplyChildGizmoDrag(child, axisDir, point, offset);
+                return;
+            }
+
             var isGroup = _manager.SelectedIds.Count > 1;
 
             switch (_gizmoMode)
@@ -1701,6 +1712,64 @@ namespace MapLootEditorLite.Client
             _manager.IsDirty = true;
         }
 
+        private void ApplyChildGizmoDrag(Transform child, Vector3 axisDir, Vector3 point, float offset)
+        {
+            var overrides = GetChildInteractables(_manager.Selected);
+            if (overrides == null)
+                return;
+
+            ChildInteractableData data = overrides.FirstOrDefault(x => x.childPath == _manager.SelectedChildPath);
+            if (data == null)
+            {
+                data = new ChildInteractableData { childPath = _manager.SelectedChildPath };
+                overrides.Add(data);
+            }
+
+            switch (_gizmoMode)
+            {
+                case GizmoMode.Translate:
+                    child.position = _gizmoDragStartChildWorldPos + axisDir * offset;
+                    data.position = TransformData.FromVector3(child.localPosition);
+                    break;
+
+                case GizmoMode.Rotate:
+                    var v0 = Vector3.ProjectOnPlane(_gizmoDragStartWorld - _gizmoDragStartChildWorldPos, axisDir);
+                    var v1 = Vector3.ProjectOnPlane(point - _gizmoDragStartChildWorldPos, axisDir);
+                    if (v0.sqrMagnitude > 0.0001f && v1.sqrMagnitude > 0.0001f)
+                    {
+                        var angle = Vector3.SignedAngle(v0, v1, axisDir);
+                        var deltaRot = Quaternion.AngleAxis(angle, axisDir);
+                        child.rotation = deltaRot * _gizmoDragStartChildWorldRot;
+                        data.rotation = TransformData.FromVector3(child.localEulerAngles);
+                    }
+                    break;
+
+                case GizmoMode.Scale:
+                    var newScale = _gizmoDragStartChildLocalScale;
+                    switch (_activeGizmoAxis)
+                    {
+                        case GizmoAxis.X: newScale.x += offset; break;
+                        case GizmoAxis.Y: newScale.y += offset; break;
+                        case GizmoAxis.Z: newScale.z += offset; break;
+                    }
+                    child.localScale = newScale;
+                    data.scale = TransformData.FromVector3(child.localScale);
+                    break;
+            }
+
+            _manager.IsDirty = true;
+            _ui?.RequestInspectorRefresh();
+        }
+
+        private List<ChildInteractableData> GetChildInteractables(MarkerBase marker)
+        {
+            if (marker is StaticObject so)
+                return so.childInteractables;
+            if (marker is WTTStaticObject wtt)
+                return wtt.childInteractables;
+            return null;
+        }
+
         private void UpdatePreviewBlockers()
         {
             if (!_previewMode)
@@ -1767,6 +1836,29 @@ namespace MapLootEditorLite.Client
 
         private void RecordGizmoDragStart(Camera camera)
         {
+            if (_manager.SelectedChild != null)
+            {
+                _gizmoDragStartChildWorldPos = _manager.SelectedChild.position;
+                _gizmoDragStartChildWorldRot = _manager.SelectedChild.rotation;
+                _gizmoDragStartChildLocalScale = _manager.SelectedChild.localScale;
+                _gizmoDragStartCenter = _manager.SelectedChild.position;
+                _gizmoDragStartCenterRot = _manager.SelectedChild.rotation;
+                _gizmoDragStartCenterScale = _manager.SelectedChild.localScale;
+                _gizmoDragStartPositions.Clear();
+                _gizmoDragStartRotations.Clear();
+                _gizmoDragStartScales.Clear();
+
+                if (GetGizmoDragPlane(camera, _activeGizmoAxis, out _gizmoDragPlane))
+                {
+                    var ray = camera.ScreenPointToRay(Input.mousePosition);
+                    if (_gizmoDragPlane.Raycast(ray, out float d))
+                        _gizmoDragStartWorld = ray.GetPoint(d);
+                    else
+                        _gizmoDragStartWorld = _gizmoDragStartCenter;
+                }
+                return;
+            }
+
             _gizmoDragStartMarkerPos = _manager.Selected.position.ToVector3();
             _gizmoDragStartMarkerRot = _manager.Selected.rotation.ToVector3();
             _gizmoDragStartMarkerScale = Vector3.one;
@@ -1848,6 +1940,8 @@ namespace MapLootEditorLite.Client
 
         private Quaternion GetGizmoOrientation()
         {
+            if (_manager.SelectedChild != null)
+                return _manager.SelectedChild.rotation;
             if (_manager.SelectedIds.Count > 1)
                 return Quaternion.identity;
             return _manager.Selected?.rotation.ToQuaternion() ?? Quaternion.identity;
@@ -1856,14 +1950,16 @@ namespace MapLootEditorLite.Client
         private bool GetGizmoDragPlane(Camera camera, GizmoAxis axis, out Plane plane)
         {
             plane = new Plane();
-            if (_manager.Selected == null)
+            if (_manager.Selected == null && _manager.SelectedChild == null)
                 return false;
 
             var axisDir = GetGizmoAxisDirection(axis, GetGizmoOrientation());
             if (axisDir == Vector3.zero)
                 return false;
 
-            var pos = _manager.SelectedIds.Count > 1 ? _manager.SelectionCenter : _manager.Selected.position.ToVector3();
+            var pos = _manager.SelectedChild != null
+                ? _manager.SelectedChild.position
+                : (_manager.SelectedIds.Count > 1 ? _manager.SelectionCenter : _manager.Selected.position.ToVector3());
             plane = new Plane(camera.transform.forward, pos);
             return true;
         }
@@ -1924,10 +2020,37 @@ namespace MapLootEditorLite.Client
 
         public void DeleteSelected()
         {
+            if (_manager.SelectedChild != null)
+            {
+                DeleteSelectedChild();
+                return;
+            }
             foreach (var id in _manager.SelectedIds.ToList())
                 _previews.ClearByMarkerId(id);
             _manager.DeleteSelection();
             _renderer.Rebuild();
+        }
+
+        private void DeleteSelectedChild()
+        {
+            var overrides = GetChildInteractables(_manager.Selected);
+            if (overrides != null)
+            {
+                var data = overrides.FirstOrDefault(x => x.childPath == _manager.SelectedChildPath);
+                if (data == null)
+                {
+                    data = new ChildInteractableData { childPath = _manager.SelectedChildPath };
+                    overrides.Add(data);
+                }
+                data.deleted = true;
+            }
+            if (_manager.SelectedChild != null)
+                _manager.SelectedChild.gameObject.SetActive(false);
+            _manager.IsDirty = true;
+            _manager.SelectedChild = null;
+            _manager.SelectedChildPath = null;
+            _ui?.RequestInspectorRefresh();
+            _ui?.RequestHierarchyRefresh();
         }
 
         public void ClearPreviews() => _previews.ClearAll();

@@ -304,6 +304,8 @@ namespace MapLootEditorLite.Client
             else if (marker is WTTStaticObject wtt)
                 ApplyChildInteractableOverrides(instance, wtt.childInteractables);
 
+            ComponentHelper.ApplyAddedComponents(instance, marker.addedComponents);
+
             _spawned.Add(instance);
             Plugin.Log.LogInfo($"Spawned static object {marker.name} (fallback={isFallback}, source={sourceName})");
         }
@@ -325,6 +327,12 @@ namespace MapLootEditorLite.Client
                     continue;
                 }
 
+                if (childOverride.deleted)
+                {
+                    child.gameObject.SetActive(false);
+                    continue;
+                }
+
                 if (!string.IsNullOrEmpty(childOverride.keyId))
                 {
                     var wio = child.GetComponent<WorldInteractiveObject>();
@@ -338,6 +346,15 @@ namespace MapLootEditorLite.Client
                     if (lootable != null)
                         lootable.Id = childOverride.containerId;
                 }
+
+                if (childOverride.position != null)
+                    child.localPosition = childOverride.position.ToVector3();
+                if (childOverride.rotation != null)
+                    child.localEulerAngles = childOverride.rotation.ToVector3();
+                if (childOverride.scale != null)
+                    child.localScale = childOverride.scale.ToVector3();
+
+                ComponentHelper.ApplyAddedComponents(child.gameObject, childOverride.addedComponents);
             }
         }
 

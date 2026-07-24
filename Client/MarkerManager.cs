@@ -25,6 +25,12 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        [JsonIgnore]
+        public Transform SelectedChild { get; set; }
+
+        [JsonIgnore]
+        public string SelectedChildPath { get; set; }
+
         public List<string> SelectedIds { get; } = new List<string>();
         public bool IsDirty { get; set; }
 

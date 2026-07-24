@@ -1223,6 +1223,21 @@ namespace MapLootEditorLite.Client
             return null;
         }
 
+        public GameObject GetPreviewInstance(MarkerBase marker)
+        {
+            if (marker == null)
+                return null;
+            foreach (var go in _staticPreviews)
+            {
+                if (go == null)
+                    continue;
+                var meta = go.GetComponent<PreviewStaticObjectMarker>();
+                if (meta != null && meta.sourceMarkerId == marker.id)
+                    return go;
+            }
+            return null;
+        }
+
         private void SpawnStaticInstance(GameObject source, StaticObject marker, bool isFallback)
         {
             var instance = UnityEngine.Object.Instantiate(source);
@@ -1239,6 +1254,8 @@ namespace MapLootEditorLite.Client
             meta.isFallback = isFallback;
 
             PreparePreviewInstance(instance);
+            ApplyChildOverrides(instance, marker.childInteractables);
+            ComponentHelper.ApplyAddedComponents(instance, marker.addedComponents);
 
             _staticPreviews.Add(instance);
 
@@ -1262,11 +1279,58 @@ namespace MapLootEditorLite.Client
             meta.isFallback = isFallback;
 
             PreparePreviewInstance(instance);
+            ApplyChildOverrides(instance, marker.childInteractables);
+            ComponentHelper.ApplyAddedComponents(instance, marker.addedComponents);
 
             _staticPreviews.Add(instance);
 
             var cacheKey = marker.spawnType == "bundle" ? $"{marker.bundleName}/{marker.prefabName}" : GetStaticSourceKey(marker.sourceObjectName, marker.sourceObjectPosition.ToVector3());
             CacheSourceInstance(cacheKey, source);
+        }
+
+        private void ApplyChildOverrides(GameObject instance, List<ChildInteractableData> overrides)
+        {
+            if (overrides == null)
+                return;
+
+            foreach (var childOverride in overrides)
+            {
+                if (string.IsNullOrEmpty(childOverride.childPath))
+                    continue;
+
+                var child = instance.transform.Find(childOverride.childPath);
+                if (child == null)
+                    continue;
+
+                if (childOverride.deleted)
+                {
+                    child.gameObject.SetActive(false);
+                    continue;
+                }
+
+                if (!string.IsNullOrEmpty(childOverride.keyId))
+                {
+                    var wio = child.GetComponent<WorldInteractiveObject>();
+                    if (wio != null)
+                        wio.KeyId = childOverride.keyId;
+                }
+
+                if (!string.IsNullOrEmpty(childOverride.containerId))
+                {
+                    var lootable = child.GetComponent<LootableContainer>();
+                    if (lootable != null)
+                        lootable.Id = childOverride.containerId;
+                }
+
+                if (childOverride.position != null)
+                    child.localPosition = childOverride.position.ToVector3();
+                if (childOverride.rotation != null)
+                    child.localEulerAngles = childOverride.rotation.ToVector3();
+                if (childOverride.scale != null)
+                    child.localScale = childOverride.scale.ToVector3();
+
+                ComponentHelper.ApplyAddedComponents(child.gameObject, childOverride.addedComponents);
+            }
         }
 
         private void SpawnInteractiveInstance(GameObject source, InteractiveObject marker, bool isFallback)
@@ -1293,6 +1357,7 @@ namespace MapLootEditorLite.Client
             meta.isFallback = isFallback;
 
             PreparePreviewInstance(instance);
+            ComponentHelper.ApplyAddedComponents(instance, marker.addedComponents);
 
             _staticPreviews.Add(instance);
 

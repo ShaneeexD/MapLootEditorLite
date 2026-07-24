@@ -1600,7 +1600,7 @@ namespace MapLootEditorLite.Client
         public GizmoAxis PickGizmoAxis(Camera camera, Vector2 screenPos, float maxPx)
         {
             HoveredAxis = GizmoAxis.None;
-            if (_manager?.Selected == null || !ShowGizmo || camera == null)
+            if ((_manager?.Selected == null && _manager?.SelectedChild == null) || !ShowGizmo || camera == null)
                 return GizmoAxis.None;
 
             var pos = GetGizmoPosition();
@@ -1650,6 +1650,8 @@ namespace MapLootEditorLite.Client
 
         private Vector3 GetGizmoPosition()
         {
+            if (_manager?.SelectedChild != null)
+                return _manager.SelectedChild.position;
             if (_manager?.Selected == null)
                 return Vector3.zero;
             if (_manager.SelectedIds.Count > 1)
@@ -1659,6 +1661,8 @@ namespace MapLootEditorLite.Client
 
         private Quaternion GetGizmoRotation()
         {
+            if (_manager?.SelectedChild != null)
+                return _manager.SelectedChild.rotation;
             if (_manager?.Selected == null)
                 return Quaternion.identity;
             if (_manager.SelectedIds.Count > 1)
@@ -1668,7 +1672,7 @@ namespace MapLootEditorLite.Client
 
         private void UpdateGizmo()
         {
-            if (_manager?.Selected == null || !ShowGizmo || _manager.Selected.isVanilla)
+            if (!ShowGizmo || (_manager?.SelectedChild == null && (_manager?.Selected == null || _manager.Selected.isVanilla)))
             {
                 DestroyGizmo();
                 return;

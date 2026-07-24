@@ -317,6 +317,7 @@ namespace MapLootEditorLite.Client
         public string group = "";
         public TransformData position = new TransformData();
         public TransformData rotation = new TransformData();
+        public List<string> addedComponents = new List<string>();
 
         [JsonIgnore]
         public bool isVanilla = false;
@@ -401,6 +402,11 @@ namespace MapLootEditorLite.Client
         public string childPath = "";
         public string keyId = "";
         public string containerId = "";
+        public TransformData position;
+        public TransformData rotation;
+        public TransformData scale;
+        public bool deleted;
+        public List<string> addedComponents = new List<string>();
     }
 
     public class StaticObject : MarkerBase, IHasSourceObject
