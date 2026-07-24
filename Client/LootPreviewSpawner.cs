@@ -1157,7 +1157,7 @@ namespace MapLootEditorLite.Client
             Plugin.Log.LogWarning($"Cannot preview static object {marker.name}: no prefab path or source object set.");
         }
 
-        private GameObject FindSourceObject(string name, Vector3 position)
+        public GameObject FindSourceObject(string name, Vector3 position)
         {
             if (string.IsNullOrEmpty(name))
                 return null;

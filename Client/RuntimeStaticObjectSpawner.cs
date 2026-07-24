@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using Comfort.Common;
 using EFT;
+using EFT.Interactive;
 using Newtonsoft.Json;
 using EFT.Quests;
 using UnityEngine;
@@ -297,8 +298,47 @@ namespace MapLootEditorLite.Client
             instance.transform.position = marker.position.ToVector3();
             instance.transform.rotation = marker.rotation.ToQuaternion();
             instance.transform.localScale = scale.ToVector3();
+
+            if (marker is StaticObject so)
+                ApplyChildInteractableOverrides(instance, so.childInteractables);
+            else if (marker is WTTStaticObject wtt)
+                ApplyChildInteractableOverrides(instance, wtt.childInteractables);
+
             _spawned.Add(instance);
             Plugin.Log.LogInfo($"Spawned static object {marker.name} (fallback={isFallback}, source={sourceName})");
+        }
+
+        private void ApplyChildInteractableOverrides(GameObject instance, List<ChildInteractableData> overrides)
+        {
+            if (overrides == null)
+                return;
+
+            foreach (var childOverride in overrides)
+            {
+                if (string.IsNullOrEmpty(childOverride.childPath))
+                    continue;
+
+                var child = instance.transform.Find(childOverride.childPath);
+                if (child == null)
+                {
+                    Plugin.Log.LogWarning($"Could not find child path '{childOverride.childPath}' on spawned object '{instance.name}'.");
+                    continue;
+                }
+
+                if (!string.IsNullOrEmpty(childOverride.keyId))
+                {
+                    var wio = child.GetComponent<WorldInteractiveObject>();
+                    if (wio != null)
+                        wio.KeyId = childOverride.keyId;
+                }
+
+                if (!string.IsNullOrEmpty(childOverride.containerId))
+                {
+                    var lootable = child.GetComponent<LootableContainer>();
+                    if (lootable != null)
+                        lootable.Id = childOverride.containerId;
+                }
+            }
         }
 
         private void ClearSpawned()

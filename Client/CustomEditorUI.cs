@@ -199,6 +199,11 @@ namespace MapLootEditorLite.Client
         private string _searchText = "";
         private string _newGroupName = "";
         private readonly HashSet<string> _collapsedGroups = new HashSet<string>();
+        private readonly HashSet<string> _expandedChildNodes = new HashSet<string>();
+        private MarkerBase _selectedChildMarker;
+        private string _selectedChildPath;
+        private bool _selectedChildIsDoor;
+        private bool _selectedChildIsContainer;
         private const int TopPanelHeight = 56;
         private int _hierarchyWidth = 240;
         private int _inspectorWidth = 280;
@@ -1849,6 +1854,30 @@ namespace MapLootEditorLite.Client
                 Indent = indent;
             }
         }
+        private sealed class ChildEntry : HierarchyEntry
+        {
+            public readonly MarkerBase Parent;
+            public readonly string Path;
+            public readonly string DisplayName;
+            public readonly int Depth;
+            public readonly bool CanExpand;
+            public readonly bool Expanded;
+            public readonly bool IsInteractable;
+            public readonly bool IsDoor;
+            public readonly bool IsContainer;
+            public ChildEntry(MarkerBase parent, string path, string displayName, int depth, bool canExpand, bool expanded, bool isInteractable, bool isDoor, bool isContainer)
+            {
+                Parent = parent;
+                Path = path;
+                DisplayName = displayName;
+                Depth = depth;
+                CanExpand = canExpand;
+                Expanded = expanded;
+                IsInteractable = isInteractable;
+                IsDoor = isDoor;
+                IsContainer = isContainer;
+            }
+        }
 
         private void RefreshHierarchy()
         {
@@ -1874,13 +1903,13 @@ namespace MapLootEditorLite.Client
                 if (!collapsed)
                 {
                     foreach (var m in grp)
-                        entries.Add(new MarkerEntry(m, indent: true));
+                        AppendMarkerAndChildren(m, indent: true, entries);
                 }
             }
 
             // Ungrouped items
             foreach (var m in allMarkers.Where(m => string.IsNullOrWhiteSpace(m.group)))
-                entries.Add(new MarkerEntry(m, indent: false));
+                AppendMarkerAndChildren(m, indent: false, entries);
 
             const int pageSize = 100;
             int start = 0;
@@ -1914,6 +1943,48 @@ namespace MapLootEditorLite.Client
                     BuildHierarchyGroupHeader(g);
                 else if (entries[i] is MarkerEntry m)
                     BuildHierarchyRow(m.Marker, m.Indent);
+                else if (entries[i] is ChildEntry c)
+                    BuildHierarchyChildRow(c);
+            }
+        }
+
+        private void AppendMarkerAndChildren(MarkerBase marker, bool indent, List<HierarchyEntry> entries)
+        {
+            entries.Add(new MarkerEntry(marker, indent));
+            var sourceObj = marker as IHasSourceObject;
+            if (sourceObj == null || string.IsNullOrEmpty(sourceObj.sourceObjectName))
+                return;
+            if (!_expandedChildNodes.Contains(marker.id))
+                return;
+
+            var source = previews?.FindSourceObject(sourceObj.sourceObjectName, sourceObj.sourceObjectPosition.ToVector3());
+            if (source == null)
+                return;
+
+            foreach (Transform child in source.transform)
+            {
+                if (child == null)
+                    continue;
+                AppendChildEntries(marker, child, child.name, 1, entries);
+            }
+        }
+
+        private void AppendChildEntries(MarkerBase marker, Transform child, string childPath, int depth, List<HierarchyEntry> entries)
+        {
+            bool canExpand = child.childCount > 0;
+            bool expanded = _expandedChildNodes.Contains(marker.id + ":" + childPath);
+            bool isDoor = child.GetComponent<WorldInteractiveObject>() != null;
+            bool isContainer = child.GetComponent<LootableContainer>() != null;
+            bool isInteractable = isDoor || isContainer;
+            entries.Add(new ChildEntry(marker, childPath, child.name, depth, canExpand, expanded, isInteractable, isDoor, isContainer));
+            if (canExpand && expanded)
+            {
+                foreach (Transform sub in child)
+                {
+                    if (sub == null)
+                        continue;
+                    AppendChildEntries(marker, sub, childPath + "/" + sub.name, depth + 1, entries);
+                }
             }
         }
 
@@ -1955,9 +2026,34 @@ namespace MapLootEditorLite.Client
                 UIBuilder.AddLayoutElement(pad, 10, 18, 10, 18, 0, 0);
             }
 
+            var sourceObj = marker as IHasSourceObject;
+            bool canExpand = sourceObj != null && !string.IsNullOrEmpty(sourceObj.sourceObjectName);
+            bool expanded = canExpand && _expandedChildNodes.Contains(marker.id);
+
+            if (canExpand)
+            {
+                var expandLabel = expanded ? "\u25bc" : "\u25ba";
+                UIBuilder.CreateButton(row, expandLabel, () =>
+                {
+                    manager.SelectOnly(marker);
+                    _selectedChildMarker = null;
+                    _selectedChildPath = null;
+                    if (_expandedChildNodes.Contains(marker.id)) _expandedChildNodes.Remove(marker.id);
+                    else _expandedChildNodes.Add(marker.id);
+                    RequestHierarchyRefresh();
+                    RequestInspectorRefresh();
+                }, 14, 16, 10);
+            }
+            else
+            {
+                var pad = UIBuilder.CreatePanel("Indent", row, new Color(0, 0, 0, 0));
+                pad.GetComponent<Image>().raycastTarget = false;
+                UIBuilder.AddLayoutElement(pad, 14, 18, 14, 18, 0, 0);
+            }
+
             UIBuilder.CreateButton(row, "Go", () => controller.GoToMarker(marker), 24, 16, 10);
 
-            bool selected = manager.IsSelected(marker);
+            bool selected = manager.IsSelected(marker) && _selectedChildMarker == null;
             var capturedMarker = marker;
 
             // Transparent clickable area — clicking selects the marker
@@ -1969,6 +2065,8 @@ namespace MapLootEditorLite.Client
                         manager.ToggleSelected(capturedMarker);
                     else
                         manager.SelectOnly(capturedMarker);
+                    _selectedChildMarker = null;
+                    _selectedChildPath = null;
                     RequestHierarchyRefresh();
                     RequestInspectorRefresh();
                 },
@@ -1993,6 +2091,74 @@ namespace MapLootEditorLite.Client
                 : new Color(0.13f, 0.13f, 0.13f, 0.3f);
         }
 
+        private void BuildHierarchyChildRow(ChildEntry c)
+        {
+            var row = UIBuilder.CreatePanel("ChildRow", _hierarchyContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(row, 2, 1, true, false);
+            UIBuilder.AddLayoutElement(row, null, 16, null, 16, null, 0);
+
+            int indent = 10 + c.Depth * 10;
+            var pad = UIBuilder.CreatePanel("Indent", row, new Color(0, 0, 0, 0));
+            pad.GetComponent<Image>().raycastTarget = false;
+            UIBuilder.AddLayoutElement(pad, indent, 16, indent, 16, 0, 0);
+
+            if (c.CanExpand)
+            {
+                UIBuilder.CreateButton(row, c.Expanded ? "\u25bc" : "\u25ba", () =>
+                {
+                    var key = c.Parent.id + ":" + c.Path;
+                    if (_expandedChildNodes.Contains(key)) _expandedChildNodes.Remove(key);
+                    else _expandedChildNodes.Add(key);
+                    RequestHierarchyRefresh();
+                }, 14, 16, 10);
+            }
+            else
+            {
+                var spacer = UIBuilder.CreatePanel("Indent", row, new Color(0, 0, 0, 0));
+                spacer.GetComponent<Image>().raycastTarget = false;
+                UIBuilder.AddLayoutElement(spacer, 14, 16, 14, 16, 0, 0);
+            }
+
+            bool selected = _selectedChildMarker == c.Parent && _selectedChildPath == c.Path;
+            var label = c.DisplayName + (c.IsDoor ? " (Door)" : c.IsContainer ? " (Container)" : "");
+
+            if (c.IsInteractable)
+            {
+                var captured = c;
+                var selBtn = UIBuilder.CreateButton(row, label, () =>
+                {
+                    _selectedChildMarker = captured.Parent;
+                    _selectedChildPath = captured.Path;
+                    _selectedChildIsDoor = captured.IsDoor;
+                    _selectedChildIsContainer = captured.IsContainer;
+                    RequestInspectorRefresh();
+                    RequestHierarchyRefresh();
+                }, 0, 16, 10);
+                UIBuilder.AddLayoutElement(selBtn.gameObject, null, 16, null, 16, 1, 0);
+                selBtn.GetComponent<Image>().color = new Color(0, 0, 0, 0);
+                var bc = selBtn.colors;
+                bc.normalColor = Color.white;
+                bc.highlightedColor = new Color(0.85f, 0.9f, 1f, 1f);
+                bc.pressedColor = new Color(0.7f, 0.8f, 1f, 1f);
+                selBtn.colors = bc;
+                var lblText = selBtn.GetComponentInChildren<Text>();
+                if (lblText != null)
+                {
+                    lblText.fontSize = 10;
+                    lblText.alignment = TextAnchor.MiddleLeft;
+                    lblText.color = selected ? new Color(0.9f, 0.9f, 0.9f, 1f) : new Color(0.72f, 0.72f, 0.72f, 1f);
+                }
+            }
+            else
+            {
+                UIBuilder.CreateLabel(row, label, 10, 0, 16);
+            }
+
+            row.GetComponent<Image>().color = selected
+                ? new Color(0.2f, 0.3f, 0.45f, 0.6f)
+                : new Color(0.13f, 0.13f, 0.13f, 0.3f);
+        }
+
         private void RefreshInspector()
         {
             if (_inspectorContent == null || manager == null)
@@ -2000,6 +2166,12 @@ namespace MapLootEditorLite.Client
             ClearChildren(_inspectorContent);
             _lastSelected = manager.Selected;
             _lastSelectedCount = manager.SelectedIds.Count;
+
+            if (_selectedChildMarker != null && manager.Selected != _selectedChildMarker)
+            {
+                _selectedChildMarker = null;
+                _selectedChildPath = null;
+            }
 
             var selected = manager.Selected;
             if (selected == null)
@@ -2058,6 +2230,12 @@ namespace MapLootEditorLite.Client
             if (selected.isVanilla)
             {
                 BuildVanillaInspector(selected);
+                return;
+            }
+
+            if (_selectedChildMarker != null && selected == _selectedChildMarker)
+            {
+                BuildChildInspector(_selectedChildMarker, _selectedChildPath, _selectedChildIsDoor, _selectedChildIsContainer);
                 return;
             }
 
@@ -2430,6 +2608,68 @@ namespace MapLootEditorLite.Client
                 GUIUtility.systemCopyBuffer = json;
                 _fieldClipboard = json;
             }, 120, 24);
+        }
+
+        private List<ChildInteractableData> GetChildInteractables(MarkerBase marker)
+        {
+            if (marker is StaticObject so)
+                return so.childInteractables;
+            if (marker is WTTStaticObject wtt)
+                return wtt.childInteractables;
+            return null;
+        }
+
+        private void BuildChildInspector(MarkerBase marker, string childPath, bool isDoor, bool isContainer)
+        {
+            UIBuilder.CreateText(_inspectorContent, "Child Interactable", 12, Color.white, FontStyle.Bold);
+            UIBuilder.CreateText(_inspectorContent, childPath, 10, new Color(0.75f, 0.75f, 0.75f, 1f));
+            UIBuilder.CreateText(_inspectorContent, isDoor ? "Door" : isContainer ? "Container" : "Object", 10, new Color(0.75f, 0.75f, 0.75f, 1f));
+
+            var overrides = GetChildInteractables(marker);
+            if (overrides != null && (isDoor || isContainer))
+            {
+                if (isDoor)
+                {
+                    var existing = overrides.FirstOrDefault(x => x.childPath == childPath);
+                    var value = existing?.keyId ?? "";
+                    BuildStringField(_inspectorContent, "Key Id", value, (v) =>
+                    {
+                        var data = overrides.FirstOrDefault(x => x.childPath == childPath);
+                        if (data == null)
+                        {
+                            data = new ChildInteractableData { childPath = childPath };
+                            overrides.Add(data);
+                        }
+                        data.keyId = v;
+                        manager.IsDirty = true;
+                    });
+                }
+
+                if (isContainer)
+                {
+                    var existing = overrides.FirstOrDefault(x => x.childPath == childPath);
+                    var value = existing?.containerId ?? "";
+                    BuildStringField(_inspectorContent, "Container Id", value, (v) =>
+                    {
+                        var data = overrides.FirstOrDefault(x => x.childPath == childPath);
+                        if (data == null)
+                        {
+                            data = new ChildInteractableData { childPath = childPath };
+                            overrides.Add(data);
+                        }
+                        data.containerId = v;
+                        manager.IsDirty = true;
+                    });
+                }
+            }
+
+            UIBuilder.CreateButton(_inspectorContent, "Back to Parent", () =>
+            {
+                _selectedChildMarker = null;
+                _selectedChildPath = null;
+                RequestInspectorRefresh();
+                RequestHierarchyRefresh();
+            }, 110, 24);
         }
 
         private void BuildInteractiveObject(InteractiveObject obj)

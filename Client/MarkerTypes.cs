@@ -396,6 +396,13 @@ namespace MapLootEditorLite.Client
         TransformData sourceObjectPosition { get; set; }
     }
 
+    public class ChildInteractableData
+    {
+        public string childPath = "";
+        public string keyId = "";
+        public string containerId = "";
+    }
+
     public class StaticObject : MarkerBase, IHasSourceObject
     {
         public string prefabPath = "";
@@ -407,6 +414,8 @@ namespace MapLootEditorLite.Client
         public bool questOnly = false;
         public bool questCompleted = false;
         public string questId = "";
+
+        public List<ChildInteractableData> childInteractables = new List<ChildInteractableData>();
 
         public override MarkerKind Kind => MarkerKind.StaticObject;
     }
@@ -451,6 +460,8 @@ namespace MapLootEditorLite.Client
         public string requiredBossSpawned = "";
         public bool questOnly = false;
         public bool questCompleted = false;
+
+        public List<ChildInteractableData> childInteractables = new List<ChildInteractableData>();
 
         public override MarkerKind Kind => MarkerKind.WTTStaticObject;
     }
