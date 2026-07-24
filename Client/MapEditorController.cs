@@ -320,7 +320,14 @@ namespace MapLootEditorLite.Client
                 _ui.Hide();
 
             if (_renderer != null && _ui != null)
+            {
                 _renderer.ShowSceneObjectOutlines = _ui.IsPickingSourceObject;
+
+                GameObject hovered = null;
+                if (_ui.IsPickingSourceObject && !IsMouseOverUI())
+                    hovered = _ui.GetSceneObjectHover();
+                _renderer.SetHoveredSceneObject(hovered);
+            }
 
             if (_editorOpen && _renderer != null && _renderer.Use3DSceneObjectOutlines)
                 _renderer.Update3DSceneObjectOutlines(Camera.main);

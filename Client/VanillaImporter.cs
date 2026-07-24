@@ -274,6 +274,8 @@ namespace MapLootEditorLite.Client
                     containerTemplate = containerTpl,
                     containerId = root?._id ?? "",
                     keyId = sceneContainer != null ? (sceneContainer.KeyId ?? "") : "",
+                    sourceObjectName = sceneContainer != null ? sceneContainer.name : "",
+                    sourceObjectPosition = sceneContainer != null ? FromVector3(sceneContainer.transform.position) : FromVectorData(sp.template.Position),
                     spawnChance = sp.probability * 100f,
                     lootMode = ContainerLootMode.Default,
                     items = new List<LootItem>()

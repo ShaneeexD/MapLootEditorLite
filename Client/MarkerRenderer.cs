@@ -63,6 +63,7 @@ namespace MapLootEditorLite.Client
             public GameObject go;
             public Bounds bounds;
             public bool selected;
+            public bool hovered;
         }
 
         public GizmoMode GizmoMode { get; set; } = GizmoMode.Translate;
@@ -432,7 +433,8 @@ namespace MapLootEditorLite.Client
                 {
                     go = go,
                     bounds = bounds,
-                    selected = go == selected
+                    selected = go == selected,
+                    hovered = false
                 });
             }
         }
@@ -446,6 +448,19 @@ namespace MapLootEditorLite.Client
             {
                 var e = _sceneObjectOutlines[i];
                 e.selected = e.go == selected;
+                _sceneObjectOutlines[i] = e;
+            }
+        }
+
+        public void SetHoveredSceneObject(GameObject hovered)
+        {
+            if (_sceneObjectOutlines == null)
+                return;
+
+            for (int i = 0; i < _sceneObjectOutlines.Count; i++)
+            {
+                var e = _sceneObjectOutlines[i];
+                e.hovered = e.go == hovered;
                 _sceneObjectOutlines[i] = e;
             }
         }
@@ -541,7 +556,7 @@ namespace MapLootEditorLite.Client
                 if (entry.go == null)
                     continue;
 
-                if (!entry.selected && !ShowSceneObjectOutlines)
+                if (!entry.selected && !entry.hovered && !ShowSceneObjectOutlines)
                     continue;
 
                 if (ObjectRenderDistance > 0f && Vector3.Distance(cameraPos, entry.bounds.center) > ObjectRenderDistance)
@@ -593,7 +608,7 @@ namespace MapLootEditorLite.Client
                 if (CustomEditorUI.IsScreenPointOverEditorUI(new Vector2((min.x + max.x) * 0.5f, Screen.height - (min.y + max.y) * 0.5f)))
                     continue;
 
-                GUI.color = entry.selected ? new Color(1f, 0.25f, 0.25f, 0.9f) : new Color(0.25f, 0.9f, 0.25f, 0.9f);
+                GUI.color = (entry.selected || entry.hovered) ? new Color(1f, 0.25f, 0.25f, 0.9f) : new Color(0.25f, 0.9f, 0.25f, 0.9f);
 
                 GUI.DrawTexture(new Rect(min.x, min.y, max.x - min.x, thickness), whiteTexture, ScaleMode.StretchToFill, true, 1f);
                 GUI.DrawTexture(new Rect(min.x, max.y, max.x - min.x, thickness), whiteTexture, ScaleMode.StretchToFill, true, 1f);
@@ -617,7 +632,7 @@ namespace MapLootEditorLite.Client
                 if (entry.go == null)
                     continue;
 
-                if (!entry.selected && !ShowSceneObjectOutlines)
+                if (!entry.selected && !entry.hovered && !ShowSceneObjectOutlines)
                     continue;
 
                 if (ObjectRenderDistance > 0f && Vector3.Distance(cameraPos, entry.bounds.center) > ObjectRenderDistance)
@@ -671,7 +686,7 @@ namespace MapLootEditorLite.Client
             visual.transform.rotation = Quaternion.identity;
             visual.transform.localScale = entry.bounds.size;
 
-            var color = entry.selected ? new Color(1f, 0.25f, 0.25f, 0.9f) : new Color(0.25f, 0.9f, 0.25f, 0.9f);
+            var color = (entry.selected || entry.hovered) ? new Color(1f, 0.25f, 0.25f, 0.9f) : new Color(0.25f, 0.9f, 0.25f, 0.9f);
             var lr = visual.GetComponent<LineRenderer>();
             if (lr != null)
             {

@@ -3058,11 +3058,14 @@ namespace MapLootEditorLite.Client
                 var tplField = BuildInputFieldInline(row, item.template ?? "", (v) => { item.template = v; manager.IsDirty = true; }, 100, 20);
                 tplField.onEndEdit.AddListener(_ =>
                 {
-                    var stackMax = ItemNameResolver.GetStackMaxSize(item.template);
-                    if (stackMax > 1 && item.maxCount <= 1)
+                    if (ItemNeedsStackFields(item.template))
                     {
-                        item.minCount = 1;
-                        item.maxCount = stackMax;
+                        var stackMax = ItemNameResolver.GetStackMaxSize(item.template);
+                        if (item.maxCount <= 1)
+                        {
+                            item.minCount = 1;
+                            item.maxCount = stackMax;
+                        }
                     }
                     RequestInspectorRefresh();
                 });
@@ -3071,6 +3074,21 @@ namespace MapLootEditorLite.Client
                 if (onPreview != null)
                     UIBuilder.CreateButton(row, "Prev", () => onPreview(idx), 36, 20, 10);
                 UIBuilder.CreateButton(row, "-", () => { items.RemoveAt(idx); manager.IsDirty = true; RefreshInspector(); }, 24, 20, 10);
+
+                var name = GetItemName(item.template);
+                if (!string.IsNullOrEmpty(name))
+                    UIBuilder.CreateText(_inspectorContent, $"  {name}", 11, new Color(0.6f, 0.6f, 0.6f, 1f));
+
+                if (ItemNeedsStackFields(item.template))
+                {
+                    var countRow = UIBuilder.CreatePanel("ItemCountRow", _inspectorContent, new Color(0, 0, 0, 0));
+                    UIBuilder.AddHorizontalLayout(countRow, 2, 2, false, false);
+                    UIBuilder.AddLayoutElement(countRow, null, 22, null, 22, null, 0);
+                    UIBuilder.CreateLabel(countRow, "Min", 11, 26, 20);
+                    BuildInputFieldInline(countRow, item.minCount.ToString(), (v) => { if (int.TryParse(v, out var r)) { item.minCount = Math.Max(r, 1); manager.IsDirty = true; } }, 36, 20);
+                    UIBuilder.CreateLabel(countRow, "Max", 11, 30, 20);
+                    BuildInputFieldInline(countRow, item.maxCount.ToString(), (v) => { if (int.TryParse(v, out var r)) { item.maxCount = Math.Max(r, 1); manager.IsDirty = true; } }, 40, 20);
+                }
 
                 var questOnlyRow = UIBuilder.CreatePanel("QuestOnlyRow", _inspectorContent, new Color(0, 0, 0, 0));
                 UIBuilder.AddHorizontalLayout(questOnlyRow, 2, 2, false, false);
@@ -3089,22 +3107,6 @@ namespace MapLootEditorLite.Client
                     UIBuilder.AddLayoutElement(questIdRow, null, 22, null, 22, null, 0);
                     UIBuilder.CreateLabel(questIdRow, "Quest ID", 11, 48, 20);
                     BuildInputFieldInline(questIdRow, item.questId ?? "", (v) => { item.questId = v; manager.IsDirty = true; }, 120, 20);
-                }
-
-                var name = GetItemName(item.template);
-                if (!string.IsNullOrEmpty(name))
-                    UIBuilder.CreateText(_inspectorContent, $"  {name}", 11, new Color(0.6f, 0.6f, 0.6f, 1f));
-
-                var stackMax = ItemNameResolver.GetStackMaxSize(item.template);
-                if (stackMax > 1)
-                {
-                    var countRow = UIBuilder.CreatePanel("ItemCountRow", _inspectorContent, new Color(0, 0, 0, 0));
-                    UIBuilder.AddHorizontalLayout(countRow, 2, 2, false, false);
-                    UIBuilder.AddLayoutElement(countRow, null, 22, null, 22, null, 0);
-                    UIBuilder.CreateLabel(countRow, "Min", 11, 26, 20);
-                    BuildInputFieldInline(countRow, item.minCount.ToString(), (v) => { if (int.TryParse(v, out var r)) { item.minCount = Math.Max(r, 1); manager.IsDirty = true; } }, 36, 20);
-                    UIBuilder.CreateLabel(countRow, "Max", 11, 30, 20);
-                    BuildInputFieldInline(countRow, item.maxCount.ToString(), (v) => { if (int.TryParse(v, out var r)) { item.maxCount = Math.Max(r, 1); manager.IsDirty = true; } }, 40, 20);
                 }
 
                 if (showRotation)
@@ -3424,6 +3426,21 @@ namespace MapLootEditorLite.Client
             return null;
         }
 
+        private bool ItemNeedsStackFields(string template)
+        {
+            if (string.IsNullOrEmpty(template))
+                return false;
+
+            var parent = ItemNameResolver.GetParent(template);
+            if (parent == "543be5dd4bdc2deb348b4569" || parent == "5485a8684bdc2da71d8b4567")
+                return true;
+
+            if (string.Equals(template, "5d235b4d86f7742e017bc88a", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            return false;
+        }
+
         public void RequestDelete()
         {
             if (manager == null || manager.Selected == null)
@@ -3504,6 +3521,8 @@ namespace MapLootEditorLite.Client
 
         public GameObject TryPickSourceSceneObject() => PickSceneObjectAtMouse();
 
+        public GameObject GetSceneObjectHover() => PickSceneObjectAtMouse(true);
+
         public void SetPickingSource(bool picking, IHasSourceObject target = null)
         {
             _isPickingSource = picking;
@@ -3531,12 +3550,13 @@ namespace MapLootEditorLite.Client
             return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
         }
 
-        private GameObject PickSceneObjectAtMouse()
+        private GameObject PickSceneObjectAtMouse(bool silent = false)
         {
             var cam = Camera.main;
             if (cam == null)
             {
-                Plugin.Log.LogWarning("No main camera found for scene picking.");
+                if (!silent)
+                    Plugin.Log.LogWarning("No main camera found for scene picking.");
                 return null;
             }
             var ray = cam.ScreenPointToRay(Input.mousePosition);
@@ -3565,10 +3585,12 @@ namespace MapLootEditorLite.Client
 
             if (closest != null)
             {
-                Plugin.Log.LogInfo($"Picked scene object: {closest.name} at {closest.transform.position}");
+                if (!silent)
+                    Plugin.Log.LogInfo($"Picked scene object: {closest.name} at {closest.transform.position}");
                 return closest;
             }
-            Plugin.Log.LogWarning("Scene picker raycast did not hit anything.");
+            if (!silent)
+                Plugin.Log.LogWarning("Scene picker raycast did not hit anything.");
             return null;
         }
 
