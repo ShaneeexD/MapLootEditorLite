@@ -931,6 +931,15 @@ namespace MapLootEditorLite.Client
             _renderer.Rebuild();
         }
 
+        public void CreateNavMeshArea()
+        {
+            if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
+            var marker = _manager.CreateNavMeshArea(GetLookPosition());
+            _manager.Selected = marker;
+            _renderer.Rebuild();
+        }
+
         public bool IsFreeCam => _freeCam;
         public bool IsFreeCamCursorLocked => _freeCamCursorLocked;
 
@@ -1610,6 +1619,8 @@ namespace MapLootEditorLite.Client
                                 mpsz.scale = TransformData.FromVector3(startScale + centerScaleDelta);
                             else if (m is Blocker mbl)
                                 mbl.scale = TransformData.FromVector3(startScale + centerScaleDelta);
+                            else if (m is NavMeshArea mnma)
+                                mnma.scale = TransformData.FromVector3(startScale + centerScaleDelta);
                         }
                         _renderer.Rebuild();
                     }
@@ -1675,6 +1686,11 @@ namespace MapLootEditorLite.Client
                         else if (_manager.Selected is Blocker bl)
                         {
                             bl.scale = TransformData.FromVector3(newScale);
+                            _renderer.Rebuild();
+                        }
+                        else if (_manager.Selected is NavMeshArea nma)
+                        {
+                            nma.scale = TransformData.FromVector3(newScale);
                             _renderer.Rebuild();
                         }
                     }
@@ -1776,6 +1792,8 @@ namespace MapLootEditorLite.Client
                 _gizmoDragStartMarkerScale = psz.scale?.ToVector3() ?? Vector3.one;
             else if (_manager.Selected is Blocker bl)
                 _gizmoDragStartMarkerScale = bl.scale?.ToVector3() ?? Vector3.one;
+            else if (_manager.Selected is NavMeshArea nma)
+                _gizmoDragStartMarkerScale = nma.scale?.ToVector3() ?? new Vector3(2f, 0.1f, 2f);
 
             _gizmoDragStartCenter = _manager.SelectedIds.Count > 1 ? _manager.SelectionCenter : _gizmoDragStartMarkerPos;
             _gizmoDragStartCenterRot = _manager.SelectedIds.Count > 1 ? Quaternion.identity : _manager.Selected.rotation.ToQuaternion();
@@ -1812,6 +1830,8 @@ namespace MapLootEditorLite.Client
                     _gizmoDragStartScales[id] = mpsz.scale?.ToVector3() ?? Vector3.one;
                 else if (m is Blocker mbl)
                     _gizmoDragStartScales[id] = mbl.scale?.ToVector3() ?? Vector3.one;
+                else if (m is NavMeshArea mnma)
+                    _gizmoDragStartScales[id] = mnma.scale?.ToVector3() ?? new Vector3(2f, 0.1f, 2f);
                 else
                     _gizmoDragStartScales[id] = Vector3.one;
             }
@@ -2259,6 +2279,7 @@ namespace MapLootEditorLite.Client
                 case "TriggerZone": return entry.data.ToObject<TriggerZone>();
                 case "OcclusionRepairVolume": return entry.data.ToObject<OcclusionRepairVolume>();
                 case "Blocker": return entry.data.ToObject<Blocker>();
+                case "NavMeshArea": return entry.data.ToObject<NavMeshArea>();
                 default: return null;
             }
         }

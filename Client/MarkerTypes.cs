@@ -22,7 +22,8 @@ namespace MapLootEditorLite.Client
         TriggerZone,
         OcclusionRepairVolume,
         CutVolume,
-        Blocker
+        Blocker,
+        NavMeshArea
     }
 
     public enum ExtractZoneRequirementType
@@ -263,6 +264,7 @@ namespace MapLootEditorLite.Client
         public List<OcclusionRepairVolume> occlusionRepairVolumes = new List<OcclusionRepairVolume>();
         public List<CutVolume> cutVolumes = new List<CutVolume>();
         public List<Blocker> blockers = new List<Blocker>();
+        public List<NavMeshArea> navMeshAreas = new List<NavMeshArea>();
         public List<RemovedObject> removedObjects = new List<RemovedObject>();
     }
 
@@ -361,6 +363,14 @@ namespace MapLootEditorLite.Client
         Box,
         Cylinder,
         Capsule
+    }
+
+    [JsonConverter(typeof(StringEnumConverter))]
+    public enum NavMeshAreaShape
+    {
+        Box,
+        Capsule,
+        Mesh
     }
 
     public class LootZone : MarkerBase
@@ -682,5 +692,15 @@ namespace MapLootEditorLite.Client
         public ZoneShape shape = ZoneShape.Box;
 
         public override MarkerKind Kind => MarkerKind.Blocker;
+    }
+
+    public class NavMeshArea : MarkerBase
+    {
+        public NavMeshAreaShape shape = NavMeshAreaShape.Box;
+        public TransformData scale = new TransformData { x = 2f, y = 0.1f, z = 2f };
+        public int area = 0; // 0 = Walkable, 1 = Not Walkable
+        public bool walkable = true;
+
+        public override MarkerKind Kind => MarkerKind.NavMeshArea;
     }
 }

@@ -237,6 +237,9 @@ namespace MapLootEditorLite.Client
             if (Data.blockers != null)
                 foreach (var m in Data.blockers)
                     yield return m;
+            if (Data.navMeshAreas != null)
+                foreach (var m in Data.navMeshAreas)
+                    yield return m;
         }
 
         public MarkerBase FindById(string id)
@@ -366,6 +369,10 @@ namespace MapLootEditorLite.Client
                     Data.blockers ??= new List<Blocker>();
                     Data.blockers.Add(b);
                     break;
+                case NavMeshArea nma:
+                    Data.navMeshAreas ??= new List<NavMeshArea>();
+                    Data.navMeshAreas.Add(nma);
+                    break;
             }
             IsDirty = true;
         }
@@ -432,6 +439,7 @@ namespace MapLootEditorLite.Client
                 case OcclusionRepairVolume orv: Data.occlusionRepairVolumes.Remove(orv); break;
                 case CutVolume cv: Data.cutVolumes.Remove(cv); break;
                 case Blocker b: Data.blockers.Remove(b); break;
+                case NavMeshArea nma: Data.navMeshAreas.Remove(nma); break;
                 }
             }
             ClearSelection();
@@ -510,6 +518,10 @@ namespace MapLootEditorLite.Client
                     case Blocker b:
                         copy = JsonConvert.DeserializeObject<Blocker>(json);
                         Data.blockers.Add((Blocker)copy);
+                        break;
+                    case NavMeshArea nma:
+                        copy = JsonConvert.DeserializeObject<NavMeshArea>(json);
+                        Data.navMeshAreas.Add((NavMeshArea)copy);
                         break;
                     default:
                         continue;
@@ -806,6 +818,24 @@ namespace MapLootEditorLite.Client
             return marker;
         }
 
+        public NavMeshArea CreateNavMeshArea(Vector3 position)
+        {
+            Data.navMeshAreas ??= new List<NavMeshArea>();
+            var marker = new NavMeshArea
+            {
+                name = "navmesh_area",
+                position = TransformData.FromVector3(position),
+                rotation = TransformData.FromVector3(Vector3.zero),
+                scale = new TransformData { x = 2f, y = 0.1f, z = 2f },
+                shape = NavMeshAreaShape.Box,
+                area = 0,
+                walkable = true
+            };
+            Data.navMeshAreas.Add(marker);
+            IsDirty = true;
+            return marker;
+        }
+
         public void DeleteSelected()
         {
             if (Selected == null || Data == null || IsVanilla(Selected))
@@ -828,6 +858,7 @@ namespace MapLootEditorLite.Client
                 case OcclusionRepairVolume orv: Data.occlusionRepairVolumes.Remove(orv); break;
                 case CutVolume cv: Data.cutVolumes.Remove(cv); break;
                 case Blocker b: Data.blockers.Remove(b); break;
+                case NavMeshArea nma: Data.navMeshAreas.Remove(nma); break;
             }
 
             Selected = null;

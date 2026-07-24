@@ -45,6 +45,8 @@ namespace MapLootEditorLite.Client
         private readonly Color _cutVolumeWireColor = new Color(1f, 0.2f, 0.2f, 1.0f);
         private readonly Color _blockerColor = new Color(0.8f, 0.2f, 0.8f, 0.25f);
         private readonly Color _blockerWireColor = new Color(0.8f, 0.2f, 0.8f, 1.0f);
+        private readonly Color _navMeshAreaColor = new Color(0.2f, 0.8f, 0.3f, 0.25f);
+        private readonly Color _navMeshAreaWireColor = new Color(0.2f, 0.8f, 0.3f, 1.0f);
         private readonly Color _selectedColor = new Color(0.2f, 0.6f, 1f, 0.25f);
         private readonly Color _selectedWireColor = new Color(0.2f, 0.6f, 1f, 1.0f);
         private readonly Color _vanillaColor = new Color(0.8f, 0.8f, 0.8f, 0.35f);
@@ -56,6 +58,7 @@ namespace MapLootEditorLite.Client
         private Material _wireMaterial;
         private Material _gizmoMaterial;
         private readonly Dictionary<string, ZoneShape> _zoneShapeCache = new Dictionary<string, ZoneShape>();
+        private readonly Dictionary<string, NavMeshAreaShape> _navMeshAreaShapeCache = new Dictionary<string, NavMeshAreaShape>();
         private readonly List<SceneObjectOutline> _sceneObjectOutlines = new List<SceneObjectOutline>();
 
         private struct SceneObjectOutline
@@ -248,6 +251,15 @@ namespace MapLootEditorLite.Client
                     }
                 }
 
+                if (marker is NavMeshArea currentNma && _visuals.TryGetValue(marker.id, out GameObject existingNmaVisual))
+                {
+                    if (_navMeshAreaShapeCache.TryGetValue(marker.id, out NavMeshAreaShape cachedNmaShape) && cachedNmaShape != currentNma.shape)
+                    {
+                        UnityEngine.Object.Destroy(existingNmaVisual);
+                        _visuals.Remove(marker.id);
+                    }
+                }
+
                 if (!_visuals.TryGetValue(marker.id, out GameObject visual))
                 {
                     visual = CreateVisual(marker);
@@ -324,6 +336,11 @@ namespace MapLootEditorLite.Client
                     {
                         ApplyZoneScale(visual, b);
                         _zoneShapeCache[marker.id] = b.shape;
+                    }
+                    else if (marker is NavMeshArea nma)
+                    {
+                        ApplyNavMeshAreaScale(visual, nma);
+                        _navMeshAreaShapeCache[marker.id] = nma.shape;
                     }
 
                     bool isSelected = _manager.IsSelected(marker);
@@ -409,6 +426,7 @@ namespace MapLootEditorLite.Client
             }
             _visuals.Clear();
             _zoneShapeCache.Clear();
+            _navMeshAreaShapeCache.Clear();
             _sceneObjectOutlines.Clear();
             DestroySceneObject3DVisuals();
         }
@@ -755,6 +773,9 @@ namespace MapLootEditorLite.Client
                 case Blocker b:
                     visual = CreateBlockerVisual(b);
                     break;
+                case NavMeshArea nma:
+                    visual = CreateNavMeshAreaVisual(nma);
+                    break;
                 default:
                     return null;
             }
@@ -974,6 +995,12 @@ namespace MapLootEditorLite.Client
         private GameObject CreateBlockerVisual(Blocker blocker)
         {
             return CreateZoneVisualWithColor(blocker.shape, _blockerWireColor);
+        }
+
+        private GameObject CreateNavMeshAreaVisual(NavMeshArea nma)
+        {
+            var shape = nma.shape == NavMeshAreaShape.Capsule ? ZoneShape.Capsule : ZoneShape.Box;
+            return CreateZoneVisualWithColor(shape, _navMeshAreaWireColor);
         }
 
         private GameObject CreateZoneVisualWithColor(ZoneShape shape, Color wireColor)
@@ -1369,6 +1396,12 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        private void ApplyNavMeshAreaScale(GameObject visual, NavMeshArea nma)
+        {
+            var scale = nma.scale ?? new TransformData { x = 1f, y = 1f, z = 1f };
+            visual.transform.localScale = new Vector3(scale.x, scale.y, scale.z);
+        }
+
         private void ApplyColor(GameObject visual, MarkerBase marker, bool selected)
         {
             var renderer = visual.GetComponent<Renderer>();
@@ -1448,6 +1481,10 @@ namespace MapLootEditorLite.Client
             {
                 color = _blockerColor;
             }
+            else if (marker is NavMeshArea)
+            {
+                color = _navMeshAreaColor;
+            }
             else
             {
                 color = _objectColor;
@@ -1492,6 +1529,8 @@ namespace MapLootEditorLite.Client
                         wireColor = _cutVolumeWireColor;
                     else if (marker is Blocker)
                         wireColor = _blockerWireColor;
+                    else if (marker is NavMeshArea)
+                        wireColor = _navMeshAreaWireColor;
                     else
                         wireColor = _zoneWireColor;
 

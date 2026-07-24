@@ -12,6 +12,7 @@ using EFT.Quests;
 using Newtonsoft.Json;
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace MapLootEditorLite.Client
 {
@@ -26,6 +27,7 @@ namespace MapLootEditorLite.Client
         private GameWorld _currentWorld;
         private string _currentMapId;
         private List<GameObject> _spawned = new List<GameObject>();
+        private readonly List<NavMeshDoorLink> _openedDoorLinks = new List<NavMeshDoorLink>();
         private static bool _raidStarted;
 
         private static readonly Dictionary<string, Dictionary<string, BundledStaticLootDistribution>> _bundledStaticLootCache = new Dictionary<string, Dictionary<string, BundledStaticLootDistribution>>(StringComparer.OrdinalIgnoreCase);
@@ -106,6 +108,7 @@ namespace MapLootEditorLite.Client
 
         public void ResetState()
         {
+            ResetDoorLinks();
             ClearSpawned();
             _currentWorld = null;
             _currentMapId = null;
@@ -265,6 +268,7 @@ namespace MapLootEditorLite.Client
                     var state = RemovedObjectHelper.SoftRemove(target);
                     removed.originalDoorState = state.OriginalDoorState;
                     removedSet.Add(state.GameObject);
+                    OpenRemovedDoorNavMesh(target, removed);
                     Plugin.Log.LogInfo($"Soft-removed vanilla object '{removed.name}' at {removed.position.ToVector3()} per pack (renderers/colliders disabled).");
                 }
                 else if (target == null)
@@ -296,10 +300,26 @@ namespace MapLootEditorLite.Client
                 if (!scene.isLoaded) continue;
                 foreach (var root in scene.GetRootGameObjects())
                 {
-                    var transforms = root.GetComponentsInChildren<Transform>(true);
+                    if (root == null)
+                        continue;
+
+                    Transform[] transforms;
+                    try
+                    {
+                        transforms = root.GetComponentsInChildren<Transform>(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        Plugin.Log.LogWarning($"Skipping root '{root.name}' while building blocker name index: {ex.Message}");
+                        continue;
+                    }
+
                     for (int i = 0; i < transforms.Length; i++)
                     {
                         var t = transforms[i];
+                        if (t == null)
+                            continue;
+
                         if (!nameIndex.TryGetValue(t.name, out var list))
                         {
                             list = new List<Transform>();
@@ -1354,6 +1374,67 @@ namespace MapLootEditorLite.Client
             return false;
         }
 
+        private void OpenRemovedDoorNavMesh(GameObject door, RemovedObject removed)
+        {
+            var wio = door.GetComponentInChildren<WorldInteractiveObject>(true);
+            if (wio == null)
+                return;
+
+            var doorId = wio.Id;
+            var doorLinks = FindObjectsOfType<NavMeshDoorLink>();
+            NavMeshDoorLink match = null;
+            foreach (var link in doorLinks)
+            {
+                if (link.Door == wio)
+                {
+                    match = link;
+                    break;
+                }
+                if (!string.IsNullOrEmpty(doorId) && !string.IsNullOrEmpty(link.DoorId) && link.DoorId == doorId)
+                {
+                    match = link;
+                    break;
+                }
+            }
+
+            if (match == null)
+            {
+                Plugin.Log.LogWarning($"No NavMeshDoorLink found for removed door '{removed.name}'.");
+                return;
+            }
+
+            if (match.Carver_Closed != null) { match.Carver_Closed.carving = false; match.Carver_Closed.enabled = false; }
+            if (match.Carver_Opened != null) { match.Carver_Opened.carving = false; match.Carver_Opened.enabled = false; }
+            if (match.Carver_Breached != null) { match.Carver_Breached.carving = false; match.Carver_Breached.enabled = false; }
+            match.ShallTryInteract = false;
+
+            // The original door link is usually one-way or snaps the bot across the doorway.
+            // Disable it so the rebuilt NavMeshArea is the only authority over this opening.
+            var navLink = match.gameObject.GetComponent("NavMeshLink") as Behaviour;
+            if (navLink != null)
+                navLink.enabled = false;
+
+            _openedDoorLinks.Add(match);
+            Plugin.Log.LogInfo($"Opened navmesh carvers for removed door '{removed.name}' (link {match.Id}).");
+        }
+
+
+        private void ResetDoorLinks()
+        {
+            foreach (var link in _openedDoorLinks)
+            {
+                if (link == null) continue;
+                link.ShallTryInteract = true;
+                if (link.Carver_Closed != null) { link.Carver_Closed.enabled = true; link.Carver_Closed.carving = link.Door != null && link.Door.DoorState == EDoorState.Locked; }
+                if (link.Carver_Opened != null) { link.Carver_Opened.enabled = true; }
+                if (link.Carver_Breached != null) { link.Carver_Breached.enabled = true; }
+                var navLink = link.gameObject.GetComponent("NavMeshLink") as Behaviour;
+                if (navLink != null)
+                    navLink.enabled = true;
+            }
+            _openedDoorLinks.Clear();
+        }
+
         private void ClearSpawned()
         {
             foreach (var go in _spawned)
@@ -1362,6 +1443,8 @@ namespace MapLootEditorLite.Client
                     Destroy(go);
             }
             _spawned.Clear();
+
+            // Door navmesh links are restored in ResetDoorLinks.
         }
 
         private void OnDestroy()

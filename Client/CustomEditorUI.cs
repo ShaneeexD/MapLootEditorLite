@@ -646,6 +646,7 @@ namespace MapLootEditorLite.Client
                 new MenuItem("Other", subItems: new List<MenuItem>
                 {
                     new MenuItem("Blocker", () => controller.CreateBlocker())
+                    // new MenuItem("NavMesh Area", () => controller.CreateNavMeshArea())
                 })
             }, 84, 22);
             UIBuilder.CreateButton(row1, "Snap",         () => controller.SnapSelected(),     46, 22);
@@ -2122,6 +2123,9 @@ namespace MapLootEditorLite.Client
                 case Blocker blocker:
                     BuildBlocker(blocker);
                     break;
+                case NavMeshArea nma:
+                    BuildNavMeshArea(nma);
+                    break;
             }
 
             var previewRow = UIBuilder.CreatePanel("PreviewRow", _inspectorContent, new Color(0, 0, 0, 0));
@@ -2904,6 +2908,40 @@ namespace MapLootEditorLite.Client
             }
 
             BuildVector3Field(_inspectorContent, "Scale", blocker.scale.ToVector3(), (v) => { blocker.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
+        }
+
+        private void BuildNavMeshArea(NavMeshArea nma)
+        {
+            if (nma.scale == null)
+                nma.scale = new TransformData { x = 2f, y = 0.1f, z = 2f };
+
+            var shapeRow = UIBuilder.CreatePanel("NavMeshShapeRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(shapeRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(shapeRow, null, 20, null, 20, null, 0);
+            UIBuilder.CreateLabel(shapeRow, "Shape", 11, 44, 20);
+            var shapes = new[] { "Box", "Capsule" };
+            for (int i = 0; i < shapes.Length; i++)
+            {
+                int idx = i;
+                var btn = UIBuilder.CreateButton(shapeRow, shapes[idx], () => { nma.shape = (NavMeshAreaShape)idx; manager.IsDirty = true; RefreshInspector(); }, 52, 20, 10);
+                if ((int)nma.shape == idx)
+                    btn.GetComponent<Image>().color = new Color(0.25f, 0.45f, 0.75f, 1f);
+            }
+
+            BuildVector3Field(_inspectorContent, "Scale", nma.scale.ToVector3(), (v) => { nma.scale = TransformData.FromVector3(v); manager.IsDirty = true; });
+
+            var areaRow = UIBuilder.CreatePanel("NavMeshAreaRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(areaRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(areaRow, null, 20, null, 20, null, 0);
+            UIBuilder.CreateLabel(areaRow, "Area Type", 11, 60, 20);
+            var areaTypes = new[] { "Walkable", "Not Walkable" };
+            for (int i = 0; i < areaTypes.Length; i++)
+            {
+                int idx = i;
+                var btn = UIBuilder.CreateButton(areaRow, areaTypes[idx], () => { nma.area = idx; nma.walkable = (idx == 0); manager.IsDirty = true; RefreshInspector(); }, 70, 20, 10);
+                if (nma.area == idx)
+                    btn.GetComponent<Image>().color = new Color(0.25f, 0.45f, 0.75f, 1f);
+            }
         }
 
         public static readonly (string id, string name)[] LootContainerTemplates = new (string, string)[]
