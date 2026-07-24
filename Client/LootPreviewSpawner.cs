@@ -822,15 +822,23 @@ namespace MapLootEditorLite.Client
         {
             if (instance == null)
                 return;
-            foreach (var renderer in instance.GetComponentsInChildren<Renderer>(true))
-            {
-                if (renderer != null)
-                    renderer.enabled = true;
-            }
+
             foreach (var behaviour in instance.GetComponentsInChildren<Behaviour>(true))
             {
                 if (behaviour != null && !(behaviour is PreviewStaticObjectMarker))
                     behaviour.enabled = false;
+            }
+
+            foreach (var t in instance.GetComponentsInChildren<Transform>(true))
+            {
+                if (t != null)
+                    t.gameObject.SetActive(true);
+            }
+
+            foreach (var renderer in instance.GetComponentsInChildren<Renderer>(true))
+            {
+                if (renderer != null)
+                    renderer.enabled = true;
             }
         }
 

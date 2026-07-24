@@ -7,6 +7,7 @@ using Comfort.Common;
 using EFT;
 using EFT.Ballistics;
 using EFT.Interactive;
+using EFT.InventoryLogic;
 using EFT.HealthSystem;
 using EFT.UI.BattleTimer;
 using HarmonyLib;
@@ -2125,6 +2126,65 @@ namespace MapLootEditorLite.Client
             GUIUtility.systemCopyBuffer = JsonConvert.SerializeObject(new ClipboardData { entries = entries });
         }
 
+        private void TryResolveInteractiveSource(InteractiveObject marker)
+        {
+            if (!string.IsNullOrEmpty(marker.sourceObjectName))
+                return;
+
+            var pos = marker.position.ToVector3();
+            Component best = null;
+            float bestDist = float.MaxValue;
+
+            if (marker.interactiveType == InteractiveObjectType.Container)
+            {
+                foreach (var c in FindObjectsOfType<LootableContainer>())
+                {
+                    if (c == null)
+                        continue;
+                    var d = (c.transform.position - pos).sqrMagnitude;
+                    if (d < bestDist)
+                    {
+                        bestDist = d;
+                        best = c;
+                    }
+                }
+            }
+            else if (marker.interactiveType == InteractiveObjectType.Door)
+            {
+                foreach (var c in FindObjectsOfType<WorldInteractiveObject>())
+                {
+                    if (c == null || c.GetComponent<Door>() == null)
+                        continue;
+                    var d = (c.transform.position - pos).sqrMagnitude;
+                    if (d < bestDist)
+                    {
+                        bestDist = d;
+                        best = c;
+                    }
+                }
+            }
+            else if (marker.interactiveType == InteractiveObjectType.StationaryWeapon)
+            {
+                foreach (var c in FindObjectsOfType<StationaryWeapon>())
+                {
+                    if (c == null)
+                        continue;
+                    var d = (c.transform.position - pos).sqrMagnitude;
+                    if (d < bestDist)
+                    {
+                        bestDist = d;
+                        best = c;
+                    }
+                }
+            }
+
+            if (best != null)
+            {
+                marker.sourceObjectName = best.name;
+                marker.sourceObjectPosition = TransformData.FromVector3(best.transform.position);
+            }
+        }
+
         public void Paste()
         {
             if (!EnsureMapLoaded())
@@ -2151,6 +2211,8 @@ namespace MapLootEditorLite.Client
 
                     copy.id = Guid.NewGuid().ToString();
                     copy.name = copy.name + "_paste";
+                    if (copy is InteractiveObject io && string.IsNullOrEmpty(io.sourceObjectName))
+                        TryResolveInteractiveSource(io);
                     _manager.AddMarker(copy);
                     copies.Add(copy);
                 }

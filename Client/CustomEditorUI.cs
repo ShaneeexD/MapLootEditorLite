@@ -3426,16 +3426,60 @@ namespace MapLootEditorLite.Client
             return null;
         }
 
+        private string GetItemParent(string template)
+        {
+            if (string.IsNullOrEmpty(template))
+                return null;
+
+            var factory = Singleton<ItemFactoryClass>.Instance;
+            if (factory == null || !factory.ItemTemplates.TryGetValue(template, out var itemTemplate))
+                return null;
+
+            var type = itemTemplate.GetType();
+            foreach (var propName in new[] { "ParentId", "Parent", "_parent" })
+            {
+                var prop = type.GetProperty(propName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                if (prop != null)
+                {
+                    var v = prop.GetValue(itemTemplate);
+                    if (v != null)
+                        return v.ToString();
+                }
+            }
+
+            foreach (var fieldName in new[] { "ParentId", "Parent", "_parent" })
+            {
+                var field = type.GetField(fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (field != null)
+                {
+                    var v = field.GetValue(itemTemplate);
+                    if (v != null)
+                        return v.ToString();
+                }
+            }
+
+            return null;
+        }
+
         private bool ItemNeedsStackFields(string template)
         {
             if (string.IsNullOrEmpty(template))
                 return false;
 
-            var parent = ItemNameResolver.GetParent(template);
-            if (parent == "543be5dd4bdc2deb348b4569" || parent == "5485a8684bdc2da71d8b4567")
+            if (string.Equals(template, "5d235b4d86f7742e017bc88a", StringComparison.OrdinalIgnoreCase))
                 return true;
 
-            if (string.Equals(template, "5d235b4d86f7742e017bc88a", StringComparison.OrdinalIgnoreCase))
+            var moneyIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "5449016a4bdc2d6f028b456f",
+                "5696686a4bdc2da3298b456a",
+                "569668774bdc2da2298b4568"
+            };
+            if (moneyIds.Contains(template))
+                return true;
+
+            var parent = ItemNameResolver.GetParent(template) ?? GetItemParent(template);
+            if (parent == "543be5dd4bdc2deb348b4569" || parent == "5485a8684bdc2da71d8b4567")
                 return true;
 
             return false;
