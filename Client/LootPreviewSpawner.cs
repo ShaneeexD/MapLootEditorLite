@@ -35,10 +35,11 @@ namespace MapLootEditorLite.Client
         public void SpawnAtMarker(LooseLootSpawn marker, int itemIndex = 0)
         {
             var tpl = GetItemTpl(marker.items, itemIndex);
+            var item = GetItem(marker.items, itemIndex);
             var pos = marker.position.ToVector3();
             var ground = MarkerManager.GetGroundPosition(pos);
             var rotation = marker.rotation.ToQuaternion();
-            SpawnPreview(tpl, ground ?? pos, rotation, pos, rotation, true, marker.name, marker.id);
+            SpawnPreview(tpl, item, ground ?? pos, rotation, pos, rotation, true, marker.name, marker.id);
         }
 
         public void SpawnInZone(LootZone marker, int itemIndex = 0)
@@ -50,7 +51,7 @@ namespace MapLootEditorLite.Client
             var rotation = GetZoneItemRotation(marker.items, itemIndex);
             var markerPos = marker.position.ToVector3();
             var markerRot = marker.rotation.ToQuaternion();
-            SpawnPreview(tpl, pos, rotation, markerPos, markerRot, item?.randomRotation != true, marker.name, marker.id);
+            SpawnPreview(tpl, item, pos, rotation, markerPos, markerRot, item?.randomRotation != true, marker.name, marker.id);
         }
 
         public void SpawnAllInZone(LootZone marker)
@@ -68,7 +69,7 @@ namespace MapLootEditorLite.Client
                 var pos = GetRandomPointInZone(marker);
                 pos.y += item?.yOffset ?? 0f;
                 var rotation = GetZoneItemRotation(marker.items, i);
-                SpawnPreviewInternal(tpl, pos, rotation, markerPos, markerRot, item?.randomRotation != true, marker.name, marker.id, false);
+                SpawnPreviewInternal(tpl, item, pos, rotation, markerPos, markerRot, item?.randomRotation != true, marker.name, marker.id, false);
             }
         }
 
@@ -333,7 +334,7 @@ namespace MapLootEditorLite.Client
             pos.y += item?.yOffset ?? 0f;
             var rot = marker.rotation.ToQuaternion();
             var rotation = GetZoneItemRotation(marker.items, itemIndex);
-            SpawnPreview(tpl, pos, rotation, pos, rot, item?.randomRotation != true, marker.name, marker.id);
+            SpawnPreview(tpl, item, pos, rotation, pos, rot, item?.randomRotation != true, marker.name, marker.id);
         }
 
         private string GetItemTpl(List<LootItem> items, int index)
@@ -365,12 +366,12 @@ namespace MapLootEditorLite.Client
             return Quaternion.Euler(0f, UnityEngine.Random.Range(0f, 360f), 0f);
         }
 
-        public void SpawnPreview(string itemTpl, Vector3 position, Quaternion rotation, Vector3 markerPosition, Quaternion markerRotation, bool syncRotation, string markerName, string markerId)
+        public void SpawnPreview(string itemTpl, LootItem loot, Vector3 position, Quaternion rotation, Vector3 markerPosition, Quaternion markerRotation, bool syncRotation, string markerName, string markerId)
         {
-            SpawnPreviewInternal(itemTpl, position, rotation, markerPosition, markerRotation, syncRotation, markerName, markerId, true);
+            SpawnPreviewInternal(itemTpl, loot, position, rotation, markerPosition, markerRotation, syncRotation, markerName, markerId, true);
         }
 
-        private void SpawnPreviewInternal(string itemTpl, Vector3 position, Quaternion rotation, Vector3 markerPosition, Quaternion markerRotation, bool syncRotation, string markerName, string markerId, bool clear)
+        private void SpawnPreviewInternal(string itemTpl, LootItem loot, Vector3 position, Quaternion rotation, Vector3 markerPosition, Quaternion markerRotation, bool syncRotation, string markerName, string markerId, bool clear)
         {
             if (clear)
                 ClearByMarkerId(markerId);
@@ -378,10 +379,10 @@ namespace MapLootEditorLite.Client
             AttachMeta(fallback, itemTpl, markerName, markerId, true, position - markerPosition, Quaternion.Inverse(markerRotation) * rotation, syncRotation);
             _previews.Add(fallback);
 
-            _runner.StartCoroutine(LoadRealPreviewCoroutine(itemTpl, position, rotation, markerPosition, markerRotation, syncRotation, markerName, markerId, fallback));
+            _runner.StartCoroutine(LoadRealPreviewCoroutine(itemTpl, loot, position, rotation, markerPosition, markerRotation, syncRotation, markerName, markerId, fallback));
         }
 
-        private GameObject TrySpawnRealPreview(string itemTpl, Vector3 position, Quaternion rotation)
+        private GameObject TrySpawnRealPreview(string itemTpl, LootItem loot, Vector3 position, Quaternion rotation)
         {
             try
             {
@@ -389,7 +390,7 @@ namespace MapLootEditorLite.Client
                 if (factory == null)
                     return null;
 
-                var item = factory.CreateItem(MongoID.Generate(true).ToString(), itemTpl, null);
+                var item = loot != null ? RuntimeInteractiveObjectSpawner.BuildItem(loot, factory) : factory.CreateItem(MongoID.Generate(true).ToString(), itemTpl, null);
                 if (item == null)
                     return null;
 
@@ -416,9 +417,9 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        private IEnumerator LoadRealPreviewCoroutine(string itemTpl, Vector3 position, Quaternion rotation, Vector3 markerPosition, Quaternion markerRotation, bool syncRotation, string markerName, string markerId, GameObject fallback)
+        private IEnumerator LoadRealPreviewCoroutine(string itemTpl, LootItem loot, Vector3 position, Quaternion rotation, Vector3 markerPosition, Quaternion markerRotation, bool syncRotation, string markerName, string markerId, GameObject fallback)
         {
-            var task = PreloadBundles(itemTpl);
+            var task = loot != null ? PreloadBundles(loot) : PreloadBundles(itemTpl);
             while (!task.IsCompleted)
             {
                 yield return null;
@@ -437,7 +438,7 @@ namespace MapLootEditorLite.Client
             var rotationOffset = Quaternion.Inverse(markerRotation) * rotation;
             for (int attempt = 0; attempt < 5; attempt++)
             {
-                var real = TrySpawnRealPreview(itemTpl, position, rotation);
+                var real = TrySpawnRealPreview(itemTpl, loot, position, rotation);
                 if (real != null)
                 {
                     var currentPos = fallback.transform.position;
@@ -458,6 +459,11 @@ namespace MapLootEditorLite.Client
 
         private async Task PreloadBundles(string itemTpl)
         {
+            await PreloadBundles(new LootItem { template = itemTpl });
+        }
+
+        private async Task PreloadBundles(LootItem loot)
+        {
             var pool = Singleton<PoolManagerClass>.Instance;
             if (pool == null)
                 return;
@@ -466,14 +472,8 @@ namespace MapLootEditorLite.Client
             if (factory == null)
                 return;
 
-            if (!factory.ItemTemplates.TryGetValue(itemTpl, out var template))
-                return;
-
             var keys = new List<ResourceKey>();
-            if (template.Prefab != null)
-                keys.Add(template.Prefab);
-            if (template.UsePrefab != null)
-                keys.Add(template.UsePrefab);
+            CollectResourceKeys(loot, factory, keys);
             if (keys.Count == 0)
                 return;
 
@@ -484,6 +484,26 @@ namespace MapLootEditorLite.Client
                 JobPriorityClass.Immediate,
                 null,
                 CancellationToken.None);
+        }
+
+        private static void CollectResourceKeys(LootItem loot, ItemFactoryClass factory, List<ResourceKey> keys)
+        {
+            if (loot == null || string.IsNullOrEmpty(loot.template))
+                return;
+
+            if (factory.ItemTemplates.TryGetValue(loot.template, out var template))
+            {
+                if (template?.Prefab != null)
+                    keys.Add(template.Prefab);
+                if (template?.UsePrefab != null)
+                    keys.Add(template.UsePrefab);
+            }
+
+            if (loot.children == null || loot.children.Count == 0)
+                return;
+
+            foreach (var child in loot.children)
+                CollectResourceKeys(child, factory, keys);
         }
 
         private void AttachMeta(GameObject preview, string itemTpl, string markerName, string markerId, bool fallback, Vector3 offset, Quaternion rotationOffset, bool syncRotation)

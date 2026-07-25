@@ -143,20 +143,7 @@ namespace MapLootEditorLite.Client
                     };
 
                     if (sp.template.Items != null)
-                    {
-                        foreach (var item in sp.template.Items)
-                        {
-                            if (string.IsNullOrEmpty(item?._tpl))
-                                continue;
-                            marker.items.Add(new LootItem
-                            {
-                                template = item._tpl,
-                                chance = item.RelativeProbability.HasValue ? item.RelativeProbability.Value * 100f : 100f,
-                                randomRotation = true,
-                                count = Math.Max((int)(item.upd?.StackObjectsCount ?? 1), 1)
-                            });
-                        }
-                    }
+                        marker.items = BuildLootItemTree(sp.template.Items);
 
                     data.lootSpawns.Add(marker);
                 }
@@ -284,20 +271,12 @@ namespace MapLootEditorLite.Client
                 // Use the static data items if they are real forced loot (not just the container root).
                 if (sp.template.Items != null)
                 {
-                    foreach (var item in sp.template.Items)
-                    {
-                        if (string.IsNullOrEmpty(item?._tpl))
-                            continue;
-                        if (string.IsNullOrEmpty(item.parentId))
-                            continue; // container root item is not loot
-                        marker.items.Add(new LootItem
-                        {
-                            template = item._tpl,
-                            chance = 100f,
-                            randomRotation = true,
-                            count = Math.Max((int)(item.upd?.StackObjectsCount ?? 1), 1)
-                        });
-                    }
+                    var roots = BuildLootItemTree(sp.template.Items);
+                    // The container itself is the root; its children are the loot inside.
+                    if (roots.Count > 0)
+                        marker.items = new List<LootItem>(roots[0].children);
+                    else
+                        marker.items = new List<LootItem>();
                 }
 
                 // Otherwise fall back to the vanilla static loot distribution for this container type.
@@ -619,6 +598,49 @@ namespace MapLootEditorLite.Client
             }
 
             return dict;
+        }
+
+        private static List<LootItem> BuildLootItemTree(List<VanillaItem> items)
+        {
+            if (items == null || items.Count == 0)
+                return new List<LootItem>();
+
+            var dict = new Dictionary<string, LootItem>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in items)
+            {
+                if (item == null || string.IsNullOrEmpty(item._tpl))
+                    continue;
+                if (string.IsNullOrEmpty(item._id))
+                    continue;
+                dict[item._id] = new LootItem
+                {
+                    id = item._id,
+                    template = item._tpl,
+                    slotId = item.slotId ?? string.Empty,
+                    chance = item.RelativeProbability.HasValue ? item.RelativeProbability.Value * 100f : 100f,
+                    randomRotation = true,
+                    count = Math.Max((int)(item.upd?.StackObjectsCount ?? 1), 1)
+                };
+            }
+
+            var roots = new List<LootItem>();
+            foreach (var item in items)
+            {
+                if (item == null || string.IsNullOrEmpty(item._tpl) || string.IsNullOrEmpty(item._id))
+                    continue;
+                if (!dict.TryGetValue(item._id, out var loot))
+                    continue;
+                if (string.IsNullOrEmpty(item.parentId))
+                {
+                    roots.Add(loot);
+                }
+                else if (dict.TryGetValue(item.parentId, out var parent))
+                {
+                    parent.children.Add(loot);
+                }
+            }
+
+            return roots;
         }
 
         private class VanillaLootFile

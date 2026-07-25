@@ -690,6 +690,66 @@ namespace MapLootEditorLite.Client
             return Guid.NewGuid().ToString("N").Substring(0, 24);
         }
 
+        public static Item BuildItem(LootItem loot, ItemFactoryClass itemFactory, int stackCount = -1)
+        {
+            if (string.IsNullOrWhiteSpace(loot?.template))
+                return null;
+
+            var item = itemFactory.CreateItem(GenerateItemId(), loot.template, null);
+            if (item == null)
+                return null;
+
+            int count = stackCount >= 0 ? stackCount : Math.Max(loot.count, 1);
+            if (count > 1)
+                SetItemStackCount(item, count);
+
+            if (item is CompoundItem compound && loot.children != null && loot.children.Count > 0)
+                InstallChildren(compound, loot.children, itemFactory);
+
+            return item;
+        }
+
+        private static void InstallChildren(CompoundItem parent, List<LootItem> children, ItemFactoryClass itemFactory)
+        {
+            if (parent == null || children == null || children.Count == 0)
+                return;
+
+            foreach (var child in children)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.template))
+                    continue;
+
+                var childItem = BuildItem(child, itemFactory);
+                if (childItem == null)
+                {
+                    Plugin.Log.LogWarning($"Failed to create child item {child.template} for {parent.TemplateId}");
+                    continue;
+                }
+
+                var slotId = child.slotId ?? string.Empty;
+                Slot slot = null;
+                if (parent.Slots != null)
+                    slot = parent.Slots.FirstOrDefault(s => s != null && (string.Equals(s.ID, slotId, StringComparison.OrdinalIgnoreCase) || string.Equals(s.Name, slotId, StringComparison.OrdinalIgnoreCase)));
+                if (slot == null)
+                    slot = parent.AllSlots?.FirstOrDefault(s => s != null && (string.Equals(s.ID, slotId, StringComparison.OrdinalIgnoreCase) || string.Equals(s.Name, slotId, StringComparison.OrdinalIgnoreCase)));
+
+                if (slot == null)
+                {
+                    Plugin.Log.LogWarning($"No slot '{slotId}' found on {parent.TemplateId} for child {child.template}");
+                    continue;
+                }
+
+                try
+                {
+                    slot.ChangeContainedItemDirectly(childItem);
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogWarning($"Failed to install {child.template} into slot '{slotId}' of {parent.TemplateId}: {ex.Message}");
+                }
+            }
+        }
+
         private IEnumerator InitializeStationaryWeaponCoroutine(InteractiveObject obj, StationaryWeapon stationaryWeapon, GameWorld gameWorld)
         {
             Plugin.Log.LogInfo($"Starting stationary weapon initialization coroutine for '{obj.name}'.");
@@ -1240,13 +1300,6 @@ namespace MapLootEditorLite.Client
                 }
             }
 
-            var childItem = itemFactory.CreateItem(GenerateItemId(), loot.template, null);
-            if (childItem == null)
-            {
-                Plugin.Log.LogWarning($"Failed to create item {loot.template} for container '{obj.name}'");
-                return false;
-            }
-
             var stackCount = loot.count;
             if (stackCount <= 1 && loot.isDistribution)
             {
@@ -1278,8 +1331,12 @@ namespace MapLootEditorLite.Client
                 }
             }
 
-            if (stackCount > 1)
-                SetItemStackCount(childItem, stackCount);
+            var childItem = BuildItem(loot, itemFactory, stackCount);
+            if (childItem == null)
+            {
+                Plugin.Log.LogWarning($"Failed to create item {loot.template} for container '{obj.name}'");
+                return false;
+            }
 
             if (compoundItem.Grids != null)
             {
@@ -1295,7 +1352,7 @@ namespace MapLootEditorLite.Client
             return false;
         }
 
-        private void SetItemStackCount(Item item, int count)
+        private static void SetItemStackCount(Item item, int count)
         {
             if (item == null || count <= 1)
                 return;
@@ -1321,7 +1378,7 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        private bool TrySetStackValue(object target, string parentName, string memberName, int count, out string reason)
+        private static bool TrySetStackValue(object target, string parentName, string memberName, int count, out string reason)
         {
             reason = null;
             if (target == null)

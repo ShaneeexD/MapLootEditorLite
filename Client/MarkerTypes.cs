@@ -330,8 +330,10 @@ namespace MapLootEditorLite.Client
 
     public class LootItem
     {
+        public string id = "";            // Optional vanilla/mongo id, used during import to rebuild parent/child links
         public string template = "";
         public float chance = 100f;
+        public string slotId = "";        // Slot on the parent item this child fits into
         public TransformData rotation = new TransformData();
         public bool randomRotation = true;
         public float yOffset = 0f;
@@ -342,6 +344,7 @@ namespace MapLootEditorLite.Client
         public int count = 1; // Stack count for currency/ammo/etc
         public int minCount = 1;
         public int maxCount = 1;
+        public List<LootItem> children = new List<LootItem>();
     }
 
     public class LooseLootSpawn : MarkerBase

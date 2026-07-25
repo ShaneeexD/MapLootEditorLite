@@ -527,11 +527,17 @@ public record LightZone
 
 public record LootItem
 {
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
     [JsonPropertyName("template")]
     public string Template { get; set; } = string.Empty;
 
     [JsonPropertyName("chance")]
     public double Chance { get; set; } = 100;
+
+    [JsonPropertyName("slotId")]
+    public string SlotId { get; set; } = string.Empty;
 
     [JsonPropertyName("rotation")]
     public TransformData Rotation { get; set; } = new();
@@ -547,6 +553,9 @@ public record LootItem
 
     [JsonPropertyName("questId")]
     public string QuestId { get; set; } = string.Empty;
+
+    [JsonPropertyName("children")]
+    public List<LootItem> Children { get; set; } = [];
 }
 
 public record LooseLootSpawn

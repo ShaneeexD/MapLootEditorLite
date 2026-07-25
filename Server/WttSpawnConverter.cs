@@ -70,10 +70,9 @@ public static class WttSpawnConverter
                             continue;
                         }
 
-                        var items = BuildWttItems(zone.Items, out var chances);
-                        for (int i = 0; i < items.Count; i++)
+                        for (int i = 0; i < zone.Items.Count; i++)
                         {
-                            forcedByMap[wttMapId].Add(CreateWttZoneItemSpawnpoint(zone, zone.Items[i], items[i], chances[i], i));
+                            forcedByMap[wttMapId].Add(CreateWttZoneItemSpawnpoint(zone, zone.Items[i], i));
                         }
                     }
                 }
@@ -93,7 +92,8 @@ public static class WttSpawnConverter
     private static WttSpawnpoint CreateWttSpawnpoint(LooseLootSpawn spawn)
     {
         var items = BuildWttItems(spawn.Items, out var chances);
-        var rootId = items.FirstOrDefault()?.Id ?? new MongoId();
+        var rootItems = items.Where(i => string.IsNullOrEmpty(i.ParentId)).ToList();
+        var rootId = rootItems.FirstOrDefault()?.Id ?? items.FirstOrDefault()?.Id ?? new MongoId();
 
         return new WttSpawnpoint
         {
@@ -113,14 +113,15 @@ public static class WttSpawnConverter
                 Root = rootId,
                 Items = items
             },
-            ItemDistribution = BuildWttItemDistribution(items, chances)
+            ItemDistribution = BuildWttItemDistribution(rootItems, chances)
         };
     }
 
     private static WttSpawnpoint CreateWttSpawnpoint(LootZone zone)
     {
         var items = BuildWttItems(zone.Items, out var chances);
-        var rootId = items.FirstOrDefault()?.Id ?? new MongoId();
+        var rootItems = items.Where(i => string.IsNullOrEmpty(i.ParentId)).ToList();
+        var rootId = rootItems.FirstOrDefault()?.Id ?? items.FirstOrDefault()?.Id ?? new MongoId();
 
         return new WttSpawnpoint
         {
@@ -140,15 +141,19 @@ public static class WttSpawnConverter
                 Root = rootId,
                 Items = items
             },
-            ItemDistribution = BuildWttItemDistribution(items, chances)
+            ItemDistribution = BuildWttItemDistribution(rootItems, chances)
         };
     }
 
-    private static WttSpawnpoint CreateWttZoneItemSpawnpoint(LootZone zone, LootItem item, SptLootItem sptItem, int chance, int index)
+    private static WttSpawnpoint CreateWttZoneItemSpawnpoint(LootZone zone, LootItem item, int index)
     {
+        var items = BuildWttItems([item], out var chances);
+        var rootId = items.FirstOrDefault()?.Id ?? new MongoId();
+        var chance = chances.Count > 0 ? chances[0] : 1;
         var rotation = item.RandomRotation ? RandomYRotation() : item.Rotation;
         var locationId = $"{zone.Id}_{index}";
         var position = RandomPointInShape(zone);
+        var composedKey = items.FirstOrDefault()?.ComposedKey ?? string.Empty;
 
         return new WttSpawnpoint
         {
@@ -165,14 +170,14 @@ public static class WttSpawnConverter
                 IsAlwaysSpawn = true,
                 IsGroupPosition = false,
                 GroupPositions = [],
-                Root = sptItem.Id,
-                Items = [sptItem]
+                Root = rootId,
+                Items = items
             },
             ItemDistribution =
             [
                 new WttItemDistribution
                 {
-                    ComposedKey = new WttComposedKey { Key = sptItem.ComposedKey ?? string.Empty },
+                    ComposedKey = new WttComposedKey { Key = composedKey },
                     RelativeProbability = chance
                 }
             ]
@@ -190,28 +195,46 @@ public static class WttSpawnConverter
                 new SptLootItem
                 {
                     Id = new MongoId(),
-                    Template = "544fb45d4bdc2dee738b4568",
+                    Template = new MongoId("544fb45d4bdc2dee738b4568"),
                     ComposedKey = "544fb45d4bdc2dee738b4568",
                     Upd = new Upd { SpawnedInSession = true }
                 }
             ];
         }
 
-        var result = new List<SptLootItem>(items.Count);
+        var result = new List<SptLootItem>();
         for (int i = 0; i < items.Count; i++)
-        {
-            var item = items[i];
-            var tpl = string.IsNullOrWhiteSpace(item.Template) ? "544fb45d4bdc2dee738b4568" : item.Template;
-            chances.Add((int)item.Chance);
-            result.Add(new SptLootItem
-            {
-                Id = new MongoId(),
-                Template = tpl,
-                ComposedKey = $"{tpl}_{i}",
-                Upd = new Upd { SpawnedInSession = true }
-            });
-        }
+            AddLootItemRecursive(items[i], null, result, chances, i);
+
         return result;
+    }
+
+    private static void AddLootItemRecursive(LootItem item, SptLootItem? parent, List<SptLootItem> result, List<int> chances, int index)
+    {
+        if (item == null || string.IsNullOrWhiteSpace(item.Template))
+            return;
+
+        var id = new MongoId();
+        var spt = new SptLootItem
+        {
+            Id = id,
+            Template = item.Template,
+            ParentId = parent == null ? string.Empty : parent.Id.ToString(),
+            SlotId = item.SlotId ?? string.Empty,
+            ComposedKey = $"{item.Template}_{index}_{result.Count}",
+            Upd = new Upd { SpawnedInSession = true }
+        };
+
+        if (parent == null)
+            chances.Add((int)item.Chance);
+
+        result.Add(spt);
+
+        if (item.Children != null)
+        {
+            foreach (var child in item.Children)
+                AddLootItemRecursive(child, spt, result, chances, index);
+        }
     }
 
     private static List<WttItemDistribution> BuildWttItemDistribution(List<SptLootItem> items, List<int> chances)

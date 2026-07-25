@@ -3522,6 +3522,15 @@ namespace MapLootEditorLite.Client
                 if (!string.IsNullOrEmpty(name))
                     UIBuilder.CreateText(_inspectorContent, $"  {name}", 11, new Color(0.6f, 0.6f, 0.6f, 1f));
 
+                if (item.children != null && item.children.Count > 0)
+                {
+                    var labels = item.children.Take(5).Select(c => GetItemName(c.template) ?? c.template ?? "?");
+                    var childText = $"  +{item.children.Count} nested: {string.Join(", ", labels)}";
+                    if (item.children.Count > 5)
+                        childText += ", ...";
+                    UIBuilder.CreateText(_inspectorContent, childText, 10, new Color(0.5f, 0.5f, 0.5f, 1f));
+                }
+
                 if (ItemNeedsStackFields(item.template))
                 {
                     var countRow = UIBuilder.CreatePanel("ItemCountRow", _inspectorContent, new Color(0, 0, 0, 0));
@@ -3567,9 +3576,56 @@ namespace MapLootEditorLite.Client
                     UIBuilder.CreateLabel(yRow, "Y Offset", 11, 52, 20);
                     BuildInputFieldInline(yRow, item.yOffset.ToString("F2", CultureInfo.InvariantCulture), (v) => { if (float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var r)) { item.yOffset = r; manager.IsDirty = true; } }, 52, 20);
                 }
+
+                BuildChildEditor(item, 1);
             }
 
             UIBuilder.CreateButton(_inspectorContent, "Add Item", () => { items.Add(new LootItem()); manager.IsDirty = true; RefreshInspector(); }, 80, 22);
+        }
+
+        private void BuildChildEditor(LootItem parent, int depth)
+        {
+            if (parent.children == null)
+                parent.children = new List<LootItem>();
+
+            if (parent.children.Count > 0)
+            {
+                UIBuilder.CreateText(_inspectorContent, $"  Children ({parent.children.Count}):", 11, new Color(0.7f, 0.7f, 0.7f, 1f));
+            }
+
+            for (int i = 0; i < parent.children.Count; i++)
+            {
+                var child = parent.children[i];
+                if (child == null)
+                    continue;
+
+                int idx = i;
+                var row = UIBuilder.CreatePanel("ChildRow", _inspectorContent, new Color(0, 0, 0, 0));
+                UIBuilder.AddHorizontalLayout(row, 2, 2, false, false);
+                UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
+
+                var spacer = new GameObject("ChildSpacer", typeof(RectTransform));
+                spacer.transform.SetParent(row.transform, false);
+                UIBuilder.AddLayoutElement(spacer, depth * 12, 20, depth * 12, 20, 0, 0);
+
+                UIBuilder.CreateLabel(row, "Tpl", 11, 26, 20);
+                BuildInputFieldInline(row, child.template ?? "", (v) => { child.template = v; manager.IsDirty = true; }, 80, 20);
+
+                UIBuilder.CreateLabel(row, "Slot", 11, 30, 20);
+                BuildInputFieldInline(row, child.slotId ?? "", (v) => { child.slotId = v; manager.IsDirty = true; }, 70, 20);
+
+                UIBuilder.CreateButton(row, "X", () => { parent.children.RemoveAt(idx); manager.IsDirty = true; RefreshInspector(); }, 22, 20, 10);
+
+                BuildChildEditor(child, depth + 1);
+            }
+
+            var addRow = UIBuilder.CreatePanel("AddChildRow", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(addRow, 2, 2, false, false);
+            UIBuilder.AddLayoutElement(addRow, null, 22, null, 22, null, 1);
+            var addSpacer = new GameObject("AddChildSpacer", typeof(RectTransform));
+            addSpacer.transform.SetParent(addRow.transform, false);
+            UIBuilder.AddLayoutElement(addSpacer, depth * 12, 20, depth * 12, 20, 0, 0);
+            UIBuilder.CreateButton(addRow, "+ Child", () => { parent.children.Add(new LootItem()); manager.IsDirty = true; RefreshInspector(); }, 60, 22, 10);
         }
 
         private void RefreshPrefabs()
