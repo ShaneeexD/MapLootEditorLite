@@ -70,7 +70,7 @@ public static class LootTransformer
 
                 var spawnpoints = looseLootObj.Spawnpoints?.ToList() ?? [];
                 var existingIds = new HashSet<string>(spawnpoints.Select(s => s.LocationId));
-                var random = new Random();
+                var random = Random.Shared;
                 var added = 0;
 
                 foreach (var map in maps)
@@ -94,6 +94,12 @@ public static class LootTransformer
 
                         var filteredItems = spawn.Items.Where(ShouldSpawnItem).ToList();
                         if (filteredItems.Count == 0)
+                        {
+                            continue;
+                        }
+
+                        // Treat SpawnChance as a percentage chance to be included in this raid's loose loot pool.
+                        if (spawn.SpawnChance < 100.0 && random.NextDouble() * 100.0 >= spawn.SpawnChance)
                         {
                             continue;
                         }
@@ -160,14 +166,13 @@ public static class LootTransformer
 
     private static Spawnpoint CreateSpawnpoint(LooseLootSpawn spawn, List<LootItem> filteredItems)
     {
-        var totalChance = TotalItemChance(filteredItems) * spawn.SpawnChance / 100.0;
         var items = BuildItems(filteredItems, spawn.Id);
         var rootId = items.Count > 0 ? items[0].Id : new MongoId();
 
         return new Spawnpoint
         {
             LocationId = spawn.Id,
-            Probability = Math.Min(totalChance / 100.0, 1.0),
+            Probability = 1.0,
             Template = new SpawnpointTemplate
             {
                 Id = spawn.Id,
@@ -231,15 +236,6 @@ public static class LootTransformer
                 }
             ]
         };
-    }
-
-    private static double TotalItemChance(List<LootItem> items)
-    {
-        if (items == null || items.Count == 0)
-            return 0;
-
-        var total = items.Sum(i => i.Chance);
-        return total > 0 ? total : 0;
     }
 
     private static List<SptLootItem> BuildItems(List<LootItem> items, string markerId)

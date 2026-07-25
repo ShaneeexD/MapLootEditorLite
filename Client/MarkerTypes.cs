@@ -481,6 +481,8 @@ namespace MapLootEditorLite.Client
         public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
 
         public string keyId = ""; // Door key template id
+        public string initialDoorState = "Shut"; // Door, Open, Locked
+        public bool canBreach = true;
 
         public string containerId = ""; // Container item id
         public string containerTemplate = "578f87a3245977356274f2cb"; // Container root template id

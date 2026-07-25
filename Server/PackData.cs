@@ -902,6 +902,12 @@ public record InteractiveObject
     [JsonPropertyName("keyId")]
     public string KeyId { get; set; } = string.Empty;
 
+    [JsonPropertyName("initialDoorState")]
+    public string InitialDoorState { get; set; } = "Shut";
+
+    [JsonPropertyName("canBreach")]
+    public bool CanBreach { get; set; } = true;
+
     [JsonPropertyName("containerId")]
     public string ContainerId { get; set; } = string.Empty;
 

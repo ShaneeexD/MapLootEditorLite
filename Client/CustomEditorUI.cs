@@ -2824,7 +2824,11 @@ namespace MapLootEditorLite.Client
 
             if (obj.interactiveType == InteractiveObjectType.Door)
             {
+                if (string.IsNullOrEmpty(obj.initialDoorState))
+                    obj.initialDoorState = "Shut";
                 BuildStringField(_inspectorContent, "Key Template Id", obj.keyId ?? "", (v) => { obj.keyId = v; manager.IsDirty = true; });
+                BuildDropdownField(_inspectorContent, "Initial Door State", obj.initialDoorState, new[] { "Locked", "Shut", "Open" }, (v) => { obj.initialDoorState = v; manager.IsDirty = true; });
+                BuildToggleField(_inspectorContent, "Can Breach", obj.canBreach, (v) => { obj.canBreach = v; manager.IsDirty = true; });
             }
             else if (obj.interactiveType == InteractiveObjectType.Container)
             {

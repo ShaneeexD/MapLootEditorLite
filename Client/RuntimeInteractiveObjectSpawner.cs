@@ -557,22 +557,29 @@ namespace MapLootEditorLite.Client
                 if (obj.interactiveType == InteractiveObjectType.Door)
                 {
                     wio.Id = obj.id;
+
+                    EDoorState state;
+                    if (!Enum.TryParse(obj.initialDoorState, true, out state))
+                        state = EDoorState.Shut;
+
+                    wio.DoorState = state;
+                    wio.InitialDoorState = state;
+                    wio.FallbackState = state;
+                    wio.CurrentAngle = wio.GetAngle(state);
+
                     if (!string.IsNullOrEmpty(obj.keyId))
                     {
                         wio.KeyId = obj.keyId;
-                        wio.DoorState = EDoorState.Locked;
-                        wio.InitialDoorState = EDoorState.Locked;
-                        wio.FallbackState = EDoorState.Locked;
-                        wio.CurrentAngle = wio.GetAngle(EDoorState.Locked);
                         Plugin.Log.LogInfo($"Set door '{obj.name}' key to {obj.keyId}");
                     }
-                    else
-                    {
-                        wio.DoorState = EDoorState.Shut;
-                        wio.InitialDoorState = EDoorState.Shut;
-                        wio.FallbackState = EDoorState.Shut;
-                        wio.CurrentAngle = wio.GetAngle(EDoorState.Shut);
-                    }
+
+                    if (state == EDoorState.Locked && string.IsNullOrEmpty(obj.keyId))
+                        Plugin.Log.LogWarning($"Door '{obj.name}' is set to Locked but has no keyId.");
+
+                    var door = wio as Door;
+                    if (door != null)
+                        door.CanBeBreached = obj.canBreach;
+
                     Plugin.Log.LogInfo($"Door '{obj.name}' initial state={wio.DoorState}, angle={wio.CurrentAngle}, openAngle={wio.OpenAngle}, closeAngle={wio.CloseAngle}");
                 }
                 else if (obj.interactiveType == InteractiveObjectType.Container && !string.IsNullOrEmpty(obj.containerId))
