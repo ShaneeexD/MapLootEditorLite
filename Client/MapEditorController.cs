@@ -771,18 +771,68 @@ namespace MapLootEditorLite.Client
             _previews.SpawnPreviewForMarker(marker);
         }
 
-        public void PlaceStaticFromSceneGO(GameObject go)
+        public void PlaceFromSceneGO(GameObject go)
         {
             if (!EnsureMapLoaded() || go == null) return;
             _manager.Snapshot();
-            var marker = _manager.CreateStaticObject(GetLookPosition(), go.transform.rotation.eulerAngles);
-            marker.name = go.name;
-            marker.sourceObjectName = go.name;
-            marker.sourceObjectPosition = TransformData.FromVector3(go.transform.position);
-            _previews.RegisterStaticSource(marker.id, go);
-            _manager.Selected = marker;
+
+            var wio = go.GetComponentInChildren<WorldInteractiveObject>(true);
+            var stationary = go.GetComponentInChildren<StationaryWeapon>(true);
+            var lootable = go.GetComponentInChildren<LootableContainer>(true);
+
+            var position = GetLookPosition();
+            var rotation = go.transform.rotation.eulerAngles;
+            var scale = go.transform.localScale;
+
+            if (wio != null || stationary != null)
+            {
+                var marker = _manager.CreateInteractiveObject(position, rotation);
+                marker.name = go.name;
+                marker.sourceObjectName = go.name;
+                marker.sourceObjectPosition = TransformData.FromVector3(go.transform.position);
+                marker.scale = TransformData.FromVector3(scale);
+
+                if (stationary != null)
+                {
+                    marker.interactiveType = InteractiveObjectType.StationaryWeapon;
+                    marker.weaponTemplate = stationary.Template;
+                }
+                else if (lootable != null)
+                {
+                    marker.interactiveType = InteractiveObjectType.Container;
+                    marker.containerId = Guid.NewGuid().ToString("N").Substring(0, 24);
+                }
+                else if (wio is Door)
+                {
+                    marker.interactiveType = InteractiveObjectType.Door;
+                    var state = wio.DoorState;
+                    marker.initialDoorState = state == EDoorState.Locked ? "Locked" : state == EDoorState.Open ? "Open" : "Shut";
+                    marker.keyId = wio.KeyId ?? "";
+                    var door = wio as Door;
+                    if (door != null)
+                        marker.canBreach = door.CanBeBreached;
+                }
+                else
+                {
+                    marker.interactiveType = InteractiveObjectType.Switch;
+                    marker.switchInitialState = wio.DoorState == EDoorState.Open;
+                }
+
+                _manager.Selected = marker;
+            }
+            else
+            {
+                var marker = _manager.CreateStaticObject(position, rotation);
+                marker.name = go.name;
+                marker.sourceObjectName = go.name;
+                marker.sourceObjectPosition = TransformData.FromVector3(go.transform.position);
+                marker.scale = TransformData.FromVector3(scale);
+                _previews.RegisterStaticSource(marker.id, go);
+                _manager.Selected = marker;
+            }
+
             _renderer.Rebuild();
-            _previews.SpawnPreviewForMarker(marker);
+            _previews.SpawnPreviewForMarker(_manager.Selected);
             _ui?.RequestRefresh();
         }
 

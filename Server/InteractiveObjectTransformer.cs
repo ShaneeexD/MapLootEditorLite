@@ -367,6 +367,11 @@ public static class InteractiveObjectTransformer
                     continue;
                 }
 
+                if (container.SpawnChance < 100.0 && RandX.Next() * 100.0 >= container.SpawnChance)
+                {
+                    continue;
+                }
+
                 var containerData = CreateStaticContainerData(container, itemType);
                 if (containerData != null)
                 {
@@ -396,6 +401,11 @@ public static class InteractiveObjectTransformer
                 if (existingList.Any(x => GetStaticWeaponId(x) == weapon.Id))
                 {
                     ServerPlugin.Logger?.Debug($"[MEL] Weapon {weapon.Id} already exists in static weapons; skipping.");
+                    continue;
+                }
+
+                if (weapon.SpawnChance < 100.0 && RandX.Next() * 100.0 >= weapon.SpawnChance)
+                {
                     continue;
                 }
 
@@ -449,8 +459,7 @@ public static class InteractiveObjectTransformer
         templateType.GetProperty("RandomRotation", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, false);
         templateType.GetProperty("Position", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, new XYZ { X = container.Position.X, Y = container.Position.Y, Z = container.Position.Z });
         templateType.GetProperty("Rotation", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, new XYZ { X = container.Rotation.X, Y = container.Rotation.Y, Z = container.Rotation.Z });
-        var spawnProbability = Math.Min(container.SpawnChance / 100.0, 1.0);
-        templateType.GetProperty("IsAlwaysSpawn", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, spawnProbability >= 1.0);
+        templateType.GetProperty("IsAlwaysSpawn", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, true);
         templateType.GetProperty("IsGroupPosition", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, false);
         var groupPositionType = AppDomain.CurrentDomain.GetAssemblies()
             .SelectMany(a => a.GetTypes())
@@ -481,7 +490,7 @@ public static class InteractiveObjectTransformer
         if (containerData == null)
             return null;
 
-        staticContainerDataType.GetProperty("Probability", BindingFlags.Public | BindingFlags.Instance)?.SetValue(containerData, (float)spawnProbability);
+        staticContainerDataType.GetProperty("Probability", BindingFlags.Public | BindingFlags.Instance)?.SetValue(containerData, 1.0f);
         staticContainerDataType.GetProperty("Template", BindingFlags.Public | BindingFlags.Instance)?.SetValue(containerData, template);
 
         return containerData;

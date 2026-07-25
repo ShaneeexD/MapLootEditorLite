@@ -18,6 +18,8 @@ namespace MapLootEditorLite.Client
             get => _selected;
             set
             {
+                if (value != null && IsLocked(value))
+                    return;
                 _selected = value;
                 SelectedIds.Clear();
                 if (_selected != null)
@@ -258,6 +260,52 @@ namespace MapLootEditorLite.Client
             return marker != null && SelectedIds.Contains(marker.id);
         }
 
+        public bool IsGroupLocked(string group)
+        {
+            if (Data == null || string.IsNullOrWhiteSpace(group))
+                return false;
+            return Data.lockedGroups.Any(g => string.Equals(g, group, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public bool IsLocked(MarkerBase marker)
+        {
+            return marker != null && (marker.isLocked || IsGroupLocked(marker.group ?? ""));
+        }
+
+        private void PruneLockedSelection()
+        {
+            SelectedIds.RemoveAll(id => IsLocked(FindById(id)));
+            if (_selected != null && IsLocked(_selected))
+                _selected = SelectedIds.Count > 0 ? FindById(SelectedIds[SelectedIds.Count - 1]) : null;
+        }
+
+        public void SetMarkerLocked(MarkerBase marker, bool locked)
+        {
+            if (marker == null)
+                return;
+            marker.isLocked = locked;
+            IsDirty = true;
+            if (locked)
+                PruneLockedSelection();
+        }
+
+        public void SetGroupLocked(string group, bool locked)
+        {
+            if (Data == null || string.IsNullOrWhiteSpace(group))
+                return;
+            if (locked)
+            {
+                if (!Data.lockedGroups.Any(g => string.Equals(g, group, StringComparison.OrdinalIgnoreCase)))
+                    Data.lockedGroups.Add(group);
+            }
+            else
+            {
+                Data.lockedGroups.RemoveAll(g => string.Equals(g, group, StringComparison.OrdinalIgnoreCase));
+            }
+            IsDirty = true;
+            PruneLockedSelection();
+        }
+
         public void SelectOnly(MarkerBase marker)
         {
             Selected = marker;
@@ -265,7 +313,7 @@ namespace MapLootEditorLite.Client
 
         public void AddToSelection(MarkerBase marker)
         {
-            if (marker == null)
+            if (marker == null || IsLocked(marker))
                 return;
             if (!SelectedIds.Contains(marker.id))
                 SelectedIds.Add(marker.id);
@@ -283,7 +331,7 @@ namespace MapLootEditorLite.Client
 
         public void ToggleSelected(MarkerBase marker)
         {
-            if (marker == null)
+            if (marker == null || IsLocked(marker))
                 return;
             if (IsSelected(marker))
                 RemoveFromSelection(marker);
@@ -302,7 +350,7 @@ namespace MapLootEditorLite.Client
             SelectedIds.Clear();
             foreach (var m in markers)
             {
-                if (m != null)
+                if (m != null && !IsLocked(m))
                     SelectedIds.Add(m.id);
             }
             _selected = SelectedIds.Count > 0 ? FindById(SelectedIds[0]) : null;
@@ -388,7 +436,7 @@ namespace MapLootEditorLite.Client
             SelectedIds.Clear();
             foreach (var m in GetAllMarkers())
             {
-                if (string.Equals(m.group ?? "", group ?? "", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(m.group ?? "", group ?? "", StringComparison.OrdinalIgnoreCase) && !IsLocked(m))
                 {
                     SelectedIds.Add(m.id);
                     if (_selected == null)

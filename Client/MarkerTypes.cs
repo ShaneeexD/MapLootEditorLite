@@ -249,6 +249,7 @@ namespace MapLootEditorLite.Client
     public class MapData
     {
         public string map;
+        public List<string> lockedGroups = new List<string>();
         public List<LooseLootSpawn> lootSpawns = new List<LooseLootSpawn>();
         public List<LootZone> lootZones = new List<LootZone>();
         public List<StaticObject> objects = new List<StaticObject>();
@@ -315,6 +316,7 @@ namespace MapLootEditorLite.Client
         public string name = "marker";
         [JsonProperty("group")]
         public string group = "";
+        public bool isLocked = false;
         public TransformData position = new TransformData();
         public TransformData rotation = new TransformData();
         public List<string> addedComponents = new List<string>();

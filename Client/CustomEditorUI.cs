@@ -2026,9 +2026,10 @@ namespace MapLootEditorLite.Client
             var grpHdr = UIBuilder.CreatePanel("GrpHdr", _hierarchyContent, new Color(0.18f, 0.2f, 0.28f, 0.9f));
             UIBuilder.AddHorizontalLayout(grpHdr, 3, 1, false, false);
             UIBuilder.AddLayoutElement(grpHdr, null, 18, null, 18, null, 0);
-            UIBuilder.CreateLabel(grpHdr, entry.Collapsed ? "\u25ba" : "\u25bc", 10, 12, 14);
-            UIBuilder.CreateLabel(grpHdr, $"{key}  ({entry.Count})", 10, 0, 14);
+            var arrowLabel = UIBuilder.CreateLabel(grpHdr, entry.Collapsed ? "\u25ba" : "\u25bc", 10, 12, 14);
+            var titleLabel = UIBuilder.CreateLabel(grpHdr, $"{key}  ({entry.Count})", 10, 0, 14);
             var capturedKey = key;
+            var isGroupLocked = manager.IsGroupLocked(key);
             var hdrBtn = grpHdr.gameObject.AddComponent<Button>();
             hdrBtn.targetGraphic = grpHdr.GetComponent<Image>();
             var hdrBtnColors = hdrBtn.colors;
@@ -2043,6 +2044,20 @@ namespace MapLootEditorLite.Client
                 RequestHierarchyRefresh();
                 RequestInspectorRefresh();
             });
+            hdrBtn.interactable = !isGroupLocked;
+            if (isGroupLocked)
+            {
+                arrowLabel.color = new Color(0.5f, 0.5f, 0.5f, 1f);
+                titleLabel.color = new Color(0.5f, 0.5f, 0.5f, 1f);
+            }
+
+            var lockBtn = UIBuilder.CreateButton(grpHdr, isGroupLocked ? "L" : "", () =>
+            {
+                manager.SetGroupLocked(capturedKey, !manager.IsGroupLocked(capturedKey));
+                RequestHierarchyRefresh();
+                RequestInspectorRefresh();
+            }, 14, 16, 10);
+            lockBtn.GetComponent<Image>().color = isGroupLocked ? new Color(0.9f, 0.3f, 0.3f, 1f) : new Color(0.2f, 0.2f, 0.2f, 1f);
         }
 
         private void BuildHierarchyRow(MarkerBase marker, bool indent)
@@ -2088,6 +2103,8 @@ namespace MapLootEditorLite.Client
             UIBuilder.CreateButton(row, "Go", () => controller.GoToMarker(marker), 24, 16, 10);
 
             bool selected = manager.IsSelected(marker) && _selectedChildMarker == null;
+            bool locked = manager.IsLocked(marker);
+            bool groupLocked = manager.IsGroupLocked(marker.group ?? "");
             var capturedMarker = marker;
 
             // Transparent clickable area — clicking selects the marker
@@ -2114,12 +2131,21 @@ namespace MapLootEditorLite.Client
             bc.highlightedColor = new Color(0.85f, 0.9f, 1f, 1f);
             bc.pressedColor = new Color(0.7f, 0.8f, 1f, 1f);
             selBtn.colors = bc;
+            selBtn.interactable = !locked;
+            var lockBtn = UIBuilder.CreateButton(row, locked ? "L" : "", () =>
+            {
+                manager.SetMarkerLocked(capturedMarker, !capturedMarker.isLocked);
+                RequestHierarchyRefresh();
+                RequestInspectorRefresh();
+            }, 14, 16, 10);
+            lockBtn.GetComponent<Image>().color = locked ? new Color(0.9f, 0.3f, 0.3f, 1f) : new Color(0.2f, 0.2f, 0.2f, 1f);
+            lockBtn.interactable = !groupLocked;
             var lblText = selBtn.GetComponentInChildren<Text>();
             if (lblText != null)
             {
                 lblText.fontSize = 10;
                 lblText.alignment = TextAnchor.MiddleLeft;
-                lblText.color = selected ? new Color(0.9f, 0.9f, 0.9f, 1f) : new Color(0.72f, 0.72f, 0.72f, 1f);
+                lblText.color = locked ? new Color(0.45f, 0.45f, 0.45f, 1f) : (selected ? new Color(0.9f, 0.9f, 0.9f, 1f) : new Color(0.72f, 0.72f, 0.72f, 1f));
             }
 
             row.GetComponent<Image>().color = selected
@@ -2251,7 +2277,7 @@ namespace MapLootEditorLite.Client
                     UIBuilder.AddHorizontalLayout(actionRow, 4, 2, false, false);
                     UIBuilder.AddLayoutElement(actionRow.gameObject, null, 26, null, 26, null, 0);
                     UIBuilder.CreateButton(actionRow, "Go To", () => controller?.GoToSceneObject(_selectedSceneGO), 50, 22);
-                    UIBuilder.CreateButton(actionRow, "Place Here", () => controller?.PlaceStaticFromSceneGO(_selectedSceneGO), 80, 22);
+                    UIBuilder.CreateButton(actionRow, "Place Here", () => controller?.PlaceFromSceneGO(_selectedSceneGO), 80, 22);
                     UIBuilder.CreateButton(actionRow, "Add Component", () => ShowAddComponentDialog(_selectedSceneGO, null), 90, 22);
                     UIBuilder.CreateButton(actionRow, "Remove", () => RemoveSelectedSceneGO(), 60, 22);
                 }

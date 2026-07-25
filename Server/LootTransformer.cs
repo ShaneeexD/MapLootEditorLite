@@ -99,7 +99,7 @@ public static class LootTransformer
                         }
 
                         // Treat SpawnChance as a percentage chance to be included in this raid's loose loot pool.
-                        if (spawn.SpawnChance < 100.0 && random.NextDouble() * 100.0 >= spawn.SpawnChance)
+                        if (spawn.SpawnChance < 100.0 && RandX.Next() * 100.0 >= spawn.SpawnChance)
                         {
                             continue;
                         }
@@ -121,7 +121,7 @@ public static class LootTransformer
                         }
 
                         // Zone-level spawn chance acts as a master switch for this zone
-                        if (zone.SpawnChance < 100.0 && random.NextDouble() * 100.0 >= zone.SpawnChance)
+                        if (zone.SpawnChance < 100.0 && RandX.Next() * 100.0 >= zone.SpawnChance)
                         {
                             continue;
                         }
@@ -129,7 +129,7 @@ public static class LootTransformer
                         for (int i = 0; i < zone.Items.Count; i++)
                         {
                             var item = zone.Items[i];
-                            if (item.Chance < 100.0 && random.NextDouble() * 100.0 >= item.Chance)
+                            if (item.Chance < 100.0 && RandX.Next() * 100.0 >= item.Chance)
                             {
                                 continue;
                             }
