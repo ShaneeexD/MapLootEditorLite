@@ -12,6 +12,8 @@ namespace MapLootEditorLite.Client
         private bool _originalUseOcclusionCulling;
         private float _originalLodBias;
         private float _originalLodBiasFactor;
+        private CameraClearFlags _originalClearFlags;
+        private Color _originalBackgroundColor;
         private bool _applied;
 
         public void OnEnable()
@@ -23,6 +25,11 @@ namespace MapLootEditorLite.Client
             _originalFarClipPlane = _camera.farClipPlane;
             _originalLayerCullDistances = (float[])_camera.layerCullDistances.Clone();
             _originalUseOcclusionCulling = _camera.useOcclusionCulling;
+            _originalClearFlags = _camera.clearFlags;
+            _originalBackgroundColor = _camera.backgroundColor;
+
+            _camera.clearFlags = CameraClearFlags.Skybox;
+            _camera.backgroundColor = Color.black;
 
             var layerCull = new float[32];
             for (int i = 0; i < 32; i++)
@@ -55,6 +62,8 @@ namespace MapLootEditorLite.Client
                 if (_originalLayerCullDistances != null)
                     _camera.layerCullDistances = _originalLayerCullDistances;
                 _camera.useOcclusionCulling = _originalUseOcclusionCulling;
+                _camera.clearFlags = _originalClearFlags;
+                _camera.backgroundColor = _originalBackgroundColor;
             }
 
             QualitySettings.lodBias = _originalLodBias;

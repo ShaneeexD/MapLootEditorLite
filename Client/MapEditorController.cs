@@ -69,8 +69,9 @@ namespace MapLootEditorLite.Client
         private CharacterController _freeCamPlayerController;
         private GamePlayerOwner _gamePlayerOwner;
         private bool _originalGamePlayerOwnerEnabled;
-        private List<DisablerCullingObjectBase> _cullingObjects;
+        private List<MonoBehaviour> _cullingObjects;
         private List<bool> _cullingObjectsEnabled;
+        private Dictionary<MonoBehaviour, Camera> _cullingOriginalCameras;
 
         private GizmoMode _gizmoMode = GizmoMode.Translate;
         public GizmoMode GizmoMode => _gizmoMode;
@@ -1184,6 +1185,15 @@ namespace MapLootEditorLite.Client
             go.name = "MLE_FreeCam";
             go.transform.position = _gameCamera.transform.position;
             go.transform.rotation = _gameCamera.transform.rotation;
+            foreach (var comp in go.GetComponents<MonoBehaviour>())
+            {
+                if (comp == null)
+                    continue;
+                var typeName = comp.GetType().Name;
+                if (typeName == "CameraLodBiasController" || typeName.Contains("Culling"))
+                    continue;
+                UnityEngine.Object.Destroy(comp);
+            }
             _freeCamCamera = go.GetComponent<Camera>();
             if (_freeCamCamera == null)
             {
@@ -1234,13 +1244,12 @@ namespace MapLootEditorLite.Client
             }
 
             var cullingObjects = FindObjectsOfType<DisablerCullingObjectBase>();
-            _cullingObjects = new List<DisablerCullingObjectBase>(cullingObjects.Length);
+            _cullingObjects = cullingObjects.Cast<MonoBehaviour>().ToList();
             _cullingObjectsEnabled = new List<bool>(cullingObjects.Length);
             foreach (var cullingObject in cullingObjects)
             {
                 if (cullingObject == null)
                     continue;
-                _cullingObjects.Add(cullingObject);
                 _cullingObjectsEnabled.Add(cullingObject.enabled);
                 cullingObject.enabled = false;
                 cullingObject.SetComponentsEnabled(true);
@@ -1278,10 +1287,17 @@ namespace MapLootEditorLite.Client
                     if (cullingObject == null)
                         continue;
                     cullingObject.enabled = _cullingObjectsEnabled[i];
-                    cullingObject.UpdateComponentsStatusOnUpdate();
+                    if (_cullingOriginalCameras != null && _cullingOriginalCameras.TryGetValue(cullingObject, out var originalCam))
+                        SetCullingCamera(cullingObject, originalCam);
+                    try
+                    {
+                        cullingObject.GetType().GetMethod("UpdateComponentsStatusOnUpdate", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(cullingObject, null);
+                    }
+                    catch { }
                 }
                 _cullingObjects = null;
                 _cullingObjectsEnabled = null;
+                _cullingOriginalCameras = null;
             }
 
             if (_freeCamCamera != null)
@@ -1306,6 +1322,52 @@ namespace MapLootEditorLite.Client
             Cursor.lockState = CursorLockMode.None;
             _editorModeActive = false;
             _editorModeInvincibleEndTime = Time.time + 5f;
+        }
+
+        private static Type FindTypeByName(string name)
+        {
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    var type = asm.GetTypes().FirstOrDefault(t => t.Name == name && typeof(MonoBehaviour).IsAssignableFrom(t));
+                    if (type != null)
+                        return type;
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        private static Camera GetCullingCamera(MonoBehaviour cull)
+        {
+            if (cull == null)
+                return null;
+            var type = cull.GetType();
+            foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                if (field.FieldType == typeof(Camera))
+                    return field.GetValue(cull) as Camera;
+            foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                if (prop.PropertyType == typeof(Camera) && prop.CanRead)
+                    return prop.GetValue(cull, null) as Camera;
+            return null;
+        }
+
+        private static void SetCullingCamera(MonoBehaviour cull, Camera camera)
+        {
+            if (cull == null)
+                return;
+            var type = cull.GetType();
+            foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+            {
+                if (field.FieldType == typeof(Camera))
+                    field.SetValue(cull, camera);
+            }
+            foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+            {
+                if (prop.PropertyType == typeof(Camera) && prop.CanWrite)
+                    prop.SetValue(cull, camera, null);
+            }
         }
 
         private void UpdateFreeCam()
