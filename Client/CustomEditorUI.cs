@@ -2024,7 +2024,7 @@ namespace MapLootEditorLite.Client
         {
             var key = entry.Key;
             var grpHdr = UIBuilder.CreatePanel("GrpHdr", _hierarchyContent, new Color(0.18f, 0.2f, 0.28f, 0.9f));
-            UIBuilder.AddHorizontalLayout(grpHdr, 3, 1, false, false);
+            UIBuilder.AddHorizontalLayout(grpHdr, 3, 1, true, false);
             UIBuilder.AddLayoutElement(grpHdr, null, 18, null, 18, null, 0);
             var arrowLabel = UIBuilder.CreateLabel(grpHdr, entry.Collapsed ? "\u25ba" : "\u25bc", 10, 12, 14);
             var titleLabel = UIBuilder.CreateLabel(grpHdr, $"{key}  ({entry.Count})", 10, 0, 14);

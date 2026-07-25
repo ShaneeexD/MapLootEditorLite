@@ -72,7 +72,7 @@ namespace MapLootEditorLite.Client
             MarkVanilla(data);
             ClearContainerCache();
 
-            Plugin.Log.LogInfo($"Imported vanilla data for {mapId}: {data.lootSpawns.Count} loose loot, {data.interactiveObjects.Count} containers, {data.botSpawnPoints.Count} PMC spawns, {data.extractZones.Count} extracts.");
+            Plugin.Log.LogInfo($"Imported vanilla data for {mapId}: {data.lootSpawns.Count} loose loot, {data.interactiveObjects.Count} containers, {data.botSpawnPoints.Count} spawns, {data.extractZones.Count} extracts.");
             return data;
         }
 
@@ -421,10 +421,6 @@ namespace MapLootEditorLite.Client
                     var sides = item["Sides"]?.ToObject<List<string>>() ?? new List<string>();
                     var catsLower = categories.Select(c => c.ToLowerInvariant()).ToList();
                     var sidesLower = sides.Select(s => s.ToLowerInvariant()).ToList();
-                    bool isPlayerSpawn = catsLower.Contains("player") || catsLower.Contains("coop") || catsLower.Contains("opposite");
-                    bool isPmcSide = sidesLower.Contains("pmc") || sidesLower.Contains("all");
-                    if (!isPlayerSpawn && !isPmcSide)
-                        continue;
 
                     var position = item["Position"];
                     if (position == null)
@@ -440,32 +436,66 @@ namespace MapLootEditorLite.Client
                         radius = rv.Value<float>();
 
                     string id = item["Id"]?.Value<string>() ?? Guid.NewGuid().ToString();
-                    string infiltration = item["Infiltration"]?.Value<string>() ?? "pmc";
+                    string infiltration = item["Infiltration"]?.Value<string>() ?? "";
                     string botZoneName = item["BotZoneName"]?.Value<string>() ?? "";
                     float delay = item["DelayToCanSpawnSec"]?.Value<float>() ?? 4f;
 
-                    data.botSpawnPoints.Add(new BotSpawnPoint
+                    var preset = InferBotPreset(catsLower, sidesLower);
+                    var suffix = string.IsNullOrWhiteSpace(infiltration) ? botZoneName : infiltration;
+
+                    var point = new BotSpawnPoint
                     {
                         id = id,
-                        name = "vanilla_pmc_" + (string.IsNullOrWhiteSpace(infiltration) ? "pmc" : infiltration.ToLowerInvariant()),
+                        name = $"vanilla_{preset.ToString().ToLowerInvariant()}_{suffix}",
                         position = new TransformData { x = x, y = y, z = z },
                         rotation = new TransformData { x = 0, y = rotation, z = 0 },
                         radius = radius,
-                        side = BotSpawnSide.Pmc,
-                        category = BotSpawnCategory.BotPmc,
-                        preset = BotSpawnPreset.PMC,
-                        wildSpawnType = "pmcBot",
                         spawnChance = 100f,
                         delayToCanSpawnSec = delay,
                         botZoneName = botZoneName,
-                        spawnMode = "Potential"
-                    });
+                        spawnMode = "Potential",
+                        preset = preset
+                    };
+                    BotSpawnPresetMapping.ApplyPreset(preset, point);
+                    data.botSpawnPoints.Add(point);
                 }
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogWarning($"[VanillaImporter] Failed to import vanilla PMC spawns from {path}: {ex.Message}");
+                Plugin.Log.LogWarning($"[VanillaImporter] Failed to import vanilla spawns from {path}: {ex.Message}");
             }
+        }
+
+        private static BotSpawnPreset InferBotPreset(List<string> cats, List<string> sides)
+        {
+            bool isPlayer = cats.Contains("player") || cats.Contains("coop") || cats.Contains("opposite");
+            bool isBoss = cats.Contains("boss");
+            bool isSniper = cats.Contains("sniper") || cats.Contains("marksman");
+            bool isCultist = cats.Contains("cursedassault") || cats.Contains("sectant") || cats.Contains("cultist");
+            bool isInfected = cats.Contains("infected");
+            bool isBot = cats.Contains("bot") || cats.Contains("botpmc");
+
+            if (isPlayer)
+                return BotSpawnPreset.PMC;
+            if (isBoss)
+                return BotSpawnPreset.Boss;
+            if (isSniper)
+                return BotSpawnPreset.SniperScav;
+            if (isCultist)
+                return BotSpawnPreset.Cultist;
+            if (isInfected)
+                return BotSpawnPreset.Infected;
+
+            if (sides.Contains("pmc"))
+                return BotSpawnPreset.PMC;
+            if (sides.Contains("bear"))
+                return BotSpawnPreset.Bear;
+            if (sides.Contains("usec"))
+                return BotSpawnPreset.Usec;
+            if (sides.Contains("savage") || isBot)
+                return BotSpawnPreset.Scav;
+
+            return BotSpawnPreset.Any;
         }
 
         private static void ImportExtracts(MapData data, string dir)

@@ -90,7 +90,14 @@ public static class PackLoader
                 try
                 {
                     var json = File.ReadAllText(file);
-                    var pack = JsonSerializer.Deserialize<PackData>(json);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                    {
+                        ServerPlugin.Logger?.Debug($"[MEL] Skipping non-pack JSON file: {file}");
+                        continue;
+                    }
+
+                    var pack = JsonSerializer.Deserialize<PackData>(doc.RootElement.GetRawText());
                     if (pack is null)
                     {
                         ServerPlugin.Logger?.Warning($"[MEL] Failed to parse pack: {file}");
