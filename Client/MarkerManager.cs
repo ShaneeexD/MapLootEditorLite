@@ -500,6 +500,86 @@ namespace MapLootEditorLite.Client
             IsDirty = true;
         }
 
+        public MarkerBase CloneVanillaToPack(MarkerBase marker)
+        {
+            if (marker == null || Data == null || VanillaData == null)
+                return null;
+
+            var json = JsonConvert.SerializeObject(marker);
+            MarkerBase clone;
+            switch (marker)
+            {
+                case LooseLootSpawn s: clone = JsonConvert.DeserializeObject<LooseLootSpawn>(json); break;
+                case LootZone z: clone = JsonConvert.DeserializeObject<LootZone>(json); break;
+                case StaticObject o: clone = JsonConvert.DeserializeObject<StaticObject>(json); break;
+                case WTTQuestZone q: clone = JsonConvert.DeserializeObject<WTTQuestZone>(json); break;
+                case WTTStaticObject w: clone = JsonConvert.DeserializeObject<WTTStaticObject>(json); break;
+                case InteractiveObject io: clone = JsonConvert.DeserializeObject<InteractiveObject>(json); break;
+                case ExtractZone ez: clone = JsonConvert.DeserializeObject<ExtractZone>(json); break;
+                case BotSpawnPoint bp: clone = JsonConvert.DeserializeObject<BotSpawnPoint>(json); break;
+                case BotSpawnZone bz: clone = JsonConvert.DeserializeObject<BotSpawnZone>(json); break;
+                case PmcSpawnZone pz: clone = JsonConvert.DeserializeObject<PmcSpawnZone>(json); break;
+                case LightZone lz: clone = JsonConvert.DeserializeObject<LightZone>(json); break;
+                case TriggerZone tz: clone = JsonConvert.DeserializeObject<TriggerZone>(json); break;
+                case OcclusionRepairVolume orv: clone = JsonConvert.DeserializeObject<OcclusionRepairVolume>(json); break;
+                case CutVolume cv: clone = JsonConvert.DeserializeObject<CutVolume>(json); break;
+                case Blocker b: clone = JsonConvert.DeserializeObject<Blocker>(json); break;
+                case NavMeshArea nma: clone = JsonConvert.DeserializeObject<NavMeshArea>(json); break;
+                default: return null;
+            }
+            if (clone == null)
+                return null;
+
+            clone.id = marker.id;
+            clone.isVanilla = false;
+            clone.group = "";
+            AddMarker(clone);
+            RemoveVanillaMarker(marker);
+            return clone;
+        }
+
+        public void RemoveVanillaMarker(MarkerBase marker)
+        {
+            if (marker == null || VanillaData == null)
+                return;
+
+            switch (marker)
+            {
+                case LooseLootSpawn s: VanillaData.lootSpawns?.Remove(s); break;
+                case LootZone z: VanillaData.lootZones?.Remove(z); break;
+                case StaticObject o: VanillaData.objects?.Remove(o); break;
+                case WTTQuestZone q: VanillaData.wttQuestZones?.Remove(q); break;
+                case WTTStaticObject w: VanillaData.wttStaticObjects?.Remove(w); break;
+                case InteractiveObject io: VanillaData.interactiveObjects?.Remove(io); break;
+                case ExtractZone ez: VanillaData.extractZones?.Remove(ez); break;
+                case BotSpawnPoint bp: VanillaData.botSpawnPoints?.Remove(bp); break;
+                case BotSpawnZone bz: VanillaData.botSpawnZones?.Remove(bz); break;
+                case PmcSpawnZone pz: VanillaData.pmcSpawnZones?.Remove(pz); break;
+                case LightZone lz: VanillaData.lightZones?.Remove(lz); break;
+                case TriggerZone tz: VanillaData.triggerZones?.Remove(tz); break;
+                case OcclusionRepairVolume orv: VanillaData.occlusionRepairVolumes?.Remove(orv); break;
+                case CutVolume cv: VanillaData.cutVolumes?.Remove(cv); break;
+                case Blocker b: VanillaData.blockers?.Remove(b); break;
+                case NavMeshArea nma: VanillaData.navMeshAreas?.Remove(nma); break;
+            }
+
+            if (Data != null && marker is IHasSourceObject src && !string.IsNullOrEmpty(src.sourceObjectName))
+            {
+                Data.removedObjects ??= new List<RemovedObject>();
+                Data.removedObjects.Add(new RemovedObject
+                {
+                    id = Guid.NewGuid().ToString("N"),
+                    name = src.sourceObjectName,
+                    path = src.sourceObjectName,
+                    position = src.sourceObjectPosition ?? marker.position,
+                    rotation = marker.rotation,
+                    scale = new TransformData { x = 1, y = 1, z = 1 }
+                });
+            }
+
+            IsDirty = true;
+        }
+
         public void DuplicateSelection()
         {
             if (Data == null)

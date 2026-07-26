@@ -87,11 +87,6 @@ public static class LootTransformer
                             continue;
                         }
 
-                        if (!existingIds.Add(spawn.Id))
-                        {
-                            continue;
-                        }
-
                         var filteredItems = spawn.Items.Where(ShouldSpawnItem).ToList();
                         if (filteredItems.Count == 0)
                         {
@@ -104,7 +99,24 @@ public static class LootTransformer
                             continue;
                         }
 
-                        spawnpoints.Add(CreateSpawnpoint(spawn, filteredItems));
+                        var newSpawn = CreateSpawnpoint(spawn, filteredItems);
+                        if (existingIds.Contains(spawn.Id))
+                        {
+                            var idx = spawnpoints.FindIndex(s => s.LocationId == spawn.Id);
+                            if (idx >= 0)
+                            {
+                                spawnpoints[idx] = newSpawn;
+                                ServerPlugin.Logger?.Info($"[MEL] Overrode vanilla loose loot spawn {spawn.Id}.");
+                            }
+                            continue;
+                        }
+
+                        if (!existingIds.Add(spawn.Id))
+                        {
+                            continue;
+                        }
+
+                        spawnpoints.Add(newSpawn);
                         added++;
                     }
 
@@ -140,12 +152,24 @@ public static class LootTransformer
                             }
 
                             var locationId = $"{zone.Id}_{i}";
+                            var newSpawn = CreateZoneItemSpawnpoint(zone, item, i, random);
+                            if (existingIds.Contains(locationId))
+                            {
+                                var idx = spawnpoints.FindIndex(s => s.LocationId == locationId);
+                                if (idx >= 0)
+                                {
+                                    spawnpoints[idx] = newSpawn;
+                                    ServerPlugin.Logger?.Info($"[MEL] Overrode vanilla loot zone item {locationId}.");
+                                }
+                                continue;
+                            }
+
                             if (!existingIds.Add(locationId))
                             {
                                 continue;
                             }
 
-                            spawnpoints.Add(CreateZoneItemSpawnpoint(zone, item, i, random));
+                            spawnpoints.Add(newSpawn);
                             added++;
                         }
                     }

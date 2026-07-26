@@ -180,14 +180,16 @@ public static class InteractiveObjectTransformer
         foreach (var container in containers)
         {
             var key = new MongoId(container.ContainerId);
+            var details = CreateStaticLootDetails(container);
+            if (details == null)
+                continue;
+
             if (dict.Contains(key))
             {
-                ServerPlugin.Logger?.Debug($"[MEL] Container {container.ContainerId} already exists in static loot; skipping.");
-                continue;
+                dict[key] = details;
+                ServerPlugin.Logger?.Info($"[MEL] Overrode static loot for container {container.ContainerId}.");
             }
-
-            var details = CreateStaticLootDetails(container);
-            if (details != null)
+            else
             {
                 dict.Add(key, details);
             }
@@ -361,11 +363,7 @@ public static class InteractiveObjectTransformer
             var addedContainers = 0;
             foreach (var container in containers)
             {
-                if (existingList.Any(x => GetStaticContainerId(x) == container.ContainerId))
-                {
-                    ServerPlugin.Logger?.Debug($"[MEL] Container {container.ContainerId} already exists in static containers; skipping.");
-                    continue;
-                }
+                var existingIndex = existingList.FindIndex(x => GetStaticContainerId(x) == container.ContainerId);
 
                 if (container.SpawnChance < 100.0 && RandX.Next() * 100.0 >= container.SpawnChance)
                 {
@@ -373,7 +371,15 @@ public static class InteractiveObjectTransformer
                 }
 
                 var containerData = CreateStaticContainerData(container, itemType);
-                if (containerData != null)
+                if (containerData == null)
+                    continue;
+
+                if (existingIndex >= 0)
+                {
+                    existingList[existingIndex] = containerData;
+                    ServerPlugin.Logger?.Info($"[MEL] Overrode static container {container.ContainerId}.");
+                }
+                else
                 {
                     existingList.Add(containerData);
                     addedContainers++;
@@ -398,11 +404,7 @@ public static class InteractiveObjectTransformer
             var addedWeapons = 0;
             foreach (var weapon in weapons)
             {
-                if (existingList.Any(x => GetStaticWeaponId(x) == weapon.Id))
-                {
-                    ServerPlugin.Logger?.Debug($"[MEL] Weapon {weapon.Id} already exists in static weapons; skipping.");
-                    continue;
-                }
+                var existingIndex = existingList.FindIndex(x => GetStaticWeaponId(x) == weapon.Id);
 
                 if (weapon.SpawnChance < 100.0 && RandX.Next() * 100.0 >= weapon.SpawnChance)
                 {
@@ -410,7 +412,15 @@ public static class InteractiveObjectTransformer
                 }
 
                 var weaponData = CreateStaticWeaponData(weapon, itemType);
-                if (weaponData != null)
+                if (weaponData == null)
+                    continue;
+
+                if (existingIndex >= 0)
+                {
+                    existingList[existingIndex] = weaponData;
+                    ServerPlugin.Logger?.Info($"[MEL] Overrode static weapon {weapon.Id}.");
+                }
+                else
                 {
                     existingList.Add(weaponData);
                     addedWeapons++;

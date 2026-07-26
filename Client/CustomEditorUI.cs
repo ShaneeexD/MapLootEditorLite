@@ -315,7 +315,7 @@ namespace MapLootEditorLite.Client
                 manager.ClearSelection();
             _selectedSceneGO = go;
             if (_goPreviewNameText != null)
-                _goPreviewNameText.text = go != null ? go.name : "No selection";
+                _goPreviewNameText.text = go != null ? go.name : Locale.Get("No selection");
             RefreshObjectsList();
             RefreshGOActionRow();
             RequestInspectorRefresh();
@@ -1214,7 +1214,7 @@ namespace MapLootEditorLite.Client
             }
 
             if (truncated)
-                UIBuilder.CreateText(_objectsContent, $"Showing {maxShown} of {filtered.Count} — refine filter", 10, new Color(0.6f, 0.6f, 0.4f, 1f));
+                UIBuilder.CreateText(_objectsContent, string.Format(Locale.Get("Showing {0} of {1} — refine filter"), maxShown, filtered.Count), 10, new Color(0.6f, 0.6f, 0.4f, 1f));
 
             foreach (var go in list)
             {
@@ -1314,40 +1314,40 @@ namespace MapLootEditorLite.Client
         private string FormatSceneGODetails(GameObject go)
         {
             if (go == null)
-                return "Select an object to view details.";
+                return Locale.Get("Select an object to view details.");
 
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"Name: {go.name}");
-            sb.AppendLine($"Path: {GetFullPath(go.transform)}");
-            sb.AppendLine($"Pos: {go.transform.position}");
-            sb.AppendLine($"Rot: {go.transform.rotation.eulerAngles}");
-            sb.AppendLine($"Scale: {go.transform.localScale}");
+            sb.AppendLine($"{Locale.Get("Name:")} {go.name}");
+            sb.AppendLine($"{Locale.Get("Path:")} {GetFullPath(go.transform)}");
+            sb.AppendLine($"{Locale.Get("Pos:")} {go.transform.position}");
+            sb.AppendLine($"{Locale.Get("Rot:")} {go.transform.rotation.eulerAngles}");
+            sb.AppendLine($"{Locale.Get("Scale:")} {go.transform.localScale}");
 
             var wio = go.GetComponentInChildren<WorldInteractiveObject>(true);
             if (wio != null)
             {
-                sb.AppendLine("--- WorldInteractiveObject ---");
-                sb.AppendLine($"Id: {wio.Id}");
-                sb.AppendLine($"KeyId: {wio.KeyId}");
-                sb.AppendLine($"DoorState: {wio.DoorState}");
-                sb.AppendLine($"Initial: {wio.InitialDoorState}");
-                sb.AppendLine($"Fallback: {wio.FallbackState}");
+                sb.AppendLine($"--- {Locale.Get("WorldInteractiveObject")} ---");
+                sb.AppendLine($"{Locale.Get("Id:")} {wio.Id}");
+                sb.AppendLine($"{Locale.Get("KeyId:")} {wio.KeyId}");
+                sb.AppendLine($"{Locale.Get("DoorState:")} {wio.DoorState}");
+                sb.AppendLine($"{Locale.Get("Initial:")} {wio.InitialDoorState}");
+                sb.AppendLine($"{Locale.Get("Fallback:")} {wio.FallbackState}");
             }
 
             var container = wio as LootableContainer ?? go.GetComponentInChildren<LootableContainer>(true);
             if (container != null)
             {
-                sb.AppendLine("--- LootableContainer ---");
-                sb.AppendLine($"Id: {container.Id}");
-                sb.AppendLine($"Template: {container.Template}");
+                sb.AppendLine($"--- {Locale.Get("LootableContainer")} ---");
+                sb.AppendLine($"{Locale.Get("Id:")} {container.Id}");
+                sb.AppendLine($"{Locale.Get("Template:")} {container.Template}");
             }
 
             var sw = go.GetComponentInChildren<StationaryWeapon>(true);
             if (sw != null)
             {
-                sb.AppendLine("--- StationaryWeapon ---");
-                sb.AppendLine($"IdEditable: {sw.IdEditable}");
-                sb.AppendLine($"Template: {sw.Template}");
+                sb.AppendLine($"--- {Locale.Get("StationaryWeapon")} ---");
+                sb.AppendLine($"{Locale.Get("IdEditable:")} {sw.IdEditable}");
+                sb.AppendLine($"{Locale.Get("Template:")} {sw.Template}");
             }
 
             return sb.ToString();
@@ -1391,7 +1391,7 @@ namespace MapLootEditorLite.Client
             renderer?.SetSceneObjects(_sceneObjectCache, _selectedSceneGO);
             manager.IsDirty = true;
             if (_goPreviewNameText != null)
-                _goPreviewNameText.text = "No selection";
+                _goPreviewNameText.text = Locale.Get("No selection");
             RefreshObjectsList();
             RefreshGOActionRow();
             RefreshRemovedObjectsList();
@@ -1855,7 +1855,7 @@ namespace MapLootEditorLite.Client
         {
             var map = manager.Data?.map ?? "none";
             var count = manager.GetAllMarkers().Count();
-            _titleText.text = $"Map Loot Editor Lite - {map} ({count} markers)";
+            _titleText.text = string.Format(Locale.Get("Map Loot Editor Lite - {0} ({1} markers)"), map, count);
         }
 
         private abstract class HierarchyEntry { }
@@ -1960,7 +1960,7 @@ namespace MapLootEditorLite.Client
                 UIBuilder.AddHorizontalLayout(pageRow, 4, 2, false, false);
                 UIBuilder.AddLayoutElement(pageRow, null, 22, null, 22, null, 0);
                 UIBuilder.CreateButton(pageRow, "<", () => { _hierarchyPage--; RequestHierarchyRefresh(); }, 30, 22, 10);
-                UIBuilder.CreateText(pageRow, $"Page {_hierarchyPage + 1} / {pageCount} ({entries.Count} rows)", 11, Color.white);
+                UIBuilder.CreateText(pageRow, string.Format(Locale.Get("Page {0} / {1} ({2} rows)"), _hierarchyPage + 1, pageCount, entries.Count), 11, Color.white);
                 UIBuilder.CreateButton(pageRow, ">", () => { _hierarchyPage++; RequestHierarchyRefresh(); }, 30, 22, 10);
             }
 
@@ -2409,20 +2409,6 @@ namespace MapLootEditorLite.Client
                     BuildReadOnlyLabel(_inspectorContent, "Forced", spawn.forced.ToString());
                     BuildReadOnlyLabel(_inspectorContent, "Use Gravity", spawn.useGravity.ToString());
                     BuildVanillaItemList(spawn.items);
-                    UIBuilder.CreateButton(_inspectorContent, "Clone to Pack", () =>
-                    {
-                        var clone = JsonConvert.DeserializeObject<LooseLootSpawn>(JsonConvert.SerializeObject(spawn));
-                        clone.id = Guid.NewGuid().ToString("N");
-                        clone.name = spawn.name + "_clone";
-                        clone.isVanilla = false;
-                        clone.group = "";
-                        manager.AddMarker(clone);
-                        manager.Selected = clone;
-                        RequestInspectorRefresh();
-                        RequestHierarchyRefresh();
-                        renderer.Rebuild();
-                        previews.SpawnPreviewForMarker(clone);
-                    }, 120, 22);
                     break;
                 case InteractiveObject obj:
                     BuildReadOnlyLabel(_inspectorContent, "Container Template", FormatContainerTemplate(obj.containerTemplate));
@@ -2454,6 +2440,45 @@ namespace MapLootEditorLite.Client
                     BuildReadOnlyLabel(_inspectorContent, "Spawn Chance", $"{zone.spawnChance:F2}%");
                     break;
             }
+
+            var actionRow = UIBuilder.CreatePanel("VanillaActions1", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(actionRow, 4, 2, false, false);
+            UIBuilder.AddLayoutElement(actionRow, null, 26, null, 26, null, 0);
+
+            var sourceObj = selected as IHasSourceObject;
+            if (sourceObj != null && !string.IsNullOrEmpty(sourceObj.sourceObjectName))
+            {
+                UIBuilder.CreateButton(actionRow, "Go To", () =>
+                {
+                    var src = previews?.FindSourceObject(sourceObj.sourceObjectName, sourceObj.sourceObjectPosition.ToVector3());
+                    if (src != null)
+                        controller?.GoToSceneObject(src);
+                }, 50, 22);
+            }
+
+            var actionRow2 = UIBuilder.CreatePanel("VanillaActions2", _inspectorContent, new Color(0, 0, 0, 0));
+            UIBuilder.AddHorizontalLayout(actionRow2, 4, 2, false, false);
+            UIBuilder.AddLayoutElement(actionRow2, null, 26, null, 26, null, 0);
+            UIBuilder.CreateButton(actionRow2, "Write Mode", () =>
+            {
+                var clone = manager.CloneVanillaToPack(selected);
+                if (clone != null)
+                {
+                    manager.Selected = clone;
+                    RequestInspectorRefresh();
+                    RequestHierarchyRefresh();
+                    renderer.Rebuild();
+                    previews?.SpawnPreviewForMarker(clone);
+                }
+            }, 80, 22);
+            UIBuilder.CreateButton(actionRow2, "Remove", () =>
+            {
+                manager.RemoveVanillaMarker(selected);
+                manager.Selected = null;
+                RequestInspectorRefresh();
+                RequestHierarchyRefresh();
+                renderer.Rebuild();
+            }, 60, 22);
         }
 
         private void BuildVanillaItemList(List<LootItem> items)
@@ -2508,7 +2533,7 @@ namespace MapLootEditorLite.Client
             var row = UIBuilder.CreatePanel("ReadOnlyLabel", parent, new Color(0, 0, 0, 0));
             UIBuilder.AddHorizontalLayout(row, 2, 2, true, true);
             UIBuilder.AddLayoutElement(row, null, 22, null, 22, null, 0);
-            var text = UIBuilder.CreateText(row, $"{label}: {value ?? ""}", 11, new Color(0.72f, 0.72f, 0.72f, 1f));
+            var text = UIBuilder.CreateText(row, $"{Locale.Get(label)}: {value ?? ""}", 11, new Color(0.72f, 0.72f, 0.72f, 1f));
             text.alignment = TextAnchor.MiddleLeft;
         }
 
@@ -3483,7 +3508,7 @@ namespace MapLootEditorLite.Client
                 UIBuilder.AddLayoutElement(pageRow, null, 22, null, 22, null, 0);
                 UIBuilder.CreateButton(pageRow, "<", () => { _itemsListPage--; RefreshInspector(); }, 30, 22, 10);
                 UIBuilder.CreateButton(pageRow, ">", () => { _itemsListPage++; RefreshInspector(); }, 30, 22, 10);
-                UIBuilder.CreateText(_inspectorContent, $"Page {_itemsListPage + 1} / {pageCount} ({items.Count} items)", 11, Color.white);
+                UIBuilder.CreateText(_inspectorContent, string.Format(Locale.Get("Page {0} / {1} ({2} items)"), _itemsListPage + 1, pageCount, items.Count), 11, Color.white);
             }
 
             for (int i = start; i < end; i++)
@@ -3995,7 +4020,7 @@ namespace MapLootEditorLite.Client
             _deleteConfirmPanel.gameObject.SetActive(true);
             _deleteConfirmPanel.SetAsLastSibling();
             if (_deleteConfirmText != null)
-                _deleteConfirmText.text = $"Delete {manager.SelectedIds.Count} marker(s)?";
+                _deleteConfirmText.text = string.Format(Locale.Get("Delete {0} marker(s)?"), manager.SelectedIds.Count);
         }
 
         private void ConfirmDelete()
@@ -4372,7 +4397,7 @@ namespace MapLootEditorLite.Client
             {
                 var text = _editorModeButton.GetComponentInChildren<Text>();
                 if (text != null)
-                    text.text = controller.IsFreeCam ? "Exit Editor Mode" : "Editor Mode";
+                    text.text = Locale.Get(controller.IsFreeCam ? "Exit Editor Mode" : "Editor Mode");
             }
         }
 

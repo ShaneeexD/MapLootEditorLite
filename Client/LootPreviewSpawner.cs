@@ -252,7 +252,7 @@ namespace MapLootEditorLite.Client
             var meta = go.AddComponent<PreviewEffectMarker>();
             meta.sourceMarkerId = markerId;
             meta.markerName = markerName;
-            meta.label = $"{preset}\n{side} {category}";
+            meta.label = $"{Locale.Get(preset)}\n{Locale.Get(side)} {Locale.Get(category)}";
 
             return go;
         }
@@ -580,7 +580,7 @@ namespace MapLootEditorLite.Client
                     continue;
 
                 var meta = preview.GetComponent<PreviewLootMarker>();
-                var label = meta != null ? $"{meta.markerName}\n{meta.itemTpl}" : "preview";
+                var label = meta != null ? $"{meta.markerName}\n{meta.itemTpl}" : Locale.Get("preview");
                 var screenPos = camera.WorldToScreenPoint(preview.transform.position);
                 if (screenPos.z <= 0)
                     continue;
@@ -597,7 +597,7 @@ namespace MapLootEditorLite.Client
                     continue;
 
                 var meta = preview.GetComponent<PreviewEffectMarker>();
-                var label = meta != null ? $"{meta.markerName}\n{meta.label}" : "effect";
+                var label = meta != null ? $"{meta.markerName}\n{meta.label}" : Locale.Get("effect");
                 var screenPos = camera.WorldToScreenPoint(preview.transform.position);
                 if (screenPos.z <= 0)
                     continue;
