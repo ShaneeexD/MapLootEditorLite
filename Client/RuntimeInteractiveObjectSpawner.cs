@@ -28,6 +28,7 @@ namespace MapLootEditorLite.Client
         private string _currentMapId;
         private List<GameObject> _spawned = new List<GameObject>();
         private readonly List<NavMeshDoorLink> _openedDoorLinks = new List<NavMeshDoorLink>();
+        private Dictionary<string, List<Transform>> _sourceNameIndex;
         private static bool _raidStarted;
 
         private static readonly Dictionary<string, Dictionary<string, BundledStaticLootDistribution>> _bundledStaticLootCache = new Dictionary<string, Dictionary<string, BundledStaticLootDistribution>>(StringComparer.OrdinalIgnoreCase);
@@ -112,6 +113,7 @@ namespace MapLootEditorLite.Client
             ClearSpawned();
             _currentWorld = null;
             _currentMapId = null;
+            _sourceNameIndex = null;
             _raidStarted = false;
         }
 
@@ -148,6 +150,7 @@ namespace MapLootEditorLite.Client
             {
                 _currentWorld = world;
                 _currentMapId = mapId;
+                _sourceNameIndex = null;
                 ClearSpawned();
                 Plugin.Log.LogInfo($"Map detected: {mapId}, spawning interactive objects");
                 SpawnForMap(mapId, world);
@@ -412,10 +415,67 @@ namespace MapLootEditorLite.Client
             SpawnObjectInstance(source, obj, world);
         }
 
+        private void BuildSourceNameIndex()
+        {
+            _sourceNameIndex = new Dictionary<string, List<Transform>>(StringComparer.OrdinalIgnoreCase);
+            var sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
+
+            for (int i = 0; i < sceneCount; i++)
+            {
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
+                if (!scene.isLoaded)
+                    continue;
+
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    if (root == null)
+                        continue;
+
+                    foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                    {
+                        if (t == null)
+                            continue;
+
+                        if (!_sourceNameIndex.TryGetValue(t.name, out var list))
+                        {
+                            list = new List<Transform>();
+                            _sourceNameIndex[t.name] = list;
+                        }
+                        list.Add(t);
+                    }
+                }
+            }
+        }
+
         private GameObject FindSourceObject(string name, Vector3 position, float maxSqr = float.MaxValue)
         {
-            GameObject best = null;
-            float bestDist = float.MaxValue;
+            if (_sourceNameIndex == null)
+                BuildSourceNameIndex();
+
+            if (_sourceNameIndex.TryGetValue(name, out var candidates))
+            {
+                GameObject best = null;
+                float bestDist = float.MaxValue;
+                for (int i = 0; i < candidates.Count; i++)
+                {
+                    var t = candidates[i];
+                    if (t == null)
+                        continue;
+                    var dist = (t.position - position).sqrMagnitude;
+                    if (dist > maxSqr) continue;
+                    if (dist < bestDist)
+                    {
+                        bestDist = dist;
+                        best = t.gameObject;
+                    }
+                }
+                if (best != null)
+                    return best;
+            }
+
+            // Fallback: scan for late-loaded objects not in the cache
+            GameObject fallback = null;
+            float fallbackDist = float.MaxValue;
             var sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
 
             for (int i = 0; i < sceneCount; i++)
@@ -431,16 +491,16 @@ namespace MapLootEditorLite.Client
                         if (t.name != name) continue;
                         var dist = (t.position - position).sqrMagnitude;
                         if (dist > maxSqr) continue;
-                        if (dist < bestDist)
+                        if (dist < fallbackDist)
                         {
-                            bestDist = dist;
-                            best = t.gameObject;
+                            fallbackDist = dist;
+                            fallback = t.gameObject;
                         }
                     }
                 }
             }
 
-            return best;
+            return fallback;
         }
 
         private GameObject FindRemovedObject(RemovedObject removed, HashSet<GameObject> excluded, float maxSqr = float.MaxValue, Dictionary<string, List<Transform>> nameIndex = null)

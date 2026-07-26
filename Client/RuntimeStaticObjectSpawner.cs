@@ -20,6 +20,7 @@ namespace MapLootEditorLite.Client
         private GameWorld _currentWorld;
         private string _currentMapId;
         private List<GameObject> _spawned = new List<GameObject>();
+        private Dictionary<string, List<Transform>> _sourceNameIndex;
 
         private void Awake()
         {
@@ -36,6 +37,7 @@ namespace MapLootEditorLite.Client
             ClearSpawned();
             _currentWorld = null;
             _currentMapId = null;
+            _sourceNameIndex = null;
         }
 
         private void Update()
@@ -65,6 +67,7 @@ namespace MapLootEditorLite.Client
             {
                 _currentWorld = world;
                 _currentMapId = mapId;
+                _sourceNameIndex = null;
                 ClearSpawned();
                 Plugin.Log.LogInfo($"Map detected: {mapId}, spawning static objects");
                 SpawnForMap(mapId);
@@ -255,10 +258,66 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        private void BuildSourceNameIndex()
+        {
+            _sourceNameIndex = new Dictionary<string, List<Transform>>(StringComparer.OrdinalIgnoreCase);
+            var sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
+
+            for (int i = 0; i < sceneCount; i++)
+            {
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
+                if (!scene.isLoaded)
+                    continue;
+
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    if (root == null)
+                        continue;
+
+                    foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                    {
+                        if (t == null)
+                            continue;
+
+                        if (!_sourceNameIndex.TryGetValue(t.name, out var list))
+                        {
+                            list = new List<Transform>();
+                            _sourceNameIndex[t.name] = list;
+                        }
+                        list.Add(t);
+                    }
+                }
+            }
+        }
+
         private GameObject FindSourceObject(string name, Vector3 position)
         {
-            GameObject best = null;
-            float bestDist = float.MaxValue;
+            if (_sourceNameIndex == null)
+                BuildSourceNameIndex();
+
+            if (_sourceNameIndex.TryGetValue(name, out var candidates))
+            {
+                GameObject best = null;
+                float bestDist = float.MaxValue;
+                for (int i = 0; i < candidates.Count; i++)
+                {
+                    var t = candidates[i];
+                    if (t == null)
+                        continue;
+                    var dist = (t.position - position).sqrMagnitude;
+                    if (dist < bestDist)
+                    {
+                        bestDist = dist;
+                        best = t.gameObject;
+                    }
+                }
+                if (best != null)
+                    return best;
+            }
+
+            // Fallback: scan for late-loaded objects not in the cache
+            GameObject fallback = null;
+            float fallbackDist = float.MaxValue;
             var sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
 
             for (int i = 0; i < sceneCount; i++)
@@ -273,16 +332,16 @@ namespace MapLootEditorLite.Client
                     {
                         if (t.name != name) continue;
                         var dist = (t.position - position).sqrMagnitude;
-                        if (dist < bestDist)
+                        if (dist < fallbackDist)
                         {
-                            bestDist = dist;
-                            best = t.gameObject;
+                            fallbackDist = dist;
+                            fallback = t.gameObject;
                         }
                     }
                 }
             }
 
-            return best;
+            return fallback;
         }
 
         private void SpawnObjectInstance(GameObject source, StaticObject obj, bool isFallback)
