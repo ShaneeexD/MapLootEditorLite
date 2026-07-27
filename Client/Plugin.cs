@@ -8,13 +8,13 @@ using UnityEngine;
 
 namespace MapLootEditorLite.Client
 {
-    [BepInPlugin("com.shaneeexd.mapeditorlite", "Map Editor Lite", "1.2.0")]
+    [BepInPlugin("com.shaneeexd.mapeditorlite", "Map Editor Lite", "2.0.0")]
     [BepInDependency("com.wtt.commonlib", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
         public static Plugin Instance { get; private set; }
         public static ManualLogSource Log { get; private set; }
-        public static KeyCode ToggleKey { get; private set; } = KeyCode.F8;
+        public static ConfigEntry<KeyCode> ToggleKey { get; private set; }
         public static string GameRoot { get; private set; } = string.Empty;
         public static string ModDataDirectory { get; private set; } = string.Empty;
         public static string ServerModDirectory { get; private set; } = string.Empty;
@@ -62,8 +62,10 @@ namespace MapLootEditorLite.Client
             JsonStorage.Initialize(ModDataDirectory);
             PrefabStorage.Initialize(ModDataDirectory);
 
-            var toggleConfig = base.Config.Bind("General", "ToggleKey", KeyCode.F8, "Hotkey that opens/closes the editor window");
-            ToggleKey = toggleConfig.Value;
+            BundleInjector.Init(Log);
+            StartCoroutine(BundleInjector.InjectWhenReady());
+
+            ToggleKey = base.Config.Bind("General", "ToggleKey", KeyCode.F8, "Hotkey that opens/closes the editor window");
 
             EnableEditor = base.Config.Bind("General", "EnableEditor", false, "Enable the in-raid F8 editor");
             EnableDebugVisuals = base.Config.Bind("General", "EnableDebugVisuals", false, "Show debug visuals in raid");

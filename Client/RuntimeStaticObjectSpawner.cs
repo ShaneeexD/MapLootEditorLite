@@ -163,19 +163,33 @@ namespace MapLootEditorLite.Client
 
         private IEnumerator SpawnObjectCoroutine(StaticObject obj)
         {
-            yield return SpawnCloneObjectCoroutine(obj, obj, obj.scale, obj.prefabPath);
+            yield return SpawnCloneObjectCoroutine(obj, obj, obj.scale, obj.prefabPath, obj.bundleName, obj.prefabName);
         }
 
         private IEnumerator SpawnWTTCloneObjectCoroutine(WTTStaticObject obj)
         {
-            yield return SpawnCloneObjectCoroutine(obj, obj, obj.scale, null);
+            yield return SpawnCloneObjectCoroutine(obj, obj, obj.scale, null, obj.bundleName, obj.prefabName);
         }
 
-        private IEnumerator SpawnCloneObjectCoroutine(IHasSourceObject sourceObj, MarkerBase marker, TransformData scale, string fallbackPrefabPath)
+        private IEnumerator SpawnCloneObjectCoroutine(IHasSourceObject sourceObj, MarkerBase marker, TransformData scale, string fallbackPrefabPath, string bundleName = null, string prefabName = null)
         {
             bool spawned = false;
 
-            if (!string.IsNullOrEmpty(sourceObj.sourceObjectName))
+            if (!string.IsNullOrEmpty(bundleName))
+            {
+                GameObject source = null;
+                yield return StartCoroutine(BundleInjector.LoadPrefabCoroutine(bundleName, prefabName, go => source = go));
+                if (source != null)
+                {
+                    SpawnObjectInstance(source, marker, scale, bundleName, isFallback: false);
+                    spawned = true;
+                }
+                else
+                {
+                    Plugin.Log.LogWarning($"Could not load bundle '{bundleName}' for {marker.name}");
+                }
+            }
+            else if (!string.IsNullOrEmpty(sourceObj.sourceObjectName))
             {
                 GameObject source = null;
                 for (int attempt = 0; attempt < 5; attempt++)

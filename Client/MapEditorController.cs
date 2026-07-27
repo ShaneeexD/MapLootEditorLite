@@ -33,7 +33,7 @@ namespace MapLootEditorLite.Client
         private bool _editorOpen;
         private bool _previewMode;
         private int _lastPreviewBlockerHash;
-        private KeyCode _toggleKey => Plugin.ToggleKey;
+        private KeyCode _toggleKey => Plugin.ToggleKey.Value;
         private GameWorld _currentGameWorld;
         private string _currentMapId;
         private int _lastToggleFrame = -1;

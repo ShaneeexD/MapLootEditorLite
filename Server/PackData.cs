@@ -694,6 +694,12 @@ public record StaticObject
     [JsonPropertyName("sourceObjectPosition")]
     public TransformData SourceObjectPosition { get; set; } = new();
 
+    [JsonPropertyName("bundleName")]
+    public string BundleName { get; set; } = string.Empty;
+
+    [JsonPropertyName("prefabName")]
+    public string PrefabName { get; set; } = string.Empty;
+
     [JsonPropertyName("questOnly")]
     public bool QuestOnly { get; set; } = false;
 
@@ -907,6 +913,12 @@ public record InteractiveObject
 
     [JsonPropertyName("sourceObjectPosition")]
     public TransformData SourceObjectPosition { get; set; } = new();
+
+    [JsonPropertyName("bundleName")]
+    public string BundleName { get; set; } = string.Empty;
+
+    [JsonPropertyName("prefabName")]
+    public string PrefabName { get; set; } = string.Empty;
 
     [JsonPropertyName("keyId")]
     public string KeyId { get; set; } = string.Empty;

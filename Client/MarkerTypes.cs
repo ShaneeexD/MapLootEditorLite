@@ -422,6 +422,11 @@ namespace MapLootEditorLite.Client
         // Fallback: copy an existing vanilla scene object instead of loading a bundle.
         public string sourceObjectName { get; set; } = "";
         public TransformData sourceObjectPosition { get; set; } = new TransformData();
+
+        // Custom bundle model
+        public string bundleName = "";
+        public string prefabName = "";
+
         public bool questOnly = false;
         public bool questCompleted = false;
         public string questId = "";
@@ -484,6 +489,10 @@ namespace MapLootEditorLite.Client
         public string sourceObjectName { get; set; } = "";
         public TransformData sourceObjectPosition { get; set; } = new TransformData();
         public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
+
+        // Custom bundle model
+        public string bundleName = "";
+        public string prefabName = "";
 
         public string keyId = ""; // Door key template id
         public string initialDoorState = "Shut"; // Door, Open, Locked

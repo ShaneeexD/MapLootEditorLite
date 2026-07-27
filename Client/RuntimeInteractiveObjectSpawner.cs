@@ -387,29 +387,42 @@ namespace MapLootEditorLite.Client
 
         private IEnumerator SpawnObjectCoroutine(InteractiveObject obj, GameWorld world)
         {
-            if (string.IsNullOrEmpty(obj.sourceObjectName))
-            {
-                Plugin.Log.LogWarning($"Interactive object '{obj.name}' has no source object; skipping.");
-                yield break;
-            }
-
             GameObject source = null;
-            for (int attempt = 0; attempt < 5; attempt++)
+
+            if (!string.IsNullOrEmpty(obj.bundleName))
             {
-                source = FindSourceObject(obj.sourceObjectName, obj.sourceObjectPosition.ToVector3());
-                if (source != null)
-                    break;
-
-                if (attempt == 0)
-                    Plugin.Log.LogInfo($"Source object '{obj.sourceObjectName}' for {obj.name} not ready, waiting...");
-
-                yield return new WaitForSecondsRealtime(2f);
+                yield return StartCoroutine(BundleInjector.LoadPrefabCoroutine(obj.bundleName, obj.prefabName, go => source = go));
+                if (source == null)
+                {
+                    Plugin.Log.LogWarning($"Could not load bundle '{obj.bundleName}' for {obj.name}");
+                    yield break;
+                }
             }
-
-            if (source == null)
+            else
             {
-                Plugin.Log.LogWarning($"Could not find source scene object '{obj.sourceObjectName}' for {obj.name}");
-                yield break;
+                if (string.IsNullOrEmpty(obj.sourceObjectName))
+                {
+                    Plugin.Log.LogWarning($"Interactive object '{obj.name}' has no source object; skipping.");
+                    yield break;
+                }
+
+                for (int attempt = 0; attempt < 5; attempt++)
+                {
+                    source = FindSourceObject(obj.sourceObjectName, obj.sourceObjectPosition.ToVector3());
+                    if (source != null)
+                        break;
+
+                    if (attempt == 0)
+                        Plugin.Log.LogInfo($"Source object '{obj.sourceObjectName}' for {obj.name} not ready, waiting...");
+
+                    yield return new WaitForSecondsRealtime(2f);
+                }
+
+                if (source == null)
+                {
+                    Plugin.Log.LogWarning($"Could not find source scene object '{obj.sourceObjectName}' for {obj.name}");
+                    yield break;
+                }
             }
 
             SpawnObjectInstance(source, obj, world);
