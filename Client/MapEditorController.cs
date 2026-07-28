@@ -504,12 +504,24 @@ namespace MapLootEditorLite.Client
                 _visualsCleared = false;
                 _previews.ClearAll(true);
                 _manager.VanillaData = null;
-                var mapData = LoadMapDataFromPacks(mapId) ?? JsonStorage.Load(mapId);
+                var exported = LoadMapDataFromExports(mapId);
+                MapData mapData;
+                string source;
+                if (exported != null)
+                {
+                    mapData = exported;
+                    source = "exports";
+                }
+                else
+                {
+                    mapData = JsonStorage.Load(mapId);
+                    source = "editor";
+                }
                 mapData.map = mapId;
                 _manager.SetMapData(mapData);
                 _renderer.Rebuild();
                 _previews.SpawnAllPreviews(_manager.Data);
-                Plugin.Log.LogInfo($"Loaded map: {mapId}");
+                Plugin.Log.LogInfo($"Loaded map: {mapId} from {source}");
             }
             else if (_visualsCleared && !string.IsNullOrEmpty(_currentMapId))
             {
@@ -519,13 +531,11 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        private MapData LoadMapDataFromPacks(string mapId)
+        private MapData LoadMapDataFromExports(string mapId)
         {
             var directories = new List<string>();
             if (!string.IsNullOrEmpty(Plugin.ServerModExportsDirectory) && Directory.Exists(Plugin.ServerModExportsDirectory))
                 directories.Add(Plugin.ServerModExportsDirectory);
-            if (!string.IsNullOrEmpty(Plugin.ServerModPacksDirectory) && Directory.Exists(Plugin.ServerModPacksDirectory))
-                directories.Add(Plugin.ServerModPacksDirectory);
 
             var preferredName = _ui?.PackName;
             if (!string.IsNullOrEmpty(preferredName))
