@@ -258,9 +258,10 @@ namespace MapLootEditorLite.Client
                 }
                 processedKeys.Add(key);
                 GameObject target = null;
+                string matchMethod = "none";
                 for (int attempt = 0; attempt < 5; attempt++)
                 {
-                    target = FindRemovedObject(removed, removedSet, 25f);
+                    target = FindRemovedObject(removed, removedSet, out matchMethod, 25f);
                     if (target != null) break;
                     if (attempt == 0)
                         Plugin.Log.LogInfo($"Removed object '{removed.name}' not found yet, waiting...");
@@ -272,7 +273,10 @@ namespace MapLootEditorLite.Client
                     removed.originalDoorState = state.OriginalDoorState;
                     removedSet.Add(state.GameObject);
                     OpenRemovedDoorNavMesh(target, removed);
-                    Plugin.Log.LogInfo($"Soft-removed vanilla object '{removed.name}' at {removed.position.ToVector3()} per pack (renderers/colliders disabled).");
+                    if (matchMethod == "proximityScore")
+                        Plugin.Log.LogWarning($"Soft-removed vanilla object '{removed.name}' at {removed.position.ToVector3()} using PROXIMITY fallback (no worldObjectId/path match) - result may be ambiguous if duplicates exist nearby.");
+                    else
+                        Plugin.Log.LogInfo($"Soft-removed vanilla object '{removed.name}' at {removed.position.ToVector3()} per pack (match={matchMethod}, renderers/colliders disabled).");
                 }
                 else if (target == null)
                 {
@@ -518,6 +522,14 @@ namespace MapLootEditorLite.Client
 
         private GameObject FindRemovedObject(RemovedObject removed, HashSet<GameObject> excluded, float maxSqr = float.MaxValue, Dictionary<string, List<Transform>> nameIndex = null)
         {
+            return FindRemovedObject(removed, excluded, out _, maxSqr, nameIndex);
+        }
+
+        private GameObject FindRemovedObject(RemovedObject removed, HashSet<GameObject> excluded, out string matchMethod, float maxSqr = float.MaxValue, Dictionary<string, List<Transform>> nameIndex = null)
+        {
+            matchMethod = "none";
+            int candidateCount = 0;
+            GameObject bestWorldId = null;
             GameObject bestPath = null;
             GameObject bestActive = null;
             GameObject bestInactive = null;
@@ -527,6 +539,23 @@ namespace MapLootEditorLite.Client
             var expectedRot = removed.rotation.ToQuaternion();
             var expectedScale = removed.scale.ToVector3();
             bool hasPath = !string.IsNullOrEmpty(removed.path);
+            bool hasWorldId = !string.IsNullOrEmpty(removed.worldObjectId);
+
+            if (hasWorldId)
+            {
+                var allWio = UnityEngine.Object.FindObjectsOfType<WorldInteractiveObject>(true);
+                for (int i = 0; i < allWio.Length; i++)
+                {
+                    var wio = allWio[i];
+                    if (wio == null || wio.Id != removed.worldObjectId) continue;
+                    var go = wio.gameObject;
+                    if (excluded != null && excluded.Contains(go)) continue;
+                    Plugin.Log.LogInfo($"FindRemovedObject '{removed.name}': direct worldObjectId match found on '{go.name}' at {go.transform.position}.");
+                    matchMethod = "worldObjectId-direct";
+                    return go;
+                }
+                Plugin.Log.LogWarning($"FindRemovedObject '{removed.name}': no WorldInteractiveObject found anywhere in scene with Id '{removed.worldObjectId}' ({allWio.Length} interactive objects scanned).");
+            }
 
             void Check(Transform t)
             {
@@ -535,6 +564,15 @@ namespace MapLootEditorLite.Client
                 if (go == null || (excluded != null && excluded.Contains(go))) return;
                 var dist = (t.position - expectedPos).sqrMagnitude;
                 if (dist > maxSqr) return;
+                candidateCount++;
+
+                if (hasWorldId)
+                {
+                    var wio = go.GetComponentInChildren<WorldInteractiveObject>(true);
+                    Plugin.Log.LogInfo($"FindRemovedObject '{removed.name}': candidate '{go.name}' wio.Id='{(wio != null ? wio.Id : "<no wio>")}' dist={Mathf.Sqrt(dist):F2}.");
+                    if (bestWorldId == null && wio != null && wio.Id == removed.worldObjectId)
+                        bestWorldId = go;
+                }
 
                 if (hasPath)
                 {
@@ -592,9 +630,22 @@ namespace MapLootEditorLite.Client
                 }
             }
 
+            Plugin.Log.LogInfo($"FindRemovedObject '{removed.name}': {candidateCount} name+position candidates within radius (hasWorldId={hasWorldId}, hasPath={hasPath}).");
+
+            if (bestWorldId != null)
+            {
+                matchMethod = "worldObjectId";
+                return bestWorldId;
+            }
             if (bestPath != null)
+            {
+                matchMethod = "path";
                 return bestPath;
-            return bestActive ?? bestInactive;
+            }
+            var fallbackResult = bestActive ?? bestInactive;
+            if (fallbackResult != null)
+                matchMethod = "proximityScore";
+            return fallbackResult;
         }
 
         private void SpawnObjectInstance(GameObject source, InteractiveObject obj, GameWorld world)

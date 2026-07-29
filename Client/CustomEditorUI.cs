@@ -1373,11 +1373,13 @@ namespace MapLootEditorLite.Client
                 return;
             }
             var go = _selectedSceneGO;
+            var goWio = go.GetComponentInChildren<WorldInteractiveObject>(true);
             var removed = new RemovedObject
             {
                 id = System.Guid.NewGuid().ToString("N"),
                 name = go.name,
                 path = GetFullPath(go.transform),
+                worldObjectId = goWio != null ? goWio.Id : string.Empty,
                 position = TransformData.FromVector3(go.transform.position),
                 rotation = TransformData.FromVector3(go.transform.rotation.eulerAngles),
                 scale = TransformData.FromVector3(go.transform.localScale)

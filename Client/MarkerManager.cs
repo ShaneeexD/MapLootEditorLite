@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using EFT.Interactive;
 using Newtonsoft.Json;
 using UnityEngine;
 
@@ -566,11 +567,15 @@ namespace MapLootEditorLite.Client
             if (Data != null && marker is IHasSourceObject src && !string.IsNullOrEmpty(src.sourceObjectName))
             {
                 Data.removedObjects ??= new List<RemovedObject>();
+                var sourcePos = (src.sourceObjectPosition ?? marker.position).ToVector3();
+                var sourceGo = FindSceneObjectByNameAndPosition(src.sourceObjectName, sourcePos);
+                var wio = sourceGo != null ? sourceGo.GetComponentInChildren<WorldInteractiveObject>(true) : null;
                 Data.removedObjects.Add(new RemovedObject
                 {
                     id = Guid.NewGuid().ToString("N"),
                     name = src.sourceObjectName,
-                    path = src.sourceObjectName,
+                    path = sourceGo != null ? GetFullPath(sourceGo.transform) : string.Empty,
+                    worldObjectId = wio != null ? wio.Id : string.Empty,
                     position = src.sourceObjectPosition ?? marker.position,
                     rotation = marker.rotation,
                     scale = new TransformData { x = 1, y = 1, z = 1 }
@@ -578,6 +583,43 @@ namespace MapLootEditorLite.Client
             }
 
             IsDirty = true;
+        }
+
+        private static string GetFullPath(Transform t)
+        {
+            var path = t.name;
+            while (t.parent != null)
+            {
+                t = t.parent;
+                path = t.name + "/" + path;
+            }
+            return path;
+        }
+
+        private static GameObject FindSceneObjectByNameAndPosition(string name, Vector3 position)
+        {
+            GameObject best = null;
+            float bestDist = float.MaxValue;
+            var sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
+            for (int i = 0; i < sceneCount; i++)
+            {
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
+                if (!scene.isLoaded) continue;
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                    {
+                        if (t.name != name) continue;
+                        var dist = (t.position - position).sqrMagnitude;
+                        if (dist < bestDist)
+                        {
+                            bestDist = dist;
+                            best = t.gameObject;
+                        }
+                    }
+                }
+            }
+            return best;
         }
 
         public void DuplicateSelection()

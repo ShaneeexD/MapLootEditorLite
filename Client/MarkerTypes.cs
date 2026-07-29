@@ -274,6 +274,7 @@ namespace MapLootEditorLite.Client
         public string id = System.Guid.NewGuid().ToString("N");
         public string name = "";
         public string path = "";
+        public string worldObjectId = "";
         public TransformData position = new TransformData();
         public TransformData rotation = new TransformData();
         public TransformData scale = new TransformData() { x = 1, y = 1, z = 1 };
