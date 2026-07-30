@@ -8,6 +8,9 @@ import {
   type LightColorData,
   type LightZone,
   type PmcSpawnZone,
+  type RemovedObject,
+  type OcclusionRepairVolume,
+  type CutVolume,
   type TransformData,
   type TriggerZone,
   type WTTQuestZone,
@@ -27,6 +30,9 @@ import {
   defaultLightColor,
   defaultLightZone,
   defaultPmcSpawnZone,
+  defaultRemovedObject,
+  defaultOcclusionRepairVolume,
+  defaultCutVolume,
   defaultTransform,
   defaultTriggerZone,
   defaultWttQuestZone,
@@ -727,6 +733,95 @@ export function TriggerZoneList({
       items={data}
       onChange={onChange as any}
       defaultItem={defaultTriggerZone()}
+      renderAddExtra={extraFields}
+      renderItemExtra={extraFields}
+    />
+  )
+}
+
+export function RemovedObjectList({
+  data,
+  onChange,
+}: {
+  data: RemovedObject[]
+  onChange: (items: RemovedObject[]) => void
+}) {
+  const extraFields = (item: any, update: any) => (
+    <>
+      <TextField label="Path" value={item.path ?? ''} onChange={(v) => update({ path: v })} />
+      <TextField label="World Object ID" value={item.worldObjectId ?? ''} onChange={(v) => update({ worldObjectId: v })} />
+      <TransformField label="Scale" value={item.scale ?? { x: 1, y: 1, z: 1 }} onChange={(v) => update({ scale: v })} />
+      <NumberField label="Original Door State" value={item.originalDoorState ?? -1} onChange={(v) => update({ originalDoorState: v })} step={1} />
+    </>
+  )
+  return (
+    <SimpleMarkerList
+      title="Removed Object"
+      items={data as any[]}
+      onChange={onChange as any}
+      defaultItem={defaultRemovedObject() as any}
+      renderAddExtra={extraFields}
+      renderItemExtra={extraFields}
+    />
+  )
+}
+
+export function OcclusionRepairVolumeList({
+  data,
+  onChange,
+}: {
+  data: OcclusionRepairVolume[]
+  onChange: (items: OcclusionRepairVolume[]) => void
+}) {
+  const extraFields = (item: any, update: any) => (
+    <>
+      <SelectField label="Shape" value={item.shape} options={zoneShapeOptions} onChange={(v) => update({ shape: v })} />
+      <TransformField label="Scale" value={item.scale ?? { x: 10, y: 10, z: 10 }} onChange={(v) => update({ scale: v })} />
+      <Toggle label="Disable Camera Occlusion" checked={item.disableCameraOcclusion ?? true} onChange={(v) => update({ disableCameraOcclusion: v })} />
+      <Toggle label="Manage Renderers" checked={item.manageRenderers ?? true} onChange={(v) => update({ manageRenderers: v })} />
+      <NumberField label="Renderer Radius" value={item.rendererRadius ?? 60} onChange={(v) => update({ rendererRadius: v })} min={0} step={1} />
+      <NumberField label="Max Visible Distance" value={item.maxVisibleDistance ?? 80} onChange={(v) => update({ maxVisibleDistance: v })} min={0} step={1} />
+      <NumberField label="Check Interval" value={item.checkInterval ?? 0.25} onChange={(v) => update({ checkInterval: v })} min={0} step={0.05} />
+      <Toggle label="Raycast Cull" checked={item.raycastCull ?? false} onChange={(v) => update({ raycastCull: v })} />
+      <TextField label="Raycast Mask" value={item.raycastMask ?? 'Default'} onChange={(v) => update({ raycastMask: v })} />
+      <Toggle label="Disable Culling Objects" checked={item.disableCullingObjects ?? true} onChange={(v) => update({ disableCullingObjects: v })} />
+      <NumberField label="Culling Object Radius" value={item.cullingObjectRadius ?? 60} onChange={(v) => update({ cullingObjectRadius: v })} min={0} step={1} />
+    </>
+  )
+  return (
+    <SimpleMarkerList
+      title="Occlusion Repair Volume"
+      items={data as any[]}
+      onChange={onChange as any}
+      defaultItem={defaultOcclusionRepairVolume() as any}
+      renderAddExtra={extraFields}
+      renderItemExtra={extraFields}
+    />
+  )
+}
+
+export function CutVolumeList({
+  data,
+  onChange,
+}: {
+  data: CutVolume[]
+  onChange: (items: CutVolume[]) => void
+}) {
+  const extraFields = (item: any, update: any) => (
+    <>
+      <SelectField label="Shape" value={item.shape} options={zoneShapeOptions} onChange={(v) => update({ shape: v })} />
+      <TransformField label="Scale" value={item.scale ?? { x: 1, y: 1, z: 1 }} onChange={(v) => update({ scale: v })} />
+      <TextField label="Source Object Name" value={item.sourceObjectName ?? ''} onChange={(v) => update({ sourceObjectName: v })} />
+      <TransformField label="Source Object Position" value={item.sourceObjectPosition ?? defaultTransform()} onChange={(v) => update({ sourceObjectPosition: v })} />
+      <Toggle label="Invert" checked={item.invert ?? false} onChange={(v) => update({ invert: v })} />
+    </>
+  )
+  return (
+    <SimpleMarkerList
+      title="Cut Volume"
+      items={data as any[]}
+      onChange={onChange as any}
+      defaultItem={defaultCutVolume() as any}
       renderAddExtra={extraFields}
       renderItemExtra={extraFields}
     />

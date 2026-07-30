@@ -6,11 +6,13 @@ import {
   DoorOpen,
   Download,
   ExternalLink,
+  Eye,
   FileJson,
   MapPin,
   Menu,
   Package,
   Plus,
+  Scissors,
   Store,
   Sun,
   Target,
@@ -28,7 +30,6 @@ import { Tooltip } from './Tooltip'
 import { type BundleInfo, loadDefaultBundles } from './bundleApi'
 import {
   type InteractiveObject,
-  type InteractiveObjectItem,
   InteractiveObjectType,
   ContainerLootMode,
   type LootItem,
@@ -58,6 +59,9 @@ import {
   WttQuestZoneList,
   WttStaticObjectList,
   TriggerZoneList,
+  RemovedObjectList,
+  OcclusionRepairVolumeList,
+  CutVolumeList,
 } from './MarkerLists'
 
 type MarkerTab =
@@ -73,6 +77,9 @@ type MarkerTab =
   | 'wttquests'
   | 'wttobjects'
   | 'triggers'
+  | 'removed'
+  | 'occlusion'
+  | 'cutvolumes'
   | 'bundles'
 
 function migratePackData(pack: PackData): PackData {
@@ -100,25 +107,19 @@ function migratePackData(pack: PackData): PackData {
       pmcSpawnZones: map.pmcSpawnZones ?? [],
       lightZones: map.lightZones ?? [],
       triggerZones: map.triggerZones ?? [],
+      removedObjects: map.removedObjects ?? [],
+      occlusionRepairVolumes: map.occlusionRepairVolumes ?? [],
+      cutVolumes: map.cutVolumes ?? [],
     }
   }
   return { ...pack, maps }
-}
-
-const defaultInteractiveObjectItem: InteractiveObjectItem = {
-  template: '',
-  chance: 100,
-  count: 1,
-  questOnly: false,
-  questCompleted: false,
-  questId: '',
 }
 
 function migrateInteractiveObjects(objects: InteractiveObject[]): InteractiveObject[] {
   return objects.map((obj) => ({
     ...defaultInteractiveObject(),
     ...obj,
-    items: (obj.items ?? []).map((item) => ({ ...defaultInteractiveObjectItem, ...item })),
+    items: migrateItems(obj.items, undefined),
   }))
 }
 
@@ -436,6 +437,27 @@ export default function App() {
                   disabled={!currentMap}
                 />
                 <TabButton
+                  active={tab === 'removed'}
+                  onClick={() => setTab('removed')}
+                  icon={<Trash2 size={16} />}
+                  label={`Removed${currentMap ? ` (${currentMap.removedObjects?.length ?? 0})` : ''}`}
+                  disabled={!currentMap}
+                />
+                <TabButton
+                  active={tab === 'occlusion'}
+                  onClick={() => setTab('occlusion')}
+                  icon={<Eye size={16} />}
+                  label={`Occlusion${currentMap ? ` (${currentMap.occlusionRepairVolumes?.length ?? 0})` : ''}`}
+                  disabled={!currentMap}
+                />
+                <TabButton
+                  active={tab === 'cutvolumes'}
+                  onClick={() => setTab('cutvolumes')}
+                  icon={<Scissors size={16} />}
+                  label={`Cut Volumes${currentMap ? ` (${currentMap.cutVolumes?.length ?? 0})` : ''}`}
+                  disabled={!currentMap}
+                />
+                <TabButton
                   active={tab === 'bundles'}
                   onClick={() => setTab('bundles')}
                   icon={<Archive size={16} />}
@@ -550,6 +572,33 @@ export default function App() {
                   <TriggerZoneList
                     data={currentMap.triggerZones}
                     onChange={(zones) => updateMap(selectedMapId, (m) => ({ ...m, triggerZones: zones }))}
+                  />
+                ) : (
+                  <NoMapMessage />
+                ))}
+              {tab === 'removed' &&
+                (currentMap ? (
+                  <RemovedObjectList
+                    data={currentMap.removedObjects ?? []}
+                    onChange={(removedObjects) => updateMap(selectedMapId, (m) => ({ ...m, removedObjects }))}
+                  />
+                ) : (
+                  <NoMapMessage />
+                ))}
+              {tab === 'occlusion' &&
+                (currentMap ? (
+                  <OcclusionRepairVolumeList
+                    data={currentMap.occlusionRepairVolumes ?? []}
+                    onChange={(occlusionRepairVolumes) => updateMap(selectedMapId, (m) => ({ ...m, occlusionRepairVolumes }))}
+                  />
+                ) : (
+                  <NoMapMessage />
+                ))}
+              {tab === 'cutvolumes' &&
+                (currentMap ? (
+                  <CutVolumeList
+                    data={currentMap.cutVolumes ?? []}
+                    onChange={(cutVolumes) => updateMap(selectedMapId, (m) => ({ ...m, cutVolumes }))}
                   />
                 ) : (
                   <NoMapMessage />
@@ -829,10 +878,10 @@ function SpawnList({
                   const parsed = JSON.parse(text)
                   if (parsed.position && (parsed.items || parsed.itemTpls)) {
                     const migratedItems: LootItem[] = parsed.items
-                      ? parsed.items
+                      ? parsed.items.map((item: any) => ({ ...defaultLootItem(), ...item, rotation: item.rotation ?? defaultTransform(), randomRotation: item.randomRotation ?? true }))
                       : Array.isArray(parsed.itemTpls)
-                        ? parsed.itemTpls.map((t: string) => ({ template: t || '', chance: 100 }))
-                        : [{ template: parsed.itemTpls || '', chance: 100 }]
+                        ? parsed.itemTpls.map((t: string) => ({ ...defaultLootItem(), template: t || '' }))
+                        : [{ ...defaultLootItem(), template: parsed.itemTpls || '' }]
                     setForm({
                       id: generateId(),
                       name: parsed.name || 'imported_spawn',
@@ -1070,6 +1119,8 @@ function ObjectList({
     prefabPath: '',
     sourceObjectName: '',
     sourceObjectPosition: defaultTransform(),
+    bundleName: '',
+    prefabName: '',
   })
 
   const add = () => {
@@ -1083,6 +1134,8 @@ function ObjectList({
       prefabPath: '',
       sourceObjectName: '',
       sourceObjectPosition: defaultTransform(),
+      bundleName: '',
+      prefabName: '',
     })
   }
 
@@ -1117,6 +1170,8 @@ function ObjectList({
             onChange={(v) => setForm((f) => ({ ...f, sourceObjectPosition: v }))}
             tooltip="Original position of the source object used to find it."
           />
+          <TextField label="Bundle Name" value={form.bundleName || ''} onChange={(v) => setForm((f) => ({ ...f, bundleName: v }))} tooltip="Name of the custom asset bundle to load the prefab from." />
+          <TextField label="Prefab Name" value={form.prefabName || ''} onChange={(v) => setForm((f) => ({ ...f, prefabName: v }))} tooltip="Name of the prefab inside the bundle to spawn." />
           <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} tooltip="World-space position of the object." />
           <TransformField label="Rotation" value={form.rotation} onChange={(v) => setForm((f) => ({ ...f, rotation: v }))} tooltip="World-space rotation of the object." />
           <TransformField label="Scale" value={form.scale} onChange={(v) => setForm((f) => ({ ...f, scale: v }))} tooltip="World-space scale of the object." />
@@ -1154,6 +1209,8 @@ function ObjectList({
                 onChange={(v) => update(i, { sourceObjectPosition: v })}
                 tooltip="Original position of the source object used to find it."
               />
+              <TextField label="Bundle Name" value={obj.bundleName || ''} onChange={(v) => update(i, { bundleName: v })} tooltip="Name of the custom asset bundle to load the prefab from." />
+              <TextField label="Prefab Name" value={obj.prefabName || ''} onChange={(v) => update(i, { prefabName: v })} tooltip="Name of the prefab inside the bundle to spawn." />
               <TransformField label="Position" value={obj.position} onChange={(v) => update(i, { position: v })} tooltip="World-space position of the object." />
               <TransformField label="Rotation" value={obj.rotation} onChange={(v) => update(i, { rotation: v })} tooltip="World-space rotation of the object." />
               <TransformField label="Scale" value={obj.scale} onChange={(v) => update(i, { scale: v })} tooltip="World-space scale of the object." />
@@ -1247,16 +1304,37 @@ function InteractiveObjectList({
             onChange={(v) => setForm((f) => ({ ...f, sourceObjectPosition: v }))}
             tooltip="Original position of the source object used to find it."
           />
+          <TextField label="Bundle Name" value={form.bundleName || ''} onChange={(v) => setForm((f) => ({ ...f, bundleName: v }))} tooltip="Name of the custom asset bundle to load the prefab from." />
+          <TextField label="Prefab Name" value={form.prefabName || ''} onChange={(v) => setForm((f) => ({ ...f, prefabName: v }))} tooltip="Name of the prefab inside the bundle to spawn." />
           <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} tooltip="World-space position of the object." />
           <TransformField label="Rotation" value={form.rotation} onChange={(v) => setForm((f) => ({ ...f, rotation: v }))} tooltip="World-space rotation of the object." />
           <TransformField label="Scale" value={form.scale} onChange={(v) => setForm((f) => ({ ...f, scale: v }))} tooltip="World-space scale of the object." />
           {form.interactiveType === InteractiveObjectType.Door && (
-            <TextField
-              label="Key Template"
-              value={form.keyId || ''}
-              onChange={(v) => setForm((f) => ({ ...f, keyId: v }))}
-              tooltip="ID of the key required to unlock this door."
-            />
+            <>
+              <TextField
+                label="Key Template"
+                value={form.keyId || ''}
+                onChange={(v) => setForm((f) => ({ ...f, keyId: v }))}
+                tooltip="ID of the key required to unlock this door."
+              />
+              <SelectField
+                label="Initial Door State"
+                value={form.initialDoorState ?? 'Shut'}
+                options={[
+                  { value: 'Shut', label: 'Shut' },
+                  { value: 'Open', label: 'Open' },
+                  { value: 'Locked', label: 'Locked' },
+                ]}
+                onChange={(v) => setForm((f) => ({ ...f, initialDoorState: v }))}
+                tooltip="Initial state of the door when it spawns."
+              />
+              <Toggle
+                label="Can Breach"
+                checked={form.canBreach ?? true}
+                onChange={(v) => setForm((f) => ({ ...f, canBreach: v }))}
+                tooltip="Whether this door can be breached with a shotgun."
+              />
+            </>
           )}
           {isContainer && (
             <>
@@ -1344,6 +1422,8 @@ function InteractiveObjectList({
                 options={[
                   { value: InteractiveObjectType.Door, label: 'Door' },
                   { value: InteractiveObjectType.Container, label: 'Container' },
+                  { value: InteractiveObjectType.StationaryWeapon, label: 'Stationary Weapon' },
+                  { value: InteractiveObjectType.Switch, label: 'Switch' },
                 ]}
                 onChange={(v) => update(i, { interactiveType: v })}
                 tooltip="Kind of interactive object to spawn."
@@ -1384,16 +1464,37 @@ function InteractiveObjectList({
                 onChange={(v) => update(i, { sourceObjectPosition: v })}
                 tooltip="Original position of the source object used to find it."
               />
+              <TextField label="Bundle Name" value={obj.bundleName || ''} onChange={(v) => update(i, { bundleName: v })} tooltip="Name of the custom asset bundle to load the prefab from." />
+              <TextField label="Prefab Name" value={obj.prefabName || ''} onChange={(v) => update(i, { prefabName: v })} tooltip="Name of the prefab inside the bundle to spawn." />
               <TransformField label="Position" value={obj.position} onChange={(v) => update(i, { position: v })} tooltip="World-space position of the object." />
               <TransformField label="Rotation" value={obj.rotation} onChange={(v) => update(i, { rotation: v })} tooltip="World-space rotation of the object." />
               <TransformField label="Scale" value={obj.scale} onChange={(v) => update(i, { scale: v })} tooltip="World-space scale of the object." />
               {obj.interactiveType === InteractiveObjectType.Door && (
-                <TextField
-                  label="Key Template"
-                  value={obj.keyId || ''}
-                  onChange={(v) => update(i, { keyId: v })}
-                  tooltip="ID of the key required to unlock this door."
-                />
+                <>
+                  <TextField
+                    label="Key Template"
+                    value={obj.keyId || ''}
+                    onChange={(v) => update(i, { keyId: v })}
+                    tooltip="ID of the key required to unlock this door."
+                  />
+                  <SelectField
+                    label="Initial Door State"
+                    value={obj.initialDoorState ?? 'Shut'}
+                    options={[
+                      { value: 'Shut', label: 'Shut' },
+                      { value: 'Open', label: 'Open' },
+                      { value: 'Locked', label: 'Locked' },
+                    ]}
+                    onChange={(v) => update(i, { initialDoorState: v })}
+                    tooltip="Initial state of the door when it spawns."
+                  />
+                  <Toggle
+                    label="Can Breach"
+                    checked={obj.canBreach ?? true}
+                    onChange={(v) => update(i, { canBreach: v })}
+                    tooltip="Whether this door can be breached with a shotgun."
+                  />
+                </>
               )}
               {obj.interactiveType === InteractiveObjectType.Container && (
                 <>
@@ -1481,11 +1582,11 @@ function InteractiveItemListEditor({
   onChange,
   tooltip,
 }: {
-  value: InteractiveObjectItem[]
-  onChange: (items: InteractiveObjectItem[]) => void
+  value: LootItem[]
+  onChange: (items: LootItem[]) => void
   tooltip?: string
 }) {
-  const update = (index: number, updates: Partial<InteractiveObjectItem>) => {
+  const update = (index: number, updates: Partial<LootItem>) => {
     onChange(replaceAt(value, index, { ...value[index], ...updates }))
   }
 
@@ -1531,7 +1632,7 @@ function InteractiveItemListEditor({
           </div>
         </div>
       ))}
-      <button onClick={() => onChange([...value, { ...defaultInteractiveObjectItem }])} className="btn-secondary text-sm flex items-center gap-1">
+      <button onClick={() => onChange([...value, { ...defaultLootItem() }])} className="btn-secondary text-sm flex items-center gap-1">
         <Plus size={14} /> Add Item
       </button>
     </div>

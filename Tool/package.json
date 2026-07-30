@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "extract-bundles": "node scripts/extractBundles.mjs",
-    "build": "npm run extract-bundles && tsc && vite build",
+    "fetch-item-db": "node scripts/fetchItemDb.js",
+    "build": "npm run extract-bundles && npm run fetch-item-db && tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

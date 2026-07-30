@@ -1,21 +1,25 @@
 export interface ItemInfo {
-  _id: string
-  _name: string
-  _parent: string
+  id: string
   name: string
-  shortName: string
+  shortName?: string
+  parentId: string | null
 }
 
 let cache: ItemInfo[] | null = null
+let cacheMap: Map<string, ItemInfo> | null = null
 let loadingPromise: Promise<ItemInfo[]> | null = null
 
 export async function loadItems(): Promise<ItemInfo[]> {
   if (cache) return cache
   if (loadingPromise) return loadingPromise
 
-  loadingPromise = fetchDatabase()
+  loadingPromise = fetchItemDb()
   try {
     cache = await loadingPromise
+    cacheMap = new Map()
+    for (const item of cache) {
+      cacheMap.set(item.id, item)
+    }
     return cache
   } catch (err) {
     loadingPromise = null
@@ -23,31 +27,21 @@ export async function loadItems(): Promise<ItemInfo[]> {
   }
 }
 
-async function fetchDatabase(): Promise<ItemInfo[]> {
-  const [itemsRes, localesRes] = await Promise.all([
-    fetch('https://db.sp-tarkov.com/api/cache/items'),
-    fetch('https://db.sp-tarkov.com/api/cache/locales'),
-  ])
-
-  if (!itemsRes.ok) throw new Error(`Items API failed: ${itemsRes.status}`)
-  if (!localesRes.ok) throw new Error(`Locales API failed: ${localesRes.status}`)
-
-  const items = (await itemsRes.json()) as Record<string, { _id: string; _name: string; _parent: string }>
-  const locales = (await localesRes.json()) as Record<string, Record<string, { Name: string; ShortName: string }>>
-
-  const locale = locales.en || locales['en'] || Object.values(locales)[0] || {}
-
-  return Object.values(items).map((item) => ({
-    _id: item._id,
-    _name: item._name,
-    _parent: item._parent,
-    name: locale[item._id]?.Name || item._name,
-    shortName: locale[item._id]?.ShortName || '',
-  }))
+async function fetchItemDb(): Promise<ItemInfo[]> {
+  const res = await fetch('/itemDb.json')
+  if (!res.ok) throw new Error(`Failed to load itemDb.json: ${res.status}`)
+  const data = await res.json() as ItemInfo[]
+  return data
 }
 
 export function findItemName(itemId: string, items: ItemInfo[] | null): string {
   if (!items) return ''
-  const item = items.find((i) => i._id === itemId)
+  if (cacheMap) {
+    const item = cacheMap.get(itemId)
+    return item ? item.name : ''
+  }
+  const item = items.find((i) => i.id === itemId)
   return item ? item.name : ''
 }
+
+

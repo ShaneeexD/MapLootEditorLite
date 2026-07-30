@@ -31,7 +31,11 @@ export function ItemSelector({
 
   useEffect(() => {
     const selectedName = findItemName(value, items)
-    if (selectedName) setQuery(selectedName)
+    if (selectedName) {
+      setQuery(selectedName)
+    } else if (value) {
+      setQuery(value)
+    }
   }, [items, value])
 
   useEffect(() => {
@@ -49,7 +53,7 @@ export function ItemSelector({
     const q = query.toLowerCase().trim()
     if (!q) return items.slice(0, 50)
     return items
-      .filter((i) => i.name.toLowerCase().includes(q) || i._id.toLowerCase().includes(q))
+      .filter((i) => i.name.toLowerCase().includes(q) || i.id.toLowerCase().includes(q))
       .slice(0, 50)
   }, [items, query])
 
@@ -78,20 +82,22 @@ export function ItemSelector({
       {open && (
         <div className="absolute z-10 mt-1 w-full max-h-60 overflow-y-auto bg-tarkov-surface border border-tarkov-border rounded shadow-lg">
           {filtered.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-tarkov-text-dim">No items found</div>
+            <div className="px-3 py-2 text-sm text-tarkov-text-dim">
+              No items found{value && !findItemName(value, items) ? ` (current ID: ${value})` : ''}
+            </div>
           ) : (
             filtered.map((item) => (
               <button
-                key={item._id}
+                key={item.id}
                 className="w-full text-left px-3 py-2 text-sm hover:bg-tarkov-border/50 text-tarkov-text"
                 onClick={() => {
-                  onChange(item._id)
+                  onChange(item.id)
                   setQuery(item.name)
                   setOpen(false)
                 }}
               >
                 <div className="truncate">{item.name}</div>
-                <div className="text-xs text-tarkov-text-dim font-mono truncate">{item._id}</div>
+                <div className="text-xs text-tarkov-text-dim font-mono truncate">{item.id}</div>
               </button>
             ))
           )}

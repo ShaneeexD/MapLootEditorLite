@@ -5,28 +5,40 @@
 }
 
 export interface LootItem {
+  id?: string
   template: string
   chance: number
   count?: number
+  slotId?: string
   rotation: TransformData
   randomRotation: boolean
   yOffset?: number
   questOnly?: boolean
   questCompleted?: boolean
   questId?: string
+  isDistribution?: boolean
+  minCount?: number
+  maxCount?: number
+  children?: LootItem[]
 }
 
 export function defaultLootItem(): LootItem {
   return {
+    id: '',
     template: '',
     chance: 100,
     count: 1,
+    slotId: '',
     rotation: defaultTransform(),
     randomRotation: true,
     yOffset: 0,
     questOnly: false,
     questCompleted: false,
     questId: '',
+    isDistribution: false,
+    minCount: 1,
+    maxCount: 1,
+    children: [],
   }
 }
 
@@ -83,6 +95,8 @@ export interface StaticObject {
   prefabPath: string
   sourceObjectName?: string
   sourceObjectPosition?: TransformData
+  bundleName?: string
+  prefabName?: string
   questOnly?: boolean
   questCompleted?: boolean
   questId?: string
@@ -101,15 +115,6 @@ export enum ContainerLootMode {
   Custom = 'Custom',
 }
 
-export interface InteractiveObjectItem {
-  template: string
-  chance: number
-  count?: number
-  questOnly?: boolean
-  questCompleted?: boolean
-  questId?: string
-}
-
 export interface InteractiveObject {
   id: string
   name: string
@@ -120,13 +125,17 @@ export interface InteractiveObject {
   interactiveType: InteractiveObjectType
   sourceObjectName?: string
   sourceObjectPosition?: TransformData
+  bundleName?: string
+  prefabName?: string
   keyId?: string
+  initialDoorState?: string
+  canBreach?: boolean
   containerId?: string
   containerTemplate?: string
   lootMode?: ContainerLootMode
   itemCountMin?: number
   itemCountMax?: number
-  items: InteractiveObjectItem[]
+  items: LootItem[]
   weaponTemplate?: string
   switchInitialState?: boolean
   linkedLightZoneNames?: string[]
@@ -422,6 +431,49 @@ export interface WTTStaticObject {
   questCompleted?: boolean
 }
 
+export interface RemovedObject {
+  id: string
+  name: string
+  path?: string
+  worldObjectId?: string
+  position: TransformData
+  rotation: TransformData
+  scale: TransformData
+  originalDoorState?: number
+}
+
+export interface OcclusionRepairVolume {
+  id: string
+  name: string
+  group?: string
+  position: TransformData
+  rotation: TransformData
+  scale: TransformData
+  shape: ZoneShape
+  disableCameraOcclusion?: boolean
+  manageRenderers?: boolean
+  rendererRadius?: number
+  maxVisibleDistance?: number
+  checkInterval?: number
+  raycastCull?: boolean
+  raycastMask?: string
+  disableCullingObjects?: boolean
+  cullingObjectRadius?: number
+}
+
+export interface CutVolume {
+  id: string
+  name: string
+  group?: string
+  position: TransformData
+  rotation: TransformData
+  scale: TransformData
+  shape: ZoneShape
+  sourceObjectName?: string
+  sourceObjectPosition?: TransformData
+  invert?: boolean
+}
+
 export interface MapData {
   map: string
   lootSpawns: LooseLootSpawn[]
@@ -436,6 +488,9 @@ export interface MapData {
   pmcSpawnZones: PmcSpawnZone[]
   lightZones: LightZone[]
   triggerZones: TriggerZone[]
+  removedObjects?: RemovedObject[]
+  occlusionRepairVolumes?: OcclusionRepairVolume[]
+  cutVolumes?: CutVolume[]
 }
 
 export interface PackData {
@@ -532,6 +587,9 @@ export function defaultMapData(mapId: string): MapData {
     pmcSpawnZones: [],
     lightZones: [],
     triggerZones: [],
+    removedObjects: [],
+    occlusionRepairVolumes: [],
+    cutVolumes: [],
   }
 }
 
@@ -545,13 +603,17 @@ export function defaultInteractiveObject(): InteractiveObject {
     interactiveType: InteractiveObjectType.Container,
     sourceObjectName: '',
     sourceObjectPosition: defaultTransform(),
+    bundleName: '',
+    prefabName: '',
     keyId: '',
+    initialDoorState: 'Shut',
+    canBreach: true,
     containerId: '',
     containerTemplate: '578f87a3245977356274f2cb',
     lootMode: ContainerLootMode.Default,
     itemCountMin: 0,
     itemCountMax: 0,
-    items: [{ template: '', chance: 100, count: 1, questOnly: false, questCompleted: false, questId: '' }],
+    items: [{ ...defaultLootItem() }],
     weaponTemplate: '5cdeb229d7f00c000e7ce174',
     switchInitialState: false,
     linkedLightZoneNames: [],
@@ -754,5 +816,52 @@ export function defaultTriggerZone(): TriggerZone {
     allowedSide: TriggerSide.Any,
     lightAction: TriggerLightAction.Toggle,
     lightZoneNames: [],
+  }
+}
+
+export function defaultRemovedObject(): RemovedObject {
+  return {
+    id: generateId(),
+    name: 'removed_object',
+    path: '',
+    worldObjectId: '',
+    position: defaultTransform(),
+    rotation: defaultTransform(),
+    scale: { x: 1, y: 1, z: 1 },
+    originalDoorState: -1,
+  }
+}
+
+export function defaultOcclusionRepairVolume(): OcclusionRepairVolume {
+  return {
+    id: generateId(),
+    name: 'occlusion_repair',
+    position: defaultTransform(),
+    rotation: defaultTransform(),
+    scale: { x: 10, y: 10, z: 10 },
+    shape: ZoneShape.Box,
+    disableCameraOcclusion: true,
+    manageRenderers: true,
+    rendererRadius: 60,
+    maxVisibleDistance: 80,
+    checkInterval: 0.25,
+    raycastCull: false,
+    raycastMask: 'Default',
+    disableCullingObjects: true,
+    cullingObjectRadius: 60,
+  }
+}
+
+export function defaultCutVolume(): CutVolume {
+  return {
+    id: generateId(),
+    name: 'cut_volume',
+    position: defaultTransform(),
+    rotation: defaultTransform(),
+    scale: { x: 1, y: 1, z: 1 },
+    shape: ZoneShape.Box,
+    sourceObjectName: '',
+    sourceObjectPosition: defaultTransform(),
+    invert: false,
   }
 }
