@@ -38,6 +38,7 @@ namespace MapLootEditorLite.Client
             public int minCount = 1;
             public int maxCount = 1;
             public List<LootItem> items = new List<LootItem>();
+            public List<BundledCountEntry> countDistribution = new List<BundledCountEntry>();
         }
 
         private class BundledStaticLootEntry
@@ -830,6 +831,8 @@ namespace MapLootEditorLite.Client
             if (count > 1)
                 SetItemStackCount(item, count);
 
+            SetSpawnedInSession(item);
+
             if (item is CompoundItem compound && loot.children != null && loot.children.Count > 0)
                 InstallChildren(compound, loot.children, itemFactory);
 
@@ -1029,6 +1032,7 @@ namespace MapLootEditorLite.Client
             }
 
             int addedItems;
+            var rng = new System.Random(Environment.TickCount ^ (cid?.GetHashCode() ?? 0) ^ (int)(DateTime.UtcNow.Ticks & int.MaxValue));
             if (obj.lootMode == ContainerLootMode.Custom)
             {
                 addedItems = InjectMarkerItems(obj, item as CompoundItem);
@@ -1065,11 +1069,48 @@ namespace MapLootEditorLite.Client
                     }
                     else
                     {
+                        int cntMin, cntMax;
+                        if (obj.itemCountMin > 0 || obj.itemCountMax > 0)
+                        {
+                            cntMin = Math.Max(obj.itemCountMin, 1);
+                            cntMax = Math.Max(obj.itemCountMax, cntMin);
+                        }
+                        else if (dist.countDistribution.Count > 0)
+                        {
+                            var totalWeight = dist.countDistribution.Sum(d => d.relativeProbability);
+                            if (totalWeight > 0)
+                            {
+                                var roll = (float)(rng.NextDouble() * totalWeight);
+                                var running = 0f;
+                                var pickedCount = dist.countDistribution[0].count;
+                                foreach (var cd in dist.countDistribution)
+                                {
+                                    running += cd.relativeProbability;
+                                    if (roll < running)
+                                    {
+                                        pickedCount = cd.count;
+                                        break;
+                                    }
+                                }
+                                cntMin = cntMax = Math.Max(pickedCount, 1);
+                            }
+                            else
+                            {
+                                cntMin = dist.minCount;
+                                cntMax = dist.maxCount;
+                            }
+                        }
+                        else
+                        {
+                            cntMin = dist.minCount;
+                            cntMax = dist.maxCount;
+                        }
+
                         var marker = new InteractiveObject
                         {
                             name = obj.name,
-                            itemCountMin = dist.minCount,
-                            itemCountMax = dist.maxCount,
+                            itemCountMin = cntMin,
+                            itemCountMax = cntMax,
                             items = new List<LootItem>(dist.items)
                         };
                         if (obj.lootMode == ContainerLootMode.Hybrid)
@@ -1189,9 +1230,13 @@ namespace MapLootEditorLite.Client
                     int minCount = 1, maxCount = 1;
                     if (entry.itemcountDistribution != null && entry.itemcountDistribution.Count > 0)
                     {
-                        var counts = entry.itemcountDistribution.Select(d => d.count).ToList();
-                        minCount = Math.Max(counts.Min(), 1);
-                        maxCount = Math.Max(counts.Max(), minCount);
+                        var valid = entry.itemcountDistribution.Where(d => d.count >= 1).ToList();
+                        if (valid.Count > 0)
+                        {
+                            dist.countDistribution = valid;
+                            minCount = valid.Min(d => d.count);
+                            maxCount = valid.Max(d => d.count);
+                        }
                     }
                     dist.minCount = minCount;
                     dist.maxCount = maxCount;
@@ -1505,6 +1550,23 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        private static void SetSpawnedInSession(Item item)
+        {
+            if (item == null)
+                return;
+            try
+            {
+                if (TrySetBoolValue(item, "Upd", "SpawnedInSession", true, out _))
+                    return;
+                if (TrySetBoolValue(item, null, "SpawnedInSession", true, out _))
+                    return;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"Failed to set SpawnedInSession: {ex.Message}");
+            }
+        }
+
         private static bool TrySetStackValue(object target, string parentName, string memberName, int count, out string reason)
         {
             reason = null;
@@ -1556,6 +1618,66 @@ namespace MapLootEditorLite.Client
                 if (field != null)
                 {
                     var value = Convert.ChangeType(count, field.FieldType);
+                    field.SetValue(current, value);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                reason = ex.Message;
+            }
+            return false;
+        }
+
+        private static bool TrySetBoolValue(object target, string parentName, string memberName, bool value, out string reason)
+        {
+            reason = null;
+            if (target == null)
+            {
+                reason = "target is null";
+                return false;
+            }
+
+            try
+            {
+                object current = target;
+                if (!string.IsNullOrEmpty(parentName))
+                {
+                    var parentProp = target.GetType().GetProperty(parentName, BindingFlags.Public | BindingFlags.Instance);
+                    if (parentProp == null)
+                    {
+                        reason = $"no property {parentName}";
+                        return false;
+                    }
+                    current = parentProp.GetValue(target);
+                    if (current == null)
+                    {
+                        var parentType = parentProp.PropertyType;
+                        current = Activator.CreateInstance(parentType);
+                        var setMethod = parentProp.GetSetMethod(true);
+                        if (setMethod == null)
+                        {
+                            reason = $"{parentName} has no setter";
+                            return false;
+                        }
+                        setMethod.Invoke(target, new[] { current });
+                    }
+                }
+
+                var prop = current.GetType().GetProperty(memberName, BindingFlags.Public | BindingFlags.Instance);
+                if (prop != null)
+                {
+                    var setMethod = prop.GetSetMethod(true);
+                    if (setMethod != null)
+                    {
+                        setMethod.Invoke(current, new object[] { value });
+                        return true;
+                    }
+                }
+
+                var field = current.GetType().GetField(memberName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (field != null)
+                {
                     field.SetValue(current, value);
                     return true;
                 }
