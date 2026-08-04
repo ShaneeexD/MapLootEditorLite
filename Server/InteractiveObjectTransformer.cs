@@ -8,7 +8,7 @@ using System.Text.Json;
 using SPTarkov.Server.Core.Models.Common;
 using SPTarkov.Server.Core.Models.Eft.Common;
 using SPTarkov.Server.Core.Models.Eft.Common.Tables;
-using SPTarkov.Server.Core.Services;
+using SPTarkov.Server.Core.Models.Spt.Tables;
 
 namespace MapLootEditorLite.Server;
 
@@ -18,11 +18,11 @@ public static class InteractiveObjectTransformer
     private static readonly ConditionalWeakTable<object, object> RegisteredStaticLoot = new ConditionalWeakTable<object, object>();
     private static readonly ConditionalWeakTable<object, object> RegisteredStaticContainers = new ConditionalWeakTable<object, object>();
     private static readonly Dictionary<string, SpawnpointTemplate> _weaponDonors = new(StringComparer.OrdinalIgnoreCase);
-    private static DatabaseService? _databaseService;
+    private static LocationTable? _locationTable;
 
-    public static void Register(DatabaseService databaseService)
+    public static void Register(LocationTable locationTable)
     {
-        _databaseService = databaseService;
+        _locationTable = locationTable;
         RegisterInternal();
     }
 
@@ -33,14 +33,13 @@ public static class InteractiveObjectTransformer
 
     private static void RegisterInternal()
     {
-        if (_databaseService is null)
+        if (_locationTable is null)
         {
-            ServerPlugin.Logger?.Warning("[MEL] InteractiveObjectTransformer.Register() called before DatabaseService was set; skipping.");
+            ServerPlugin.Logger?.Warning("[MEL] InteractiveObjectTransformer.Register() called before LocationTable was set; skipping.");
             return;
         }
 
-        var databaseService = _databaseService;
-        var locations = databaseService!.GetLocations().GetDictionary();
+        var locations = _locationTable.GetDictionary();
 
         PreloadWeaponDonors(locations.Select(x => new KeyValuePair<string, object>(x.Key, x.Value)));
 
@@ -467,8 +466,8 @@ public static class InteractiveObjectTransformer
         templateType.GetProperty("IsContainer", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, true);
         templateType.GetProperty("UseGravity", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, false);
         templateType.GetProperty("RandomRotation", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, false);
-        templateType.GetProperty("Position", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, new XYZ { X = container.Position.X, Y = container.Position.Y, Z = container.Position.Z });
-        templateType.GetProperty("Rotation", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, new XYZ { X = container.Rotation.X, Y = container.Rotation.Y, Z = container.Rotation.Z });
+        templateType.GetProperty("Position", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, new Vector3 { X = (float)container.Position.X, Y = (float)container.Position.Y, Z = (float)container.Position.Z });
+        templateType.GetProperty("Rotation", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, new Vector3 { X = (float)container.Rotation.X, Y = (float)container.Rotation.Y, Z = (float)container.Rotation.Z });
         templateType.GetProperty("IsAlwaysSpawn", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, true);
         templateType.GetProperty("IsGroupPosition", BindingFlags.Public | BindingFlags.Instance)?.SetValue(template, false);
         var groupPositionType = AppDomain.CurrentDomain.GetAssemblies()
@@ -599,11 +598,10 @@ public static class InteractiveObjectTransformer
             return donor;
         }
 
-        if (_databaseService is not null)
+        if (_locationTable is not null)
         {
-            var databaseService = _databaseService;
             ServerPlugin.Logger?.Info($"[MEL] Donor not cached for {weaponTemplate}; reloading weapon donors from database.");
-            PreloadWeaponDonors(databaseService.GetLocations().GetDictionary().Select(x => new KeyValuePair<string, object>(x.Key, x.Value)));
+            PreloadWeaponDonors(_locationTable.GetDictionary().Select(x => new KeyValuePair<string, object>(x.Key, x.Value)));
             if (_weaponDonors.TryGetValue(weaponTemplate, out var reloaded))
             {
                 ServerPlugin.Logger?.Info($"[MEL] Found donor stationary weapon for template {weaponTemplate} after reload.");
@@ -666,8 +664,8 @@ public static class InteractiveObjectTransformer
 
         spawnpoint.Id = sceneId;
         spawnpoint.Root = rootId;
-        spawnpoint.Position = new XYZ { X = position.X, Y = position.Y, Z = position.Z };
-        spawnpoint.Rotation = new XYZ { X = rotation.X, Y = rotation.Y, Z = rotation.Z };
+        spawnpoint.Position = new Vector3 { X = (float)position.X, Y = (float)position.Y, Z = (float)position.Z };
+        spawnpoint.Rotation = new Vector3 { X = (float)rotation.X, Y = (float)rotation.Y, Z = (float)rotation.Z };
         spawnpoint.IsAlwaysSpawn = true;
 
         return spawnpoint;

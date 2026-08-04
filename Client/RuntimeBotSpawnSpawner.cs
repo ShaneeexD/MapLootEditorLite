@@ -643,7 +643,7 @@ namespace MapLootEditorLite.Client
                 var spawnParams = new BotSpawnParams();
                 spawnParams.ShallBeGroup = new ShallBeGroupParams(true, true, count);
 
-                var data = await BotCreationDataClass.Create(new BotProfileDataClass(side, wildSpawnType.Value, difficulty, 0f, spawnParams, false), controller.BotSpawner.BotCreator, count, controller.BotSpawner);
+                var data = await BotCreationData.Create(new GetProfileDataParams(side, wildSpawnType.Value, difficulty, 0f, spawnParams, false), controller.BotSpawner._botCreator, count, controller.BotSpawner);
                 var points = requests.Select(r => r.Marker.SpawnPoint).ToList();
                 controller.BotSpawner.TryToSpawnInZoneAndDelay(request.Zone, data, true, true, points, true);
                 Plugin.Log.LogInfo($"Submitted group spawn of {count} {wildSpawnType.Value} in zone {request.Zone.name} (corePoint={points[0].CorePointId}).");
@@ -668,7 +668,7 @@ namespace MapLootEditorLite.Client
                 var side = ResolveSide(request);
                 var difficulty = BotDifficulty.normal;
                 var point = request.Marker.SpawnPoint;
-                var data = await BotCreationDataClass.Create(new BotProfileDataClass(side, wildSpawnType.Value, difficulty, 0f, new BotSpawnParams(), false), controller.BotSpawner.BotCreator, 1, controller.BotSpawner);
+                var data = await BotCreationData.Create(new GetProfileDataParams(side, wildSpawnType.Value, difficulty, 0f, new BotSpawnParams(), false), controller.BotSpawner._botCreator, 1, controller.BotSpawner);
                 controller.BotSpawner.TryToSpawnInZoneAndDelay(request.Zone, data, true, true, new List<ISpawnPoint> { point }, true);
                 Plugin.Log.LogInfo($"Submitted forced spawn at {point.Position} ({wildSpawnType.Value}, {side}, zone={request.Zone.name}, corePoint={point.CorePointId}).");
             }

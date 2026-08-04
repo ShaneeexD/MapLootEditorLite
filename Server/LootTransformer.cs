@@ -5,7 +5,7 @@ using System.Runtime.CompilerServices;
 using SPTarkov.Server.Core.Models.Common;
 using SPTarkov.Server.Core.Models.Eft.Common;
 using SPTarkov.Server.Core.Models.Eft.Common.Tables;
-using SPTarkov.Server.Core.Services;
+using SPTarkov.Server.Core.Models.Spt.Tables;
 
 namespace MapLootEditorLite.Server;
 
@@ -13,11 +13,11 @@ public static class LootTransformer
 {
     // Tracks which LooseLoot instances have already had a transformer attached, so Register() can be safely called again when locations are regenerated.
     private static readonly ConditionalWeakTable<object, object> RegisteredLooseLoot = new ConditionalWeakTable<object, object>();
-    private static DatabaseService? _databaseService;
+    private static LocationTable? _locationTable;
 
-    public static void Register(DatabaseService databaseService)
+    public static void Register(LocationTable locationTable)
     {
-        _databaseService = databaseService;
+        _locationTable = locationTable;
         RegisterInternal();
     }
 
@@ -28,14 +28,13 @@ public static class LootTransformer
 
     private static void RegisterInternal()
     {
-        if (_databaseService is null)
+        if (_locationTable is null)
         {
-            ServerPlugin.Logger?.Warning("[MEL] LootTransformer.Register() called before DatabaseService was set; skipping.");
+            ServerPlugin.Logger?.Warning("[MEL] LootTransformer.Register() called before LocationTable was set; skipping.");
             return;
         }
 
-        var databaseService = _databaseService;
-        var locations = databaseService!.GetLocations().GetDictionary();
+        var locations = _locationTable.GetDictionary();
         var registered = 0;
         var skipped = 0;
 
@@ -203,8 +202,8 @@ public static class LootTransformer
                 IsContainer = false,
                 UseGravity = spawn.UseGravity,
                 RandomRotation = false,
-                Position = new XYZ { X = spawn.Position.X, Y = spawn.Position.Y, Z = spawn.Position.Z },
-                Rotation = new XYZ { X = spawn.Rotation.X, Y = spawn.Rotation.Y, Z = spawn.Rotation.Z },
+                Position = new Vector3 { X = (float)spawn.Position.X, Y = (float)spawn.Position.Y, Z = (float)spawn.Position.Z },
+                Rotation = new Vector3 { X = (float)spawn.Rotation.X, Y = (float)spawn.Rotation.Y, Z = (float)spawn.Rotation.Z },
                 IsAlwaysSpawn = false,
                 IsGroupPosition = false,
                 GroupPositions = [],
@@ -234,8 +233,8 @@ public static class LootTransformer
                 IsContainer = false,
                 UseGravity = zone.UseGravity,
                 RandomRotation = false,
-                Position = new XYZ { X = position.X, Y = position.Y, Z = position.Z },
-                Rotation = new XYZ { X = rotation.X, Y = rotation.Y, Z = rotation.Z },
+                Position = new Vector3 { X = (float)position.X, Y = (float)position.Y, Z = (float)position.Z },
+                Rotation = new Vector3 { X = (float)rotation.X, Y = (float)rotation.Y, Z = (float)rotation.Z },
                 IsAlwaysSpawn = false,
                 IsGroupPosition = false,
                 GroupPositions = [],

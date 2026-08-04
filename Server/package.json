@@ -4,5 +4,5 @@
   "version": "2.0.2",
   "license": "MIT",
   "main": "MapEditorLite.Server.dll",
-  "sptVersion": "~4.0.13"
+  "sptVersion": "~4.1.0"
 }

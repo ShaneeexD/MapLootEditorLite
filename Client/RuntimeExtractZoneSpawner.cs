@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Comfort.Common;
+using CommonAssets.Scripts.Game;
 using EFT;
 using EFT.Interactive;
 using EFT.InventoryLogic;
 using EFT.Quests;
 using HarmonyLib;
+using JsonType;
 using Newtonsoft.Json;
 using UnityEngine;
 
@@ -75,7 +77,7 @@ namespace MapLootEditorLite.Client
                 _hasSpawnedForCurrentMap = false;
                 Plugin.Log.LogInfo($"Map detected: {mapId}. Waiting for exfiltration controller initialization.");
 
-                var controller = ExfiltrationControllerClass.Instance;
+                var controller = ExfiltrationController.Instance;
                 if (controller != null && controller.ExfiltrationPoints != null && controller.ExfiltrationPoints.Length > 0)
                 {
                     Plugin.Log.LogInfo($"Exfiltration controller already initialized for {mapId}, spawning custom zones immediately.");
@@ -88,7 +90,7 @@ namespace MapLootEditorLite.Client
                 var entryPoint = player?.Profile?.Info?.EntryPoint?.ToLowerInvariant() ?? "";
                 if (!string.IsNullOrEmpty(entryPoint))
                 {
-                    var controller = ExfiltrationControllerClass.Instance;
+                    var controller = ExfiltrationController.Instance;
                     if (controller != null && controller.ExfiltrationPoints != null && controller.ExfiltrationPoints.Length > 0)
                     {
                         Plugin.Log.LogInfo($"Player entry point now available ({entryPoint}) for map {_currentMapId}, spawning custom zones.");
@@ -144,10 +146,10 @@ namespace MapLootEditorLite.Client
             try
             {
                 var harmony = new Harmony("com.shane.mapeditorlite.extractzones");
-                var method = AccessTools.Method(typeof(ExfiltrationControllerClass), nameof(ExfiltrationControllerClass.InitAllExfiltrationPoints));
+                var method = AccessTools.Method(typeof(ExfiltrationController), nameof(ExfiltrationController.InitAllExfiltrationPoints));
                 var postfix = AccessTools.Method(typeof(RuntimeExtractZoneSpawner), nameof(InitAllExfiltrationPointsPostfix));
                 harmony.Patch(method, postfix: new HarmonyMethod(postfix));
-                Plugin.Log.LogInfo("Patched ExfiltrationControllerClass.InitAllExfiltrationPoints.");
+                Plugin.Log.LogInfo("Patched ExfiltrationController.InitAllExfiltrationPoints.");
             }
             catch (Exception ex)
             {
@@ -155,7 +157,7 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        public static void InitAllExfiltrationPointsPostfix(MongoID locationId, LocationExitClass[] settings, GClass1432[] secretExitsSettings, bool justLoadSettings = false, string disabledScavExits = "", bool giveAuthority = true)
+        public static void InitAllExfiltrationPointsPostfix(MongoID locationId, BackendExitTriggerSettings[] settings, BackendSecretExitTriggerSettings[] secretExitsSettings, bool justLoadSettings = false, string disabledScavExits = "", bool giveAuthority = true)
         {
             if (Instance == null)
             {
@@ -237,9 +239,9 @@ namespace MapLootEditorLite.Client
                     var point = CreateExfiltrationPoint(zone, entryPoint);
                     if (point != null)
                     {
-                        var list = ExfiltrationControllerClass.Instance.ExfiltrationPoints?.ToList() ?? new List<ExfiltrationPoint>();
+                        var list = ExfiltrationController.Instance.ExfiltrationPoints?.ToList() ?? new List<ExfiltrationPoint>();
                         list.Add(point);
-                        ExfiltrationControllerClass.Instance.ExfiltrationPoints = list.ToArray();
+                        ExfiltrationController.Instance.ExfiltrationPoints = list.ToArray();
                         _spawned.Add(point);
                         ApplyLinkedLightActions(zone);
                         Plugin.Log.LogInfo($"Registered custom extract zone '{zone.name}' ({zone.exitName}) at {zone.position.x:F2}, {zone.position.y:F2}, {zone.position.z:F2}.");
@@ -395,7 +397,7 @@ namespace MapLootEditorLite.Client
                     transfer.RequirementTip = string.IsNullOrWhiteSpace(req.requirementTip) ? "Exfiltration/TransferItem" : req.requirementTip;
                     return transfer;
                 case "HasItem":
-                    var hasItem = new GClass3706();
+                    var hasItem = new HasItemRequirement();
                     hasItem.Requirement = ERequirementState.HasItem;
                     hasItem.Id = req.templateId ?? "";
                     hasItem.Count = req.count;
@@ -443,7 +445,7 @@ namespace MapLootEditorLite.Client
         {
             try
             {
-                var controller = ExfiltrationControllerClass.Instance;
+                var controller = ExfiltrationController.Instance;
                 if (controller == null)
                     return;
 
@@ -481,7 +483,7 @@ namespace MapLootEditorLite.Client
             {
                 try
                 {
-                    var controller = ExfiltrationControllerClass.Instance;
+                    var controller = ExfiltrationController.Instance;
                     if (controller != null && controller.ExfiltrationPoints != null)
                     {
                         var spawnedSet = new HashSet<ExfiltrationPoint>(_spawned);

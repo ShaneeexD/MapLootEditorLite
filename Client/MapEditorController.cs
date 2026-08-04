@@ -6,6 +6,7 @@ using System.Linq;
 using Comfort.Common;
 using EFT;
 using EFT.Ballistics;
+using EFT.CameraControl;
 using EFT.Interactive;
 using EFT.InventoryLogic;
 using EFT.HealthSystem;
@@ -123,7 +124,7 @@ namespace MapLootEditorLite.Client
             PatchMethod(typeof(ActiveHealthController), "ApplyDamage", nameof(ApplyDamagePrefix));
             PatchMethod(typeof(ActiveHealthController), "ChangeHealth", nameof(ChangeHealthPrefix));
             PatchMethod(typeof(Player), "ReceiveDamage", nameof(ReceiveDamagePrefix));
-            PatchMethod(typeof(CameraClass), nameof(CameraClass.ForceSetPosition), nameof(ForceSetCameraPositionPrefix));
+            PatchMethod(typeof(CameraManager), nameof(CameraManager.ForceSetPosition), nameof(ForceSetCameraPositionPrefix));
         }
 
         private void TryApplyInputPatches()
@@ -272,7 +273,7 @@ namespace MapLootEditorLite.Client
             return false;
         }
 
-        public static bool ChangeHealthPrefix(EBodyPart bodyPart, ActiveHealthController __instance, ref float value, DamageInfoStruct damageInfo)
+        public static bool ChangeHealthPrefix(EBodyPart bodyPart, ActiveHealthController __instance, ref float value, DamageInfo damageInfo)
         {
             if (!FreeCamInvulnerable || __instance == null)
                 return true;
@@ -1093,7 +1094,7 @@ namespace MapLootEditorLite.Client
                 Plugin.Log.LogWarning("No raid game timer found.");
                 return;
             }
-            if (gameTimer.Status != GameTimerClass.EGameTimerStatus.Started)
+            if (gameTimer.Status != GameTimer.EGameTimerStatus.Started)
             {
                 Plugin.Log.LogWarning($"Raid timer is not started (status: {gameTimer.Status}).");
                 return;

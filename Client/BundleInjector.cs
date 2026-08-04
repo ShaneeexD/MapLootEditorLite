@@ -7,6 +7,8 @@ using System.Reflection;
 using System.Runtime.Serialization;
 using BepInEx.Logging;
 using Comfort.Common;
+using Diz.DependencyManager;
+using Diz.Resources;
 using EFT;
 using HarmonyLib;
 using UnityEngine;
@@ -97,7 +99,7 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        internal static void InjectSingle(DependencyGraphClass<IEasyBundle> system, string key)
+        internal static void InjectSingle(DependencyGraph<IEasyBundle> system, string key)
         {
             if (system == null)
                 return;
@@ -251,13 +253,13 @@ namespace MapLootEditorLite.Client
             _log?.LogInfo($"Discovered {_bundlePaths.Count} bundle(s) in packs.");
         }
 
-        private static DependencyGraphClass<IEasyBundle> GetSystem(IEasyAssets easyAssets)
+        private static DependencyGraph<IEasyBundle> GetSystem(IEasyAssets easyAssets)
         {
             var prop = easyAssets.GetType().GetProperty("System", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            return prop?.GetValue(easyAssets) as DependencyGraphClass<IEasyBundle>;
+            return prop?.GetValue(easyAssets) as DependencyGraph<IEasyBundle>;
         }
 
-        private static object GetNodes(DependencyGraphClass<IEasyBundle> system)
+        private static object GetNodes(DependencyGraph<IEasyBundle> system)
         {
             var prop = system.GetType().GetProperty("Nodes", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             if (prop != null) return prop.GetValue(system);
@@ -265,7 +267,7 @@ namespace MapLootEditorLite.Client
             return field?.GetValue(system);
         }
 
-        private static bool IsInjected(DependencyGraphClass<IEasyBundle> system, string key)
+        private static bool IsInjected(DependencyGraph<IEasyBundle> system, string key)
         {
             var nodes = GetNodes(system);
             if (nodes == null) return false;
@@ -273,12 +275,12 @@ namespace MapLootEditorLite.Client
             return (bool)(containsKey?.Invoke(nodes, new object[] { key }) ?? false);
         }
 
-        private static void InjectIntoSystem(DependencyGraphClass<IEasyBundle> system, string assetPath, UnityEngine.Object[] allAssets, AssetBundle bundle)
+        private static void InjectIntoSystem(DependencyGraph<IEasyBundle> system, string assetPath, UnityEngine.Object[] allAssets, AssetBundle bundle)
         {
             var nodes = GetNodes(system);
             if (nodes == null)
             {
-                _log?.LogError("Could not access DependencyGraphClass.Nodes");
+                _log?.LogError("Could not access DependencyGraph.Nodes");
                 return;
             }
 
@@ -371,10 +373,10 @@ namespace MapLootEditorLite.Client
             return p?.GetValue(obj);
         }
 
-        [HarmonyPatch(typeof(DependencyGraphClass<IEasyBundle>), "GetNode")]
+        [HarmonyPatch(typeof(DependencyGraph<IEasyBundle>), "GetNode")]
         private static class GetNodePatch
         {
-            static void Prefix(DependencyGraphClass<IEasyBundle> __instance, string key)
+            static void Prefix(DependencyGraph<IEasyBundle> __instance, string key)
             {
                 try
                 {

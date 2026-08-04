@@ -37,9 +37,13 @@ namespace MapLootEditorLite.Client
             Log.LogInfo("Map Editor Lite client plugin loaded");
 
             GameRoot = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(base.Config.ConfigFilePath)));
-            var serverRoot = Path.Combine(GameRoot, "SPT");
+            var serverRoot = Path.Combine(GameRoot, "SPT_Runtime");
             if (!Directory.Exists(Path.Combine(serverRoot, "user")))
-                serverRoot = GameRoot;
+            {
+                serverRoot = Path.Combine(GameRoot, "SPT");
+                if (!Directory.Exists(Path.Combine(serverRoot, "user")))
+                    serverRoot = GameRoot;
+            }
             ServerModDirectory = Path.Combine(serverRoot, "user", "mods", "MapEditorLite");
             ModDataDirectory = ServerModDirectory;
             ServerModPacksDirectory = Path.Combine(ServerModDirectory, "packs");

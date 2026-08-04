@@ -783,7 +783,7 @@ namespace MapLootEditorLite.Client
 
         private void RegisterWorldInteractiveObjectWhenReady(WorldInteractiveObject wio, string name, GameWorld world)
         {
-            if (world != null && world.World_0 != null)
+            if (world != null && world.World != null)
             {
                 world.RegisterWorldInteractionObject(wio);
                 Plugin.Log.LogInfo($"Registered interactive object '{name}' (id={wio.Id}) with world.");
@@ -800,7 +800,7 @@ namespace MapLootEditorLite.Client
             var elapsed = 0f;
             while (elapsed < timeout)
             {
-                if (world != null && world.World_0 != null)
+                if (world != null && world.World != null)
                 {
                     world.RegisterWorldInteractionObject(wio);
                     Plugin.Log.LogInfo($"Registered interactive object '{name}' (id={wio.Id}) with world.");
@@ -817,7 +817,7 @@ namespace MapLootEditorLite.Client
             return Guid.NewGuid().ToString("N").Substring(0, 24);
         }
 
-        public static Item BuildItem(LootItem loot, ItemFactoryClass itemFactory, int stackCount = -1)
+        public static Item BuildItem(LootItem loot, ItemFactory itemFactory, int stackCount = -1)
         {
             if (string.IsNullOrWhiteSpace(loot?.template))
                 return null;
@@ -836,7 +836,7 @@ namespace MapLootEditorLite.Client
             return item;
         }
 
-        private static void InstallChildren(CompoundItem parent, List<LootItem> children, ItemFactoryClass itemFactory)
+        private static void InstallChildren(CompoundItem parent, List<LootItem> children, ItemFactory itemFactory)
         {
             if (parent == null || children == null || children.Count == 0)
                 return;
@@ -890,28 +890,28 @@ namespace MapLootEditorLite.Client
             var timeout = 30f;
             var elapsed = 0f;
 
-            // Wait for ItemFactoryClass to be available so we can create the weapon item
+            // Wait for ItemFactory to be available so we can create the weapon item
             while (elapsed < timeout)
             {
-                if (Singleton<ItemFactoryClass>.Instantiated)
+                if (Singleton<ItemFactory>.Instantiated)
                     break;
                 yield return new WaitForSecondsRealtime(0.5f);
                 elapsed += 0.5f;
             }
 
-            if (!Singleton<ItemFactoryClass>.Instantiated)
+            if (!Singleton<ItemFactory>.Instantiated)
             {
-                Plugin.Log.LogWarning($"ItemFactoryClass not available for stationary weapon '{obj.name}' after {timeout}s; cannot initialize.");
+                Plugin.Log.LogWarning($"ItemFactory not available for stationary weapon '{obj.name}' after {timeout}s; cannot initialize.");
                 yield break;
             }
 
             try
             {
                 var weaponTemplate = string.IsNullOrWhiteSpace(obj.weaponTemplate) ? "5cdeb229d7f00c000e7ce174" : obj.weaponTemplate;
-                var item = Singleton<ItemFactoryClass>.Instance.CreateItem(obj.id, weaponTemplate, null);
+                var item = Singleton<ItemFactory>.Instance.CreateItem(obj.id, weaponTemplate, null);
                 if (item == null)
                 {
-                    Plugin.Log.LogWarning($"ItemFactoryClass returned null for stationary weapon '{obj.name}' template {weaponTemplate}.");
+                    Plugin.Log.LogWarning($"ItemFactory returned null for stationary weapon '{obj.name}' template {weaponTemplate}.");
                     yield break;
                 }
 
@@ -930,7 +930,7 @@ namespace MapLootEditorLite.Client
                     if (!string.IsNullOrWhiteSpace(magTemplate?.ToString()))
                     {
                         var magId = MongoID.Generate(false).ToString();
-                        var magazineItem = Singleton<ItemFactoryClass>.Instance.CreateItem(magId, magTemplate.ToString(), null);
+                        var magazineItem = Singleton<ItemFactory>.Instance.CreateItem(magId, magTemplate.ToString(), null);
                         if (magazineItem != null)
                         {
                             magSlot.ChangeContainedItemDirectly(magazineItem);
@@ -947,7 +947,7 @@ namespace MapLootEditorLite.Client
                     }
                 }
 
-                stationaryWeapon.Init(new TraderControllerClass(item, item.Id, item.ShortName, true, EOwnerType.Profile));
+                stationaryWeapon.Init(new ItemController(item, item.Id, item.ShortName, true, EOwnerType.Profile));
                 gameWorld.RegisterLoot<StationaryWeapon>(stationaryWeapon);
                 Plugin.Log.LogInfo($"Initialized stationary weapon '{obj.name}' id={obj.id} with item {item.TemplateId}.");
             }
@@ -1014,10 +1014,10 @@ namespace MapLootEditorLite.Client
         private IEnumerator InitializeContainerLootCoroutine(InteractiveObject obj, LootableContainer lootable, string containerId = null, GameWorld world = null)
         {
             var cid = containerId ?? obj.containerId;
-            var itemFactory = Singleton<ItemFactoryClass>.Instance;
+            var itemFactory = Singleton<ItemFactory>.Instance;
             if (itemFactory == null)
             {
-                Plugin.Log.LogWarning($"ItemFactoryClass not available for container '{obj.name}'.");
+                Plugin.Log.LogWarning($"ItemFactory not available for container '{obj.name}'.");
                 yield break;
             }
 
@@ -1085,7 +1085,7 @@ namespace MapLootEditorLite.Client
                 Plugin.Log.LogInfo($"Set container '{obj.name}' key to {obj.keyId}");
             }
 
-            var controller = new TraderControllerClass(item, item.Id, item.ShortName, true, EOwnerType.Profile);
+            var controller = new ItemController(item, item.Id, item.ShortName, true, EOwnerType.Profile);
             lootable.Init(controller);
             var finalGameWorld = Singleton<GameWorld>.Instance;
             if (finalGameWorld != null)
@@ -1357,7 +1357,7 @@ namespace MapLootEditorLite.Client
             if (compoundItem == null || obj.items == null)
                 return 0;
 
-            var itemFactory = Singleton<ItemFactoryClass>.Instance;
+            var itemFactory = Singleton<ItemFactory>.Instance;
             if (itemFactory == null)
                 return 0;
 
@@ -1405,7 +1405,7 @@ namespace MapLootEditorLite.Client
             return added;
         }
 
-        private bool TryAddItemToContainer(LootItem loot, CompoundItem compoundItem, ItemFactoryClass itemFactory, InteractiveObject obj, System.Random rng)
+        private bool TryAddItemToContainer(LootItem loot, CompoundItem compoundItem, ItemFactory itemFactory, InteractiveObject obj, System.Random rng)
         {
             if (string.IsNullOrWhiteSpace(loot.template))
                 return false;

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using Comfort.Common;
+using EFT;
 using EFT.Interactive;
 using EFT.InventoryLogic;
 using Koenigz.PerfectCulling.EFT;
@@ -3923,7 +3924,7 @@ namespace MapLootEditorLite.Client
             if (_itemNameCache.TryGetValue(template, out var cached))
                 return cached;
 
-            var factory = Singleton<ItemFactoryClass>.Instance;
+            var factory = Singleton<ItemFactory>.Instance;
             if (factory == null || !factory.ItemTemplates.TryGetValue(template, out var itemTemplate))
             {
                 _itemNameCache[template] = null;
@@ -3957,7 +3958,7 @@ namespace MapLootEditorLite.Client
             if (string.IsNullOrEmpty(template))
                 return null;
 
-            var factory = Singleton<ItemFactoryClass>.Instance;
+            var factory = Singleton<ItemFactory>.Instance;
             if (factory == null || !factory.ItemTemplates.TryGetValue(template, out var itemTemplate))
                 return null;
 

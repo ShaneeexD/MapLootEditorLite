@@ -1,6 +1,6 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>MapLootEditorLite.Server</RootNamespace>
     <LangVersion>latest</LangVersion>
     <OutputType>Library</OutputType>
@@ -8,54 +8,18 @@
     <OutputPath>bin\$(Configuration)\</OutputPath>
     <AssemblyName>MapEditorLite.Server</AssemblyName>
     <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultContentItems>false</EnableDefaultContentItems>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- SPT Server -->
-    <Reference Include="SPTarkov.Server.Core">
-      <HintPath>$(SPTPath)\SPT\SPTarkov.Server.Core.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="SPTarkov.DI">
-      <HintPath>$(SPTPath)\SPT\SPTarkov.DI.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="SPTarkov.Common">
-      <HintPath>$(SPTPath)\SPT\SPTarkov.Common.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="SPTarkov.Server.Assets">
-      <HintPath>$(SPTPath)\SPT\SPTarkov.Server.Assets.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="SPTarkov.Server.Web">
-      <HintPath>$(SPTPath)\SPT\SPTarkov.Server.Web.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="SPTarkov.Reflection">
-      <HintPath>$(SPTPath)\SPT\SPTarkov.Reflection.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-
-    <!-- Harmony -->
-    <Reference Include="0Harmony">
-      <HintPath>$(SPTPath)\SPT\0Harmony.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="SemanticVersioning">
-      <HintPath>$(SPTPath)\SPT\SemanticVersioning.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-
-    <!-- WTT CommonLib -->
-    <Reference Include="WTT-ServerCommonLib">
-      <HintPath>$(SPTPath)\SPT\user\mods\WTT-ServerCommonLib\WTT-ServerCommonLib.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="SPTarkov.Common" Version="4.1.0" />
+    <PackageReference Include="SPTarkov.DI" Version="4.1.0" />
+    <PackageReference Include="SPTarkov.Reflection" Version="4.1.0" />
+    <PackageReference Include="SPTarkov.Server.Core" Version="4.1.0" />
+    <PackageReference Include="WTT-ServerCommonLib" Version="3.0.2" />
   </ItemGroup>
 
   <ItemGroup>

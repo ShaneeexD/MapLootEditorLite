@@ -11,7 +11,7 @@ public class MatchControllerStartLocalRaidPatch : AbstractPatch
 {
     protected override MethodBase GetTargetMethod()
     {
-        return AccessTools.Method(typeof(MatchController), nameof(MatchController.StartLocalRaid));
+        return AccessTools.Method(typeof(MatchController), nameof(MatchController.StartLocalRaidAsync));
     }
 
     [PatchPrefix]

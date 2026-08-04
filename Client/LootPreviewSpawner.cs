@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Comfort.Common;
+using Diz.Jobs;
 using EFT;
 using EFT.AssetsManager;
 using EFT.CameraControl;
@@ -386,7 +387,7 @@ namespace MapLootEditorLite.Client
         {
             try
             {
-                var factory = Singleton<ItemFactoryClass>.Instance;
+                var factory = Singleton<ItemFactory>.Instance;
                 if (factory == null)
                     return null;
 
@@ -394,7 +395,7 @@ namespace MapLootEditorLite.Client
                 if (item == null)
                     return null;
 
-                var pool = Singleton<PoolManagerClass>.Instance;
+                var pool = Singleton<ObjectsFactory>.Instance;
                 if (pool == null)
                     return null;
 
@@ -464,11 +465,11 @@ namespace MapLootEditorLite.Client
 
         private async Task PreloadBundles(LootItem loot)
         {
-            var pool = Singleton<PoolManagerClass>.Instance;
+            var pool = Singleton<ObjectsFactory>.Instance;
             if (pool == null)
                 return;
 
-            var factory = Singleton<ItemFactoryClass>.Instance;
+            var factory = Singleton<ItemFactory>.Instance;
             if (factory == null)
                 return;
 
@@ -478,15 +479,15 @@ namespace MapLootEditorLite.Client
                 return;
 
             await pool.LoadBundlesAndCreatePools(
-                0,
-                PoolManagerClass.AssemblyType.Local,
+                ObjectsFactory.PoolsCategory.Raid,
+                ObjectsFactory.AssemblyType.Local,
                 keys.ToArray(),
-                JobPriorityClass.Immediate,
+                JobYieldPriority.Immediate,
                 null,
                 CancellationToken.None);
         }
 
-        private static void CollectResourceKeys(LootItem loot, ItemFactoryClass factory, List<ResourceKey> keys)
+        private static void CollectResourceKeys(LootItem loot, ItemFactory factory, List<ResourceKey> keys)
         {
             if (loot == null || string.IsNullOrEmpty(loot.template))
                 return;
