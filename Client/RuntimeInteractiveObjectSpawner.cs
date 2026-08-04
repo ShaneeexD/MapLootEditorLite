@@ -1493,14 +1493,16 @@ namespace MapLootEditorLite.Client
                 return false;
             }
 
-            // For distribution items, randomize stack between 1 and max(loot.count, StackMaxSize).
+            // For distribution items, randomize stack between 1 and loot.count (or StackMaxSize if count <= 1).
             // For non-distribution items without min/max, randomize between 1 and StackMaxSize.
             if (loot.isDistribution || (stackCount <= 1 && !(loot.maxCount > loot.minCount)))
             {
                 int itemStackMax = GetItemStackMaxSize(childItem);
                 if (itemStackMax > 1)
                 {
-                    int maxStack = loot.isDistribution ? Math.Max(loot.count, itemStackMax) : itemStackMax;
+                    int maxStack = loot.isDistribution
+                        ? (loot.count > 1 ? loot.count : itemStackMax)
+                        : itemStackMax;
                     stackCount = rng.Next(1, maxStack + 1);
                     if (stackCount > 1)
                         SetItemStackCount(childItem, stackCount);
