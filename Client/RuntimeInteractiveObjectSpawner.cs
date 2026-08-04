@@ -1476,7 +1476,8 @@ namespace MapLootEditorLite.Client
 
             if (loot.isDistribution)
             {
-                // Will be set after item creation using the real StackMaxSize from the Item object.
+                // Stack count is randomized after item creation using the real StackMaxSize.
+                stackCount = -1;
             }
             else if (loot.maxCount > loot.minCount)
             {
@@ -1492,24 +1493,15 @@ namespace MapLootEditorLite.Client
                 return false;
             }
 
-            // For distribution items with no explicit stack count, read StackMaxSize from the
-            // actual Item object (ItemNameResolver uses templates/items.json which has different IDs).
-            if (loot.isDistribution && stackCount <= 1)
+            // For distribution items, randomize stack between 1 and max(loot.count, StackMaxSize).
+            // For non-distribution items without min/max, randomize between 1 and StackMaxSize.
+            if (loot.isDistribution || (stackCount <= 1 && !(loot.maxCount > loot.minCount)))
             {
                 int itemStackMax = GetItemStackMaxSize(childItem);
                 if (itemStackMax > 1)
                 {
-                    stackCount = rng.Next(1, itemStackMax + 1);
-                    if (stackCount > 1)
-                        SetItemStackCount(childItem, stackCount);
-                }
-            }
-            else if (!loot.isDistribution && stackCount <= 1)
-            {
-                int itemStackMax = GetItemStackMaxSize(childItem);
-                if (itemStackMax > 1)
-                {
-                    stackCount = rng.Next(1, itemStackMax + 1);
+                    int maxStack = loot.isDistribution ? Math.Max(loot.count, itemStackMax) : itemStackMax;
+                    stackCount = rng.Next(1, maxStack + 1);
                     if (stackCount > 1)
                         SetItemStackCount(childItem, stackCount);
                 }
