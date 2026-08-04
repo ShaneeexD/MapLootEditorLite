@@ -218,10 +218,26 @@ public static class LootTransformer
     {
         var itemTpl = string.IsNullOrWhiteSpace(item.Template) ? "544fb45d4bdc2dee738b4568" : item.Template;
         var locationId = $"{zone.Id}_{index}";
-        var rootId = new MongoId();
         var composedKey = $"{zone.Id}_{itemTpl}_{index}";
         var position = RandomPointInShape(zone, random);
         var rotation = item.RandomRotation ? RandomYRotation(random) : item.Rotation;
+
+        var items = new List<SptLootItem>();
+        var rootId = new MongoId();
+        var root = new SptLootItem
+        {
+            Id = rootId,
+            Template = itemTpl,
+            ComposedKey = composedKey,
+            Upd = new Upd { SpawnedInSession = true }
+        };
+        items.Add(root);
+
+        if (item.Children != null)
+        {
+            foreach (var child in item.Children)
+                AddZoneChildItemRecursive(child, root, items, composedKey);
+        }
 
         return new Spawnpoint
         {
@@ -239,16 +255,7 @@ public static class LootTransformer
                 IsGroupPosition = false,
                 GroupPositions = [],
                 Root = rootId,
-                Items =
-                [
-                    new SptLootItem
-                    {
-                        Id = rootId,
-                        Template = itemTpl,
-                        ComposedKey = composedKey,
-                        Upd = new Upd { SpawnedInSession = true }
-                    }
-                ]
+                Items = items
             },
             ItemDistribution =
             [
@@ -259,6 +266,31 @@ public static class LootTransformer
                 }
             ]
         };
+    }
+
+    private static void AddZoneChildItemRecursive(LootItem item, SptLootItem parent, List<SptLootItem> result, string parentComposedKey)
+    {
+        if (item == null || string.IsNullOrWhiteSpace(item.Template))
+            return;
+
+        var id = new MongoId();
+        var spt = new SptLootItem
+        {
+            Id = id,
+            Template = item.Template,
+            ParentId = parent.Id.ToString(),
+            SlotId = item.SlotId ?? string.Empty,
+            ComposedKey = $"{parentComposedKey}_{item.Template}_{result.Count}",
+            Upd = new Upd { SpawnedInSession = true }
+        };
+
+        result.Add(spt);
+
+        if (item.Children != null)
+        {
+            foreach (var child in item.Children)
+                AddZoneChildItemRecursive(child, spt, result, parentComposedKey);
+        }
     }
 
     private static List<SptLootItem> BuildItems(List<LootItem> items, string markerId)
@@ -277,17 +309,36 @@ public static class LootTransformer
             ];
         }
 
-        return items.Select((item, index) =>
+        var result = new List<SptLootItem>();
+        for (int i = 0; i < items.Count; i++)
+            AddLootItemRecursive(items[i], null, result, markerId, i);
+        return result;
+    }
+
+    private static void AddLootItemRecursive(LootItem item, SptLootItem? parent, List<SptLootItem> result, string markerId, int index)
+    {
+        if (item == null || string.IsNullOrWhiteSpace(item.Template))
+            return;
+
+        var id = new MongoId();
+        var tpl = item.Template;
+        var spt = new SptLootItem
         {
-            var tpl = string.IsNullOrWhiteSpace(item.Template) ? "544fb45d4bdc2dee738b4568" : item.Template;
-            return new SptLootItem
-            {
-                Id = new MongoId(),
-                Template = tpl,
-                ComposedKey = $"{markerId}_{tpl}_{index}",
-                Upd = new Upd { SpawnedInSession = true }
-            };
-        }).ToList();
+            Id = id,
+            Template = tpl,
+            ParentId = parent == null ? null : parent.Id.ToString(),
+            SlotId = item.SlotId ?? string.Empty,
+            ComposedKey = $"{markerId}_{tpl}_{index}_{result.Count}",
+            Upd = new Upd { SpawnedInSession = true }
+        };
+
+        result.Add(spt);
+
+        if (item.Children != null)
+        {
+            foreach (var child in item.Children)
+                AddLootItemRecursive(child, spt, result, markerId, index);
+        }
     }
 
     private static bool ShouldSpawnItem(LootItem item)
@@ -327,15 +378,31 @@ public static class LootTransformer
         }
 
         var distribution = new List<LooseLootItemDistribution>();
-        for (int i = 0; i < sptItems.Count; i++)
+        var rootIndex = 0;
+        foreach (var spt in sptItems)
         {
-            var chance = i < sourceItems.Count ? sourceItems[i].Chance : 0;
+            // Only create distribution entries for root items (no parent); child items spawn with their parent
+            if (!string.IsNullOrEmpty(spt.ParentId))
+                continue;
+
+            var chance = rootIndex < sourceItems.Count ? sourceItems[rootIndex].Chance : 0;
+            rootIndex++;
             distribution.Add(new LooseLootItemDistribution
             {
-                ComposedKey = new ComposedKey { Key = sptItems[i].ComposedKey ?? string.Empty },
+                ComposedKey = new ComposedKey { Key = spt.ComposedKey ?? string.Empty },
                 RelativeProbability = chance > 0 ? chance : 0
             });
         }
+
+        if (distribution.Count == 0 && sptItems.Count > 0)
+        {
+            distribution.Add(new LooseLootItemDistribution
+            {
+                ComposedKey = new ComposedKey { Key = sptItems[0].ComposedKey ?? string.Empty },
+                RelativeProbability = 100
+            });
+        }
+
         return distribution;
     }
 

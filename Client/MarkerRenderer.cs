@@ -122,6 +122,8 @@ namespace MapLootEditorLite.Client
                     continue;
                 if (!marker.isVanilla && !ShowPackGizmos)
                     continue;
+                if (_manager.IsLocked(marker))
+                    continue;
                 if (marker.isVanilla && VanillaRenderDistance > 0f && camera != null)
                 {
                     var distance = Vector3.Distance(cameraPos, marker.position.ToVector3());
@@ -159,6 +161,17 @@ namespace MapLootEditorLite.Client
                     if (_visuals.TryGetValue(marker.id, out GameObject existingPackVisual))
                     {
                         UnityEngine.Object.Destroy(existingPackVisual);
+                        _visuals.Remove(marker.id);
+                        _zoneShapeCache.Remove(marker.id);
+                    }
+                    continue;
+                }
+
+                if (_manager.IsLocked(marker))
+                {
+                    if (_visuals.TryGetValue(marker.id, out GameObject lockedVisual))
+                    {
+                        UnityEngine.Object.Destroy(lockedVisual);
                         _visuals.Remove(marker.id);
                         _zoneShapeCache.Remove(marker.id);
                     }
@@ -384,6 +397,8 @@ namespace MapLootEditorLite.Client
                 if (marker.isVanilla && !ShowVanillaGizmos)
                     continue;
                 if (!marker.isVanilla && !ShowPackGizmos)
+                    continue;
+                if (_manager.IsLocked(marker))
                     continue;
                 if (marker.isVanilla && VanillaRenderDistance > 0f && camera != null)
                 {

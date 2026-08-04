@@ -219,7 +219,7 @@ public static class WttSpawnConverter
         {
             Id = id,
             Template = item.Template,
-            ParentId = parent == null ? string.Empty : parent.Id.ToString(),
+            ParentId = parent == null ? null : parent.Id.ToString(),
             SlotId = item.SlotId ?? string.Empty,
             ComposedKey = $"{item.Template}_{index}_{result.Count}",
             Upd = new Upd { SpawnedInSession = true }
