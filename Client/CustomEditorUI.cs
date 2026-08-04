@@ -2416,6 +2416,8 @@ namespace MapLootEditorLite.Client
                 case InteractiveObject obj:
                     BuildReadOnlyLabel(_inspectorContent, "Container Template", FormatContainerTemplate(obj.containerTemplate));
                     BuildReadOnlyLabel(_inspectorContent, "Loot Mode", obj.lootMode.ToString());
+                    BuildReadOnlyLabel(_inspectorContent, "Min Items (0 = vanilla)", obj.itemCountMin.ToString());
+                    BuildReadOnlyLabel(_inspectorContent, "Max Items (0 = vanilla)", obj.itemCountMax.ToString());
                     BuildReadOnlyLabel(_inspectorContent, "Spawn Chance", $"{obj.spawnChance:F2}%");
                     BuildVanillaItemList(obj.items);
                     break;

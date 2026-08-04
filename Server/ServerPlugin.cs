@@ -24,7 +24,7 @@ public record ModMetadata : IModMetadata
     public string Name { get; init; } = "MapEditorLite";
     public string Author { get; init; } = "Shane";
     public List<string>? Contributors { get; init; } = null;
-    public Version Version { get; init; } = new("2.0.2");
+    public Version Version { get; init; } = new("2.1.0");
     public Range SptVersion { get; init; } = new("~4.1.0");
     public List<string>? Incompatibilities { get; init; } = null;
     public Dictionary<string, Range>? ModDependencies { get; init; } = new()

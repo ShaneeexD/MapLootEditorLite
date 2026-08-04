@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace MapLootEditorLite.Client
 {
-    [BepInPlugin("com.shaneeexd.mapeditorlite", "Map Editor Lite", "2.0.2")]
+    [BepInPlugin("com.shaneeexd.mapeditorlite", "Map Editor Lite", "2.1.0")]
     [BepInDependency("com.wtt.commonlib", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {

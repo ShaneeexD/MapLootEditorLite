@@ -235,8 +235,10 @@ namespace MapLootEditorLite.Client
             defaults["Map Loot Editor Lite"] = "Map Loot Editor Lite";
             defaults["Max"] = "Max";
             defaults["Max distance to render vanilla gizmos (0 = unlimited):"] = "Max distance to render vanilla gizmos (0 = unlimited):";
+            defaults["Max Items (0 = vanilla)"] = "Max Items (0 = vanilla)";
             defaults["Max Raid Time"] = "Max Raid Time";
             defaults["Max Visible Distance"] = "Max Visible Distance";
+            defaults["Min Items (0 = vanilla)"] = "Min Items (0 = vanilla)";
             defaults["Min Raid Time"] = "Min Raid Time";
             defaults["Mode"] = "Mode";
             defaults["Name"] = "Name";

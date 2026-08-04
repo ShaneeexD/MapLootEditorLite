@@ -4,7 +4,7 @@
     <RootNamespace>MapLootEditorLite.Server</RootNamespace>
     <LangVersion>latest</LangVersion>
     <OutputType>Library</OutputType>
-    <Version>2.0.2</Version>
+    <Version>2.1.0</Version>
     <OutputPath>bin\$(Configuration)\</OutputPath>
     <AssemblyName>MapEditorLite.Server</AssemblyName>
     <Nullable>enable</Nullable>
