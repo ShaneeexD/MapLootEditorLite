@@ -287,6 +287,12 @@ namespace MapLootEditorLite.Client
         public string author = "";
         public string version = "1.1.0";
         public System.Collections.Generic.Dictionary<string, MapData> maps = new System.Collections.Generic.Dictionary<string, MapData>(System.StringComparer.OrdinalIgnoreCase);
+
+        public static readonly Newtonsoft.Json.JsonSerializerSettings InvariantSettings = new Newtonsoft.Json.JsonSerializerSettings
+        {
+            Culture = System.Globalization.CultureInfo.InvariantCulture,
+            Formatting = Newtonsoft.Json.Formatting.Indented
+        };
     }
 
     public class TransformData

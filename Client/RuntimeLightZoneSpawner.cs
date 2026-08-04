@@ -88,7 +88,10 @@ namespace MapLootEditorLite.Client
                     try
                     {
                         var json = File.ReadAllText(file);
-                        var pack = JsonConvert.DeserializeObject<PackData>(json);
+                        var trimmed = json.TrimStart();
+                        if (trimmed.Length > 0 && trimmed[0] == '[')
+                            continue;
+                        var pack = JsonConvert.DeserializeObject<PackData>(json, PackData.InvariantSettings);
                         if (pack?.maps != null)
                         {
                             _packs.Add(pack);

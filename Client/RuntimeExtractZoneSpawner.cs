@@ -20,6 +20,7 @@ namespace MapLootEditorLite.Client
         private List<PackData> _packs = new List<PackData>();
         private GameWorld _currentWorld;
         private string _currentMapId;
+        private bool _hasSpawnedForCurrentMap;
         private List<ExfiltrationPoint> _spawned = new List<ExfiltrationPoint>();
         private static bool _patchApplied;
 
@@ -39,6 +40,7 @@ namespace MapLootEditorLite.Client
             ClearSpawned();
             _currentWorld = null;
             _currentMapId = null;
+            _hasSpawnedForCurrentMap = false;
         }
 
         private void Update()
@@ -54,6 +56,7 @@ namespace MapLootEditorLite.Client
                     ClearSpawned();
                     _currentWorld = null;
                     _currentMapId = null;
+                    _hasSpawnedForCurrentMap = false;
                 }
             }
 
@@ -69,7 +72,29 @@ namespace MapLootEditorLite.Client
                 _currentWorld = world;
                 _currentMapId = mapId;
                 ClearSpawned();
+                _hasSpawnedForCurrentMap = false;
                 Plugin.Log.LogInfo($"Map detected: {mapId}. Waiting for exfiltration controller initialization.");
+
+                var controller = ExfiltrationControllerClass.Instance;
+                if (controller != null && controller.ExfiltrationPoints != null && controller.ExfiltrationPoints.Length > 0)
+                {
+                    Plugin.Log.LogInfo($"Exfiltration controller already initialized for {mapId}, spawning custom zones immediately.");
+                    SpawnCustomZones();
+                }
+            }
+            else if (!string.IsNullOrEmpty(_currentMapId) && !_hasSpawnedForCurrentMap)
+            {
+                var player = world?.MainPlayer;
+                var entryPoint = player?.Profile?.Info?.EntryPoint?.ToLowerInvariant() ?? "";
+                if (!string.IsNullOrEmpty(entryPoint))
+                {
+                    var controller = ExfiltrationControllerClass.Instance;
+                    if (controller != null && controller.ExfiltrationPoints != null && controller.ExfiltrationPoints.Length > 0)
+                    {
+                        Plugin.Log.LogInfo($"Player entry point now available ({entryPoint}) for map {_currentMapId}, spawning custom zones.");
+                        SpawnCustomZones();
+                    }
+                }
             }
         }
 
@@ -92,7 +117,10 @@ namespace MapLootEditorLite.Client
                     try
                     {
                         var json = File.ReadAllText(file);
-                        var pack = JsonConvert.DeserializeObject<PackData>(json);
+                        var trimmed = json.TrimStart();
+                        if (trimmed.Length > 0 && trimmed[0] == '[')
+                            continue;
+                        var pack = JsonConvert.DeserializeObject<PackData>(json, PackData.InvariantSettings);
                         if (pack?.maps != null)
                         {
                             _packs.Add(pack);
@@ -143,6 +171,9 @@ namespace MapLootEditorLite.Client
 
         private void SpawnCustomZones()
         {
+            if (_hasSpawnedForCurrentMap)
+                return;
+
             var world = Singleton<GameWorld>.Instance;
             var mapId = world?.LocationId;
             if (string.IsNullOrEmpty(mapId) && world?.MainPlayer != null)
@@ -175,12 +206,21 @@ namespace MapLootEditorLite.Client
 
             if (zones.Count == 0)
             {
+                _hasSpawnedForCurrentMap = true;
                 Plugin.Log.LogInfo($"No custom extract zones for map {mapId}.");
                 return;
             }
 
             var player = world?.MainPlayer;
             var entryPoint = player?.Profile?.Info?.EntryPoint?.ToLowerInvariant() ?? "";
+
+            if (string.IsNullOrEmpty(entryPoint))
+            {
+                Plugin.Log.LogInfo($"Player entry point not yet available for map {mapId}, delaying extract zone spawn.");
+                return;
+            }
+
+            _hasSpawnedForCurrentMap = true;
             var rng = new System.Random();
 
             Plugin.Log.LogInfo($"Spawning {zones.Count} custom extract zones for map {mapId}.");
@@ -301,7 +341,7 @@ namespace MapLootEditorLite.Client
                 PlayersCount = zone.playersCount,
                 EntryPoints = entryPoint
             };
-            point.EligibleEntryPoints = new[] { entryPoint };
+            point.EligibleEntryPoints = string.IsNullOrEmpty(entryPoint) ? new string[0] : new[] { entryPoint };
             point.Reusable = false;
 
             var requirements = new List<ExfiltrationRequirement>();
@@ -426,7 +466,7 @@ namespace MapLootEditorLite.Client
                 var dir = Plugin.ServerModExportsDirectory;
                 Directory.CreateDirectory(dir);
                 var path = Path.Combine(dir, $"vanilla_extract_positions_{mapId}.json");
-                File.WriteAllText(path, JsonConvert.SerializeObject(entries, Formatting.Indented));
+                File.WriteAllText(path, JsonConvert.SerializeObject(entries, Formatting.Indented, PackData.InvariantSettings));
                 Plugin.Log.LogInfo($"Dumped {entries.Count} vanilla extract positions to {path}");
             }
             catch (Exception ex)
@@ -437,6 +477,26 @@ namespace MapLootEditorLite.Client
 
         private void ClearSpawned()
         {
+            if (_spawned.Count > 0)
+            {
+                try
+                {
+                    var controller = ExfiltrationControllerClass.Instance;
+                    if (controller != null && controller.ExfiltrationPoints != null)
+                    {
+                        var spawnedSet = new HashSet<ExfiltrationPoint>(_spawned);
+                        var filtered = controller.ExfiltrationPoints
+                            .Where(p => p != null && !spawnedSet.Contains(p))
+                            .ToArray();
+                        controller.ExfiltrationPoints = filtered;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogWarning($"Failed to remove custom points from controller: {ex.Message}");
+                }
+            }
+
             foreach (var point in _spawned)
             {
                 if (point != null)

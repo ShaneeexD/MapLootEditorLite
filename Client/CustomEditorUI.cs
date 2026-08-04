@@ -2703,7 +2703,7 @@ namespace MapLootEditorLite.Client
             UIBuilder.CreateButton(_inspectorContent, "Copy WTT Static Data", () =>
             {
                 var data = WttStaticDataConverter.ToWttConfig(obj, manager.Data.map);
-                var json = JsonConvert.SerializeObject(data, Formatting.Indented);
+                var json = JsonConvert.SerializeObject(data, Formatting.Indented, PackData.InvariantSettings);
                 GUIUtility.systemCopyBuffer = json;
                 _fieldClipboard = json;
             }, 120, 24);
@@ -4274,7 +4274,7 @@ namespace MapLootEditorLite.Client
                 if (!string.IsNullOrEmpty(_pickFiltersPath))
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(_pickFiltersPath));
-                    File.WriteAllText(_pickFiltersPath, JsonConvert.SerializeObject(_pickFilterConfig, Formatting.Indented));
+                    File.WriteAllText(_pickFiltersPath, JsonConvert.SerializeObject(_pickFilterConfig, Formatting.Indented, PackData.InvariantSettings));
                 }
             }
             catch (System.Exception ex)

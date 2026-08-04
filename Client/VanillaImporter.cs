@@ -102,7 +102,7 @@ namespace MapLootEditorLite.Client
             try
             {
                 var json = File.ReadAllText(path);
-                var file = JsonConvert.DeserializeObject<VanillaLootFile>(json);
+                var file = JsonConvert.DeserializeObject<VanillaLootFile>(json, PackData.InvariantSettings);
                 if (file == null)
                 {
                     Plugin.Log.LogWarning($"[VanillaImporter] Failed to deserialize {path}");
@@ -177,7 +177,7 @@ namespace MapLootEditorLite.Client
             try
             {
                 var json = File.ReadAllText(path);
-                var file = JsonConvert.DeserializeObject<VanillaContainerFile>(json);
+                var file = JsonConvert.DeserializeObject<VanillaContainerFile>(json, PackData.InvariantSettings);
                 if (file == null)
                 {
                     Plugin.Log.LogWarning($"[VanillaImporter] Failed to deserialize {path}");
@@ -314,7 +314,7 @@ namespace MapLootEditorLite.Client
             try
             {
                 var json = File.ReadAllText(path);
-                var file = JsonConvert.DeserializeObject<Dictionary<string, StaticLootEntry>>(json);
+                var file = JsonConvert.DeserializeObject<Dictionary<string, StaticLootEntry>>(json, PackData.InvariantSettings);
                 if (file == null)
                     return;
 

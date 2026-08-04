@@ -2388,7 +2388,7 @@ namespace MapLootEditorLite.Client
             if (entries.Count == 0)
                 return;
 
-            GUIUtility.systemCopyBuffer = JsonConvert.SerializeObject(new ClipboardData { entries = entries });
+            GUIUtility.systemCopyBuffer = JsonConvert.SerializeObject(new ClipboardData { entries = entries }, PackData.InvariantSettings);
         }
 
         private void TryResolveInteractiveSource(InteractiveObject marker)

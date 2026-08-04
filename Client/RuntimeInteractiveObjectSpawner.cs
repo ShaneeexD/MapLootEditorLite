@@ -176,7 +176,10 @@ namespace MapLootEditorLite.Client
                     try
                     {
                         var json = File.ReadAllText(file);
-                        var pack = JsonConvert.DeserializeObject<PackData>(json);
+                        var trimmed = json.TrimStart();
+                        if (trimmed.Length > 0 && trimmed[0] == '[')
+                            continue;
+                        var pack = JsonConvert.DeserializeObject<PackData>(json, PackData.InvariantSettings);
                         if (pack?.maps != null)
                         {
                             _packs.Add(pack);
@@ -1147,7 +1150,7 @@ namespace MapLootEditorLite.Client
                 using (var reader = new StreamReader(stream))
                     json = reader.ReadToEnd();
 
-                var file = JsonConvert.DeserializeObject<Dictionary<string, BundledStaticLootEntry>>(json);
+                var file = JsonConvert.DeserializeObject<Dictionary<string, BundledStaticLootEntry>>(json, PackData.InvariantSettings);
                 var result = new Dictionary<string, BundledStaticLootDistribution>(StringComparer.OrdinalIgnoreCase);
                 if (file == null)
                     return result;
@@ -1235,7 +1238,7 @@ namespace MapLootEditorLite.Client
                 using (var reader = new StreamReader(stream))
                     json = reader.ReadToEnd();
 
-                var file = JsonConvert.DeserializeObject<Dictionary<string, int>>(json);
+                var file = JsonConvert.DeserializeObject<Dictionary<string, int>>(json, PackData.InvariantSettings);
                 if (file != null)
                 {
                     foreach (var kvp in file)
@@ -1294,7 +1297,7 @@ namespace MapLootEditorLite.Client
                 using (var reader = new StreamReader(stream))
                     json = reader.ReadToEnd();
 
-                var file = JsonConvert.DeserializeObject<BundledContainerFile>(json);
+                var file = JsonConvert.DeserializeObject<BundledContainerFile>(json, PackData.InvariantSettings);
                 var result = new Dictionary<string, List<LootItem>>(StringComparer.OrdinalIgnoreCase);
                 if (file == null)
                     return result;

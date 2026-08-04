@@ -64,7 +64,7 @@ namespace MapLootEditorLite.Client
                 try
                 {
                     var json = request.downloadHandler.text;
-                    var items = JsonConvert.DeserializeObject<List<ApiNameEntry>>(json);
+                    var items = JsonConvert.DeserializeObject<List<ApiNameEntry>>(json, PackData.InvariantSettings);
                     if (items == null)
                         yield break;
 
@@ -96,7 +96,7 @@ namespace MapLootEditorLite.Client
                 if (string.IsNullOrEmpty(json))
                     return;
 
-                var file = JsonConvert.DeserializeObject<Dictionary<string, OfflineNameEntry>>(json);
+                var file = JsonConvert.DeserializeObject<Dictionary<string, OfflineNameEntry>>(json, PackData.InvariantSettings);
                 if (file == null)
                     return;
 
@@ -150,7 +150,7 @@ namespace MapLootEditorLite.Client
             try
             {
                 var json = File.ReadAllText(path);
-                var file = JsonConvert.DeserializeObject<Dictionary<string, ItemEntry>>(json);
+                var file = JsonConvert.DeserializeObject<Dictionary<string, ItemEntry>>(json, PackData.InvariantSettings);
                 if (file != null)
                 {
                     foreach (var kvp in file)
