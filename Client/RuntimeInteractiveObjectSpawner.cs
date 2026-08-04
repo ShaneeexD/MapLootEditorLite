@@ -1473,20 +1473,10 @@ namespace MapLootEditorLite.Client
             }
 
             var stackCount = loot.count;
-            if (stackCount <= 1 && loot.isDistribution)
-            {
-                var parent = ItemNameResolver.GetParent(loot.template);
-                if (parent == "5485a8684bdc2da71d8b4567" ||
-                    string.Equals(loot.template, "5d235b4d86f7742e017bc88a", StringComparison.OrdinalIgnoreCase))
-                {
-                    stackCount = ItemNameResolver.GetStackMaxSize(loot.template);
-                }
-            }
 
             if (loot.isDistribution)
             {
-                if (stackCount > 1)
-                    stackCount = rng.Next(1, stackCount + 1);
+                // Will be set after item creation using the real StackMaxSize from the Item object.
             }
             else if (loot.maxCount > loot.minCount)
             {
@@ -1494,20 +1484,35 @@ namespace MapLootEditorLite.Client
                 int max = Math.Max(loot.maxCount, min);
                 stackCount = rng.Next(min, max + 1);
             }
-            else if (stackCount <= 1)
-            {
-                if (string.Equals(loot.template, "5d235b4d86f7742e017bc88a", StringComparison.OrdinalIgnoreCase) ||
-                    ItemNameResolver.GetParent(loot.template) == "5485a8684bdc2da71d8b4567")
-                {
-                    stackCount = ItemNameResolver.GetStackMaxSize(loot.template);
-                }
-            }
 
             var childItem = BuildItem(loot, itemFactory, stackCount);
             if (childItem == null)
             {
                 Plugin.Log.LogWarning($"Failed to create item {loot.template} for container '{obj.name}'");
                 return false;
+            }
+
+            // For distribution items with no explicit stack count, read StackMaxSize from the
+            // actual Item object (ItemNameResolver uses templates/items.json which has different IDs).
+            if (loot.isDistribution && stackCount <= 1)
+            {
+                int itemStackMax = GetItemStackMaxSize(childItem);
+                if (itemStackMax > 1)
+                {
+                    stackCount = rng.Next(1, itemStackMax + 1);
+                    if (stackCount > 1)
+                        SetItemStackCount(childItem, stackCount);
+                }
+            }
+            else if (!loot.isDistribution && stackCount <= 1)
+            {
+                int itemStackMax = GetItemStackMaxSize(childItem);
+                if (itemStackMax > 1)
+                {
+                    stackCount = rng.Next(1, itemStackMax + 1);
+                    if (stackCount > 1)
+                        SetItemStackCount(childItem, stackCount);
+                }
             }
 
             if (compoundItem.Grids != null)
@@ -1522,6 +1527,23 @@ namespace MapLootEditorLite.Client
 
             Plugin.Log.LogWarning($"Could not place item {loot.template} in container '{obj.name}'");
             return false;
+        }
+
+        private static int GetItemStackMaxSize(Item item)
+        {
+            if (item == null)
+                return 1;
+            try
+            {
+                var prop = item.GetType().GetProperty("StackMaxSize", BindingFlags.Public | BindingFlags.Instance);
+                if (prop != null)
+                    return Convert.ToInt32(prop.GetValue(item));
+                var field = item.GetType().GetField("StackMaxSize", BindingFlags.Public | BindingFlags.Instance);
+                if (field != null)
+                    return Convert.ToInt32(field.GetValue(item));
+            }
+            catch { }
+            return 1;
         }
 
         private static void SetItemStackCount(Item item, int count)

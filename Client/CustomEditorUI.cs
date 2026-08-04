@@ -2900,6 +2900,8 @@ namespace MapLootEditorLite.Client
                     manager.IsDirty = true;
                     RefreshInspector();
                 });
+                BuildIntField(_inspectorContent, "Item Count Min (0 = vanilla)", obj.itemCountMin, (v) => { obj.itemCountMin = Math.Max(0, v); manager.IsDirty = true; });
+                BuildIntField(_inspectorContent, "Item Count Max (0 = vanilla)", obj.itemCountMax, (v) => { obj.itemCountMax = Math.Max(0, v); manager.IsDirty = true; });
                 BuildFloatField(_inspectorContent, "Spawn Chance", obj.spawnChance, (v) => { obj.spawnChance = v; manager.IsDirty = true; });
                 BuildToggleField(_inspectorContent, "Quest only", obj.questOnly, (v) => { obj.questOnly = v; manager.IsDirty = true; RefreshInspector(); });
                 BuildToggleField(_inspectorContent, "Quest completed", obj.questCompleted, (v) => { obj.questCompleted = v; manager.IsDirty = true; RefreshInspector(); });
