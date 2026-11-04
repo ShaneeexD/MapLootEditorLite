@@ -32,6 +32,7 @@ namespace MapLootEditorLite.Client
         public void ResetState()
         {
             ClearSpawned();
+            _packs = RuntimePackLoader.LoadPacks("custom blockers");
             _currentWorld = null;
             _currentMapId = null;
         }
@@ -70,41 +71,7 @@ namespace MapLootEditorLite.Client
 
         private void LoadPacks()
         {
-            var directories = new List<string>();
-            if (!string.IsNullOrEmpty(Plugin.ServerModPacksDirectory) && Directory.Exists(Plugin.ServerModPacksDirectory))
-                directories.Add(Plugin.ServerModPacksDirectory);
-            if (!string.IsNullOrEmpty(Plugin.ServerModExportsDirectory) && Directory.Exists(Plugin.ServerModExportsDirectory))
-                directories.Add(Plugin.ServerModExportsDirectory);
-
-            if (directories.Count == 0)
-            {
-                Plugin.Log.LogWarning("No pack directories found; custom blockers will not be spawned.");
-                return;
-            }
-
-            foreach (var dir in directories)
-            {
-                foreach (var file in Directory.GetFiles(dir, "*.json", SearchOption.AllDirectories))
-                {
-                    try
-                    {
-                        var json = File.ReadAllText(file);
-                        var trimmed = json.TrimStart();
-                        if (trimmed.Length > 0 && trimmed[0] == '[')
-                            continue;
-                        var pack = JsonConvert.DeserializeObject<PackData>(json, PackData.InvariantSettings);
-                        if (pack?.maps != null)
-                        {
-                            _packs.Add(pack);
-                            Plugin.Log.LogInfo($"Loaded pack '{pack.name}' from {file}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Plugin.Log.LogWarning($"Failed to load pack {file}: {ex.Message}");
-                    }
-                }
-            }
+            _packs = RuntimePackLoader.LoadPacks("custom blockers");
         }
 
         private void SpawnCustomBlockers()
@@ -115,7 +82,7 @@ namespace MapLootEditorLite.Client
             var blockers = new List<Blocker>();
             foreach (var pack in _packs)
             {
-                if (pack.maps != null && pack.maps.TryGetValue(_currentMapId, out var mapData) && mapData.blockers != null)
+                if (RuntimePackLoader.TryGetMapData(pack, _currentMapId, out var mapData) && mapData.blockers != null)
                     blockers.AddRange(mapData.blockers);
             }
 

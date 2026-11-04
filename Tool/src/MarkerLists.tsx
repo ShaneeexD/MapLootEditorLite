@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import {
+  type BotActivityZone,
   type BotSpawnPoint,
   type BotSpawnZone,
   type ExtractZone,
@@ -24,6 +25,7 @@ import {
   TriggerMode,
   TriggerSide,
   ZoneShape,
+  defaultBotActivityZone,
   defaultBotSpawnPoint,
   defaultBotSpawnZone,
   defaultExtractZone,
@@ -38,6 +40,7 @@ import {
   defaultWttQuestZone,
   defaultWttStaticObject,
   generateId,
+  generateZoneId,
 } from './types'
 
 function replaceAt<T>(arr: T[], index: number, value: T): T[] {
@@ -309,6 +312,16 @@ function SimpleMarkerList({
   )
 }
 
+const botActivityShapeOptions = [
+  { value: 'Circle', label: 'Circle' },
+  { value: 'Square', label: 'Square' },
+]
+
+const botActivityLeashOptions = [
+  { value: 'Soft', label: 'Soft Leash' },
+  { value: 'Strong', label: 'Strong Leash' },
+]
+
 const zoneShapeOptions = [
   { value: ZoneShape.Sphere, label: 'Sphere' },
   { value: ZoneShape.Box, label: 'Box' },
@@ -371,7 +384,38 @@ const botSpawnPresetOptions = [
   { value: BotSpawnPreset.Partisan, label: 'Partisan' },
   { value: BotSpawnPreset.Cultist, label: 'Cultist' },
   { value: BotSpawnPreset.Infected, label: 'Infected' },
+  { value: BotSpawnPreset.Reshala, label: 'Reshala' },
 ]
+
+// Mirrors Client BotSpawnPresetMapping.GetWildSpawnType: picking a preset sets its role, like the in-game editor's ApplyPreset.
+// Presets with no role (Any, generic Boss) leave the current Wild Spawn Type untouched.
+const presetWildSpawnTypes: Partial<Record<BotSpawnPreset, string>> = {
+  [BotSpawnPreset.Scav]: 'assault',
+  [BotSpawnPreset.SniperScav]: 'marksman',
+  [BotSpawnPreset.Raider]: 'exUsec',
+  [BotSpawnPreset.Rogue]: 'exUsec',
+  [BotSpawnPreset.PMC]: 'pmcBot',
+  [BotSpawnPreset.Bear]: 'pmcBEAR',
+  [BotSpawnPreset.Usec]: 'pmcUSEC',
+  [BotSpawnPreset.Killa]: 'bossKilla',
+  [BotSpawnPreset.Tagilla]: 'bossTagilla',
+  [BotSpawnPreset.Gluhar]: 'bossGluhar',
+  [BotSpawnPreset.Sanitar]: 'bossSanitar',
+  [BotSpawnPreset.Kojaniy]: 'bossKojaniy',
+  [BotSpawnPreset.Knight]: 'bossKnight',
+  [BotSpawnPreset.Zryachiy]: 'bossZryachiy',
+  [BotSpawnPreset.Boar]: 'bossBoar',
+  [BotSpawnPreset.Kolontay]: 'bossKolontay',
+  [BotSpawnPreset.Partisan]: 'bossPartisan',
+  [BotSpawnPreset.Cultist]: 'sectantWarrior',
+  [BotSpawnPreset.Infected]: 'infectedAssault',
+  [BotSpawnPreset.Reshala]: 'bossBully',
+}
+
+const presetChange = (preset: BotSpawnPreset, _current?: string) => {
+  const role = presetWildSpawnTypes[preset]
+  return role ? { preset, wildSpawnType: role } : { preset }
+}
 
 const lightTypeOptions = [
   { value: LightType.Point, label: 'Point' },
@@ -515,16 +559,38 @@ export function LightZoneList({
 export function BotSpawnPointList({
   data,
   onChange,
+  activityZones = [],
 }: {
   data: BotSpawnPoint[]
   onChange: (points: BotSpawnPoint[]) => void
+  activityZones?: BotActivityZone[]
 }) {
+  const zoneOptionsFor = (current: string) => {
+    const options = [
+      { value: '', label: '(none)' },
+      ...activityZones.map((z) => ({ value: z.zoneId, label: `${z.name || 'zone'} [${z.zoneId}]` })),
+    ]
+    if (current && !activityZones.some((z) => z.zoneId === current)) {
+      options.push({ value: current, label: `Missing zone [${current}]` })
+    }
+    return options
+  }
   const extraFields = (item: any, update: any) => (
     <>
+      <SelectField
+        label="Bot Activity Zone (editor only)"
+        value={item.botActivityZoneId || ''}
+        options={zoneOptionsFor(item.botActivityZoneId || '')}
+        onChange={(v) => update({ botActivityZoneId: v })}
+      />
+      {item.botActivityZoneId && !activityZones.some((z) => z.zoneId === item.botActivityZoneId) && (
+        <p className="text-sm text-yellow-400">This zone ID no longer exists. Pick another zone or choose (none).</p>
+      )}
+      <TextField label="Bot Spawn Group ID" value={item.botSpawnGroupId || ''} onChange={(v) => update({ botSpawnGroupId: v })} />
       <NumberField label="Radius" value={item.radius} onChange={(v) => update({ radius: v })} min={0} step={0.1} />
       <SelectField label="Side" value={item.side} options={botSpawnSideOptions} onChange={(v) => update({ side: v })} />
       <SelectField label="Category" value={item.category} options={botSpawnCategoryOptions} onChange={(v) => update({ category: v })} />
-      <SelectField label="Preset" value={item.preset} options={botSpawnPresetOptions} onChange={(v) => update({ preset: v })} />
+      <SelectField label="Preset" value={item.preset} options={botSpawnPresetOptions}       onChange={(v) => update(presetChange(v, item.wildSpawnType))} />
       <TextField label="Wild Spawn Type" value={item.wildSpawnType || ''} onChange={(v) => update({ wildSpawnType: v })} />
       <NumberField label="Delay (sec)" value={item.delayToCanSpawnSec ?? 4} onChange={(v) => update({ delayToCanSpawnSec: v })} min={0} step={0.1} />
       <TextField label="Bot Zone Name" value={item.botZoneName || ''} onChange={(v) => update({ botZoneName: v })} />
@@ -534,6 +600,9 @@ export function BotSpawnPointList({
       <Toggle label="Trigger Activated" checked={item.triggerActivated ?? false} onChange={(v) => update({ triggerActivated: v })} />
       <TextField label="Trigger Zone Name" value={item.triggerZoneName || ''} onChange={(v) => update({ triggerZoneName: v })} />
       <StringArrayField label="Random Spawn Types" values={item.randomSpawnTypes ?? []} onChange={(v) => update({ randomSpawnTypes: v })} />
+      <Toggle label="Followers Enabled" checked={item.followersEnabled ?? false} onChange={(v) => update({ followersEnabled: v })} />
+      <NumberField label="Min Followers" value={item.minFollowers ?? 0} onChange={(v) => { const mn = Math.max(0, Math.floor(v)); update({ minFollowers: mn, maxFollowers: Math.max(mn, item.maxFollowers ?? 0) }) }} min={0} step={1} />
+      <NumberField label="Max Followers" value={item.maxFollowers ?? 0} onChange={(v) => update({ maxFollowers: Math.max(item.minFollowers ?? 0, Math.max(0, Math.floor(v))) })} min={0} step={1} />
     </>
   )
   return (
@@ -544,6 +613,52 @@ export function BotSpawnPointList({
       defaultItem={defaultBotSpawnPoint()}
       showSpawnChance
       showQuest
+      renderAddExtra={extraFields}
+      renderItemExtra={extraFields}
+    />
+  )
+}
+
+export function BotActivityZoneList({
+  data,
+  onChange,
+}: {
+  data: BotActivityZone[]
+  onChange: (zones: BotActivityZone[]) => void
+}) {
+  // The add form reuses one default item, so zone IDs are made unique here on every change.
+  const normalize = (zones: BotActivityZone[]) => {
+    const seen = new Set<string>()
+    return zones.map((z) => {
+      let zoneId = z.zoneId
+      while (!zoneId || seen.has(zoneId)) zoneId = generateZoneId()
+      seen.add(zoneId)
+      return zoneId === z.zoneId ? z : { ...z, zoneId }
+    })
+  }
+  const extraFields = (item: any, update: any) => (
+    <>
+      <SelectField label="Shape" value={item.shape ?? 'Circle'} options={botActivityShapeOptions} onChange={(v) => update({ shape: v })} />
+      {(item.shape ?? 'Circle') === 'Circle' ? (
+        <NumberField label="Radius (m, center to edge, 0.5-500)" value={item.radius ?? 25} onChange={(v) => update({ radius: Math.min(500, Math.max(0.5, v)) })} min={0.5} max={500} step={0.5} />
+      ) : (
+        <>
+          <NumberField label="Width (m, 0.5-1000)" value={item.width ?? item.sideLength ?? 50} onChange={(v) => update({ width: Math.min(1000, Math.max(0.5, v)), sideLength: Math.max(Math.min(1000, Math.max(0.5, v)), item.depth ?? item.sideLength ?? 50) })} min={0.5} max={1000} step={0.5} />
+          <NumberField label="Depth (m, 0.5-1000)" value={item.depth ?? item.sideLength ?? 50} onChange={(v) => update({ depth: Math.min(1000, Math.max(0.5, v)), sideLength: Math.max(item.width ?? item.sideLength ?? 50, Math.min(1000, Math.max(0.5, v))) })} min={0.5} max={1000} step={0.5} />
+        </>
+      )}
+      <SelectField label="Leash mode" value={item.leashMode === 'Strong' ? 'Strong' : 'Soft'} options={botActivityLeashOptions} onChange={(v) => update({ leashMode: v })} />
+      <Toggle label="Enabled" checked={item.enabled ?? true} onChange={(v) => update({ enabled: v })} />
+      {item.zoneId && <p className="text-sm text-tarkov-text-dim break-all">Zone ID: {item.zoneId}</p>}
+      <p className="text-sm text-tarkov-text-dim">Bots assigned to this boundary use the selected leash mode. Rectangular footprints follow the zone's Y rotation. Patrol routes are configured in the in-game inspector.</p>
+    </>
+  )
+  return (
+    <SimpleMarkerList
+      title="Bot Activity Zone"
+      items={data}
+      onChange={((zones: BotActivityZone[]) => onChange(normalize(zones))) as any}
+      defaultItem={defaultBotActivityZone()}
       renderAddExtra={extraFields}
       renderItemExtra={extraFields}
     />
@@ -564,7 +679,7 @@ export function BotSpawnZoneList({
       <TransformField label="Scale" value={item.scale} onChange={(v) => update({ scale: v })} />
       <SelectField label="Side" value={item.side} options={botSpawnSideOptions} onChange={(v) => update({ side: v })} />
       <SelectField label="Category" value={item.category} options={botSpawnCategoryOptions} onChange={(v) => update({ category: v })} />
-      <SelectField label="Preset" value={item.preset} options={botSpawnPresetOptions} onChange={(v) => update({ preset: v })} />
+      <SelectField label="Preset" value={item.preset} options={botSpawnPresetOptions}       onChange={(v) => update(presetChange(v, item.wildSpawnType))} />
       <TextField label="Wild Spawn Type" value={item.wildSpawnType || ''} onChange={(v) => update({ wildSpawnType: v })} />
       <NumberField label="Spawn Count" value={item.spawnCount} onChange={(v) => update({ spawnCount: v })} min={0} step={1} />
       <NumberField label="Delay (sec)" value={item.delayToCanSpawnSec ?? 4} onChange={(v) => update({ delayToCanSpawnSec: v })} min={0} step={0.1} />
@@ -574,6 +689,9 @@ export function BotSpawnZoneList({
       <Toggle label="Trigger Activated" checked={item.triggerActivated ?? false} onChange={(v) => update({ triggerActivated: v })} />
       <TextField label="Trigger Zone Name" value={item.triggerZoneName || ''} onChange={(v) => update({ triggerZoneName: v })} />
       <StringArrayField label="Random Spawn Types" values={item.randomSpawnTypes ?? []} onChange={(v) => update({ randomSpawnTypes: v })} />
+      <Toggle label="Followers Enabled" checked={item.followersEnabled ?? false} onChange={(v) => update({ followersEnabled: v })} />
+      <NumberField label="Min Followers" value={item.minFollowers ?? 0} onChange={(v) => { const mn = Math.max(0, Math.floor(v)); update({ minFollowers: mn, maxFollowers: Math.max(mn, item.maxFollowers ?? 0) }) }} min={0} step={1} />
+      <NumberField label="Max Followers" value={item.maxFollowers ?? 0} onChange={(v) => update({ maxFollowers: Math.max(item.minFollowers ?? 0, Math.max(0, Math.floor(v))) })} min={0} step={1} />
     </>
   )
   return (
@@ -604,7 +722,7 @@ export function PmcSpawnZoneList({
       <TransformField label="Scale" value={item.scale} onChange={(v) => update({ scale: v })} />
       <SelectField label="Side" value={item.side} options={botSpawnSideOptions} onChange={(v) => update({ side: v })} />
       <SelectField label="Category" value={item.category} options={botSpawnCategoryOptions} onChange={(v) => update({ category: v })} />
-      <SelectField label="Preset" value={item.preset} options={botSpawnPresetOptions} onChange={(v) => update({ preset: v })} />
+      <SelectField label="Preset" value={item.preset} options={botSpawnPresetOptions}       onChange={(v) => update(presetChange(v, item.wildSpawnType))} />
       <TextField label="Wild Spawn Type" value={item.wildSpawnType || ''} onChange={(v) => update({ wildSpawnType: v })} />
       <NumberField label="Min Group Size" value={item.minGroupSize ?? 1} onChange={(v) => update({ minGroupSize: v })} min={0} step={1} />
       <NumberField label="Max Group Size" value={item.maxGroupSize ?? 1} onChange={(v) => update({ maxGroupSize: v })} min={0} step={1} />

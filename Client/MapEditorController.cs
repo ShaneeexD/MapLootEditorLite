@@ -51,6 +51,20 @@ namespace MapLootEditorLite.Client
 
         private bool _mouseDragging;
         private bool _visualsCleared;
+        private BotActivityZone _patrolPlacementZone;
+        private BotActivityPatrolPoint _patrolPlacementPoint;
+        private bool _patrolPlacementIsNew;
+        private BotActivityZone _draggedPatrolZone;
+        private BotActivityPatrolPoint _draggedPatrolPoint;
+        private Vector3 _patrolDragStartPosition;
+        private bool _patrolDragWasDirty;
+
+        public bool IsPlacingPatrolPoint => _patrolPlacementPoint != null;
+
+        public bool IsPatrolPointBeingPlaced(BotActivityPatrolPoint point)
+        {
+            return ReferenceEquals(_patrolPlacementPoint, point);
+        }
 
         public static bool FreeCamInvulnerable => _editorModeActive || Time.time < _editorModeInvincibleEndTime;
         private static bool _editorModeActive;
@@ -320,6 +334,15 @@ namespace MapLootEditorLite.Client
                 _lastToggleFrame = Time.frameCount;
             }
 
+            if (IsPlacingPatrolPoint &&
+                (!_editorOpen || !ReferenceEquals(_manager.Selected, _patrolPlacementZone)))
+                CancelPatrolPointPlacement();
+            else if (IsPlacingPatrolPoint && Input.GetKeyDown(KeyCode.Escape))
+                CancelPatrolPointPlacement();
+            if (_draggedPatrolPoint != null &&
+                (!_editorOpen || !ReferenceEquals(_manager.Selected, _draggedPatrolZone)))
+                EndPatrolPointDrag();
+
             if (_editorOpen && _ui != null && !_ui.IsVisible)
                 _ui.Show();
             else if (!_editorOpen && _ui != null && _ui.IsVisible)
@@ -329,11 +352,19 @@ namespace MapLootEditorLite.Client
             {
                 _renderer.ShowSceneObjectOutlines = _ui.IsPickingSourceObject;
 
+                // Hover runs in every viewport object-picking mode (scene GO, source, list target, scatter), never over UI.
+                var pickingObjects = _ui.IsPickingSourceObject || _ui.IsPickingScatter;
                 GameObject hovered = null;
-                if (_ui.IsPickingSourceObject && !IsMouseOverUI())
-                    hovered = _ui.GetSceneObjectHover();
+                if (pickingObjects && !IsMouseOverUI())
+                    hovered = _ui.UpdateHover();
+                else
+                    _ui.ClearHover();
                 _renderer.SetHoveredSceneObject(hovered);
             }
+
+            if (_editorOpen && _ui != null && Plugin.EnableScenePickDiagnostics != null && Plugin.EnableScenePickDiagnostics.Value &&
+                Plugin.DoorDiagnosticKey != null && Plugin.DoorDiagnosticKey.Value != KeyCode.None && Input.GetKeyDown(Plugin.DoorDiagnosticKey.Value))
+                _ui.CaptureDoorDiagnostics();
 
             if (_editorOpen && _renderer != null && _renderer.Use3DSceneObjectOutlines)
                 _renderer.Update3DSceneObjectOutlines(Camera.main);
@@ -441,6 +472,16 @@ namespace MapLootEditorLite.Client
                 _renderer.DrawLabels(true);
                 _renderer.DrawSceneObjectOutlines(true);
                 _previews.DrawLabels(true);
+                if (IsPlacingPatrolPoint)
+                {
+                    var label = $"Click a world surface to place '{_patrolPlacementPoint.name}'  |  Esc: cancel";
+                    var rect = new Rect(
+                        Mathf.Clamp(Input.mousePosition.x + 14f, 0f, Mathf.Max(0f, Screen.width - 380f)),
+                        Mathf.Clamp(Screen.height - Input.mousePosition.y + 14f, 0f, Mathf.Max(0f, Screen.height - 28f)),
+                        380f,
+                        28f);
+                    GUI.Box(rect, label);
+                }
             }
         }
 
@@ -505,13 +546,13 @@ namespace MapLootEditorLite.Client
                 _visualsCleared = false;
                 _previews.ClearAll(true);
                 _manager.VanillaData = null;
-                var exported = LoadMapDataFromExports(mapId);
+                var resolved = LoadMapDataFromExports(mapId);
                 MapData mapData;
                 string source;
-                if (exported != null)
+                if (resolved != null)
                 {
-                    mapData = exported;
-                    source = "exports";
+                    mapData = resolved;
+                    source = "resolved packs";
                 }
                 else
                 {
@@ -534,62 +575,12 @@ namespace MapLootEditorLite.Client
 
         private MapData LoadMapDataFromExports(string mapId)
         {
-            var directories = new List<string>();
-            if (!string.IsNullOrEmpty(Plugin.ServerModExportsDirectory) && Directory.Exists(Plugin.ServerModExportsDirectory))
-                directories.Add(Plugin.ServerModExportsDirectory);
-
-            var preferredName = _ui?.PackName;
-            if (!string.IsNullOrEmpty(preferredName))
+            var packs = RuntimePackLoader.LoadPacks("editor");
+            foreach (var pack in packs)
             {
-                var safeName = SanitizePackName(preferredName);
-                if (!string.IsNullOrEmpty(safeName))
-                {
-                    foreach (var dir in directories)
-                    {
-                        var path = Path.Combine(dir, safeName + ".json");
-                        if (File.Exists(path))
-                        {
-                            try
-                            {
-                                var pack = JsonConvert.DeserializeObject<PackData>(File.ReadAllText(path));
-                                if (pack?.maps != null && pack.maps.TryGetValue(mapId, out var map))
-                                {
-                                    Plugin.Log.LogInfo($"Loaded map {mapId} from preferred pack '{safeName}'");
-                                    return map;
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                Plugin.Log.LogWarning($"Failed to read preferred pack {path}: {ex.Message}");
-                            }
-                        }
-                    }
-                }
+                if (RuntimePackLoader.TryGetMapData(pack, mapId, out var map))
+                    return map;
             }
-
-            foreach (var dir in directories)
-            {
-                if (!Directory.Exists(dir))
-                    continue;
-
-                foreach (var file in Directory.GetFiles(dir, "*.json", SearchOption.AllDirectories))
-                {
-                    try
-                    {
-                        var pack = JsonConvert.DeserializeObject<PackData>(File.ReadAllText(file));
-                        if (pack?.maps != null && pack.maps.TryGetValue(mapId, out var map))
-                        {
-                            Plugin.Log.LogInfo($"Loaded map {mapId} from pack {file}");
-                            return map;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Plugin.Log.LogWarning($"Failed to read pack {file}: {ex.Message}");
-                    }
-                }
-            }
-
             return null;
         }
 
@@ -650,6 +641,21 @@ namespace MapLootEditorLite.Client
                 _manager.ChangeRadius(-radiusSpeed);
 
             UpdatePreviewsForSelection();
+        }
+
+        // Position of the camera the user is currently looking through: the free cam when active, otherwise the
+        // main camera. Never uses the player transform, so a detached editor camera scans where it actually is.
+        public bool TryGetEditorCameraPosition(out Vector3 position)
+        {
+            var cam = (_freeCam && _freeCamCamera != null) ? _freeCamCamera : Camera.main;
+            if (cam == null)
+            {
+                position = Vector3.zero;
+                return false;
+            }
+
+            position = cam.transform.position;
+            return true;
         }
 
         public Vector3 GetPlayerPosition()
@@ -802,6 +808,7 @@ namespace MapLootEditorLite.Client
                 marker.name = go.name;
                 marker.sourceObjectName = go.name;
                 marker.sourceObjectPosition = TransformData.FromVector3(go.transform.position);
+                marker.sourceWorldObjectId = wio?.Id ?? "";
                 marker.scale = TransformData.FromVector3(scale);
 
                 if (stationary != null)
@@ -838,6 +845,7 @@ namespace MapLootEditorLite.Client
                 marker.name = go.name;
                 marker.sourceObjectName = go.name;
                 marker.sourceObjectPosition = TransformData.FromVector3(go.transform.position);
+                marker.sourceWorldObjectId = go.GetComponentInChildren<WorldInteractiveObject>(true)?.Id ?? "";
                 marker.scale = TransformData.FromVector3(scale);
                 _previews.RegisterStaticSource(marker.id, go);
                 _manager.Selected = marker;
@@ -965,6 +973,15 @@ namespace MapLootEditorLite.Client
             if (!EnsureMapLoaded()) return;
             _manager.Snapshot();
             var marker = _manager.CreateTriggerZone(GetLookPosition());
+            _manager.Selected = marker;
+            _renderer.Rebuild();
+        }
+
+        public void CreateBotActivityZone()
+        {
+            if (!EnsureMapLoaded()) return;
+            _manager.Snapshot();
+            var marker = _manager.CreateBotActivityZone(GetLookPosition());
             _manager.Selected = marker;
             _renderer.Rebuild();
         }
@@ -1390,8 +1407,26 @@ namespace MapLootEditorLite.Client
             _freeCamEuler.y += Input.GetAxis("Mouse X") * FreeCamLookSpeed;
             _freeCamCamera.transform.eulerAngles = _freeCamEuler;
 
+            var baseSpeed = Plugin.FreeCamSpeed != null ? Plugin.FreeCamSpeed.Value : FreeCamSpeed;
+            var scroll = Input.GetAxis("Mouse ScrollWheel");
+            var altHeld = Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
+            var step = 0f;
+            if (Input.GetKeyDown(KeyCode.RightBracket)) step = 1f;
+            else if (Input.GetKeyDown(KeyCode.LeftBracket)) step = -1f;
+            else if (altHeld && scroll != 0f) step = Mathf.Sign(scroll);
+            if (step != 0f && Plugin.FreeCamSpeed != null)
+            {
+                baseSpeed = Mathf.Clamp(baseSpeed * (step > 0f ? 1.25f : 0.8f), 0.5f, 300f);
+                Plugin.FreeCamSpeed.Value = baseSpeed;
+                Plugin.Log.LogInfo($"[MEL] Free camera speed: {baseSpeed:F1} m/s (Shift x{Plugin.FreeCamFastMultiplier.Value:F1}).");
+                scroll = 0f;
+            }
+            else if (altHeld)
+                scroll = 0f;
+
+            var fastMultiplier = Plugin.FreeCamFastMultiplier != null ? Plugin.FreeCamFastMultiplier.Value : FreeCamFastSpeed / FreeCamSpeed;
             float speed = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)
-                ? FreeCamFastSpeed : FreeCamSpeed;
+                ? baseSpeed * fastMultiplier : baseSpeed;
             speed *= Time.deltaTime;
 
             var forward = _freeCamCamera.transform.forward;
@@ -1406,7 +1441,6 @@ namespace MapLootEditorLite.Client
             if (Input.GetKey(KeyCode.Q)) move += Vector3.up;
             if (Input.GetKey(KeyCode.E)) move -= Vector3.up;
 
-            var scroll = Input.GetAxis("Mouse ScrollWheel");
             if (scroll != 0f)
                 move += forward * scroll * 100f;
 
@@ -1501,8 +1535,18 @@ namespace MapLootEditorLite.Client
 
         private void HandleMouseInput()
         {
+            if (_draggedPatrolPoint != null)
+            {
+                HandlePatrolPointDragInput();
+                return;
+            }
             if (_freeCam && _freeCamCursorLocked)
                 return;
+            if (IsPlacingPatrolPoint)
+            {
+                HandlePatrolPointPlacementInput();
+                return;
+            }
             if (IsMouseOverUI())
                 return;
             if (_ui?.IsDeletePending == true)
@@ -1518,6 +1562,7 @@ namespace MapLootEditorLite.Client
                     {
                         target.sourceObjectName = picked.name;
                         target.sourceObjectPosition = TransformData.FromVector3(picked.transform.position);
+                        target.sourceWorldObjectId = picked.GetComponentInChildren<WorldInteractiveObject>(true)?.Id ?? "";
                         if (target is MarkerBase markerBase)
                         {
                             markerBase.rotation = TransformData.FromVector3(picked.transform.rotation.eulerAngles);
@@ -1548,7 +1593,9 @@ namespace MapLootEditorLite.Client
             {
                 if (Input.GetMouseButtonDown(0))
                 {
-                    var picked = _ui.TryPickSourceSceneObject();
+                    var picked = _ui.TryPickSourceSceneObject(out var selectedHit);
+                    if (selectedHit.collider != null || picked == null)
+                        _ui.LogWorldSurfaceHit(selectedHit, picked);
                     _ui.SelectSceneGO(picked);
                     _ui.SetPickingSceneGO(false);
                 }
@@ -1559,7 +1606,23 @@ namespace MapLootEditorLite.Client
             if (camera == null)
                 return;
 
+            if (Input.GetMouseButtonDown(0) &&
+                _renderer.TryPickPatrolPoint(camera, Input.mousePosition, 18f, out var patrolZone, out var patrolPoint))
+            {
+                _manager.Snapshot();
+                _draggedPatrolZone = patrolZone;
+                _draggedPatrolPoint = patrolPoint;
+                _patrolDragStartPosition = patrolPoint.position.ToVector3();
+                _patrolDragWasDirty = _manager.IsDirty;
+                return;
+            }
+
             var hoveredAxis = _renderer.PickGizmoAxis(camera, Input.mousePosition, 25f);
+            // Move/rotate/scale gizmo axes win ties so resizing never starts when the user grabs the gizmo.
+            if (_activeResizeHandle < 0)
+                _renderer.HoveredResizeHandle = hoveredAxis == GizmoAxis.None && _activeGizmoAxis == GizmoAxis.None && !_mouseDragging
+                    ? _renderer.PickResizeHandle(camera, Input.mousePosition, 16f)
+                    : -1;
 
             if (Input.GetMouseButtonDown(0))
             {
@@ -1568,7 +1631,12 @@ namespace MapLootEditorLite.Client
                 {
                     _activeGizmoAxis = hoveredAxis;
                     _renderer.ActiveAxis = hoveredAxis;
+                    ResetRotationDiagnostics();
                     RecordGizmoDragStart(camera);
+                }
+                else if (_renderer.HoveredResizeHandle >= 0 && _renderer.TryGetResizeTarget(out var resizeZone))
+                {
+                    BeginZoneResize(camera, resizeZone, _renderer.HoveredResizeHandle);
                 }
                 else
                 {
@@ -1588,11 +1656,16 @@ namespace MapLootEditorLite.Client
                         _ui.SelectSceneGO(null);
                     }
                 }
+
             }
 
             if (Input.GetMouseButton(0) && ((_manager.Selected != null && !_manager.Selected.isVanilla) || _manager.SelectedChild != null))
             {
-                if (_activeGizmoAxis != GizmoAxis.None)
+                if (_activeResizeHandle >= 0)
+                {
+                    ApplyZoneResize(camera);
+                }
+                else if (_activeGizmoAxis != GizmoAxis.None)
                 {
                     ApplyGizmoDrag(camera);
                 }
@@ -1627,10 +1700,19 @@ namespace MapLootEditorLite.Client
 
             if (Input.GetMouseButtonUp(0))
             {
-                bool wasDragging = _activeGizmoAxis != GizmoAxis.None || _mouseDragging;
+                bool wasDragging = _activeGizmoAxis != GizmoAxis.None || _mouseDragging || _activeResizeHandle >= 0;
+                if (_activeResizeHandle >= 0)
+                {
+                    EndZoneResize();
+                }
                 _activeGizmoAxis = GizmoAxis.None;
                 _renderer.ActiveAxis = GizmoAxis.None;
                 _mouseDragging = false;
+                _gizmoDragPlane = new Plane();
+                _rotAccum = 0f;
+                _rotPrevRaw = 0f;
+                _rotUseRingPlane = false;
+                ResetRotationDiagnostics();
                 if (wasDragging)
                 {
                     UpdatePreviewsForSelection();
@@ -1639,14 +1721,280 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        private void HandlePatrolPointDragInput()
+        {
+            if (_draggedPatrolZone == null || _draggedPatrolPoint == null ||
+                !ReferenceEquals(_manager.Selected, _draggedPatrolZone) ||
+                _draggedPatrolZone.patrolPoints == null ||
+                !_draggedPatrolZone.patrolPoints.Contains(_draggedPatrolPoint))
+            {
+                EndPatrolPointDrag();
+                return;
+            }
+
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                _draggedPatrolPoint.position = TransformData.FromVector3(_patrolDragStartPosition);
+                _manager.IsDirty = _patrolDragWasDirty;
+                EndPatrolPointDrag();
+                _ui?.RequestInspectorRefresh();
+                return;
+            }
+
+            if ((Input.GetMouseButton(0) || Input.GetMouseButtonUp(0)) && !IsMouseOverUI() &&
+                _ui.TryGetWorldSurfacePoint(Input.mousePosition, out var position))
+            {
+                _draggedPatrolPoint.position = TransformData.FromVector3(position);
+                _manager.IsDirty = true;
+            }
+
+            if (Input.GetMouseButtonUp(0))
+            {
+                var finalPosition = _draggedPatrolPoint.position.ToVector3();
+                var moved = (finalPosition - _patrolDragStartPosition).sqrMagnitude > 0.0001f;
+                if (moved)
+                {
+                    CustomEditorUI.LogOutput($"Moved patrol point '{_draggedPatrolPoint.name}' to {finalPosition.x:F1}, {finalPosition.y:F1}, {finalPosition.z:F1}.");
+                    _ui?.RequestInspectorRefresh();
+                }
+                EndPatrolPointDrag();
+            }
+        }
+
+        private void EndPatrolPointDrag()
+        {
+            _draggedPatrolZone = null;
+            _draggedPatrolPoint = null;
+            _patrolDragWasDirty = false;
+        }
+
+        public void BeginAddPatrolPoint(BotActivityZone zone)
+        {
+            if (zone == null)
+                return;
+            var point = new BotActivityPatrolPoint
+            {
+                id = BotActivityPatrolPoint.NewId(),
+                name = $"Patrol {(zone.patrolPoints?.Count ?? 0) + 1}",
+                position = TransformData.FromVector3(zone.position.ToVector3())
+            };
+            BeginPatrolPointPlacement(zone, point, true);
+        }
+
+        public void BeginMovePatrolPoint(BotActivityZone zone, BotActivityPatrolPoint point)
+        {
+            BeginPatrolPointPlacement(zone, point, false);
+        }
+
+        public void CancelPatrolPointPlacement()
+        {
+            if (!IsPlacingPatrolPoint)
+                return;
+            _patrolPlacementZone = null;
+            _patrolPlacementPoint = null;
+            _patrolPlacementIsNew = false;
+            _ui?.RequestInspectorRefresh();
+        }
+
+        private void BeginPatrolPointPlacement(BotActivityZone zone, BotActivityPatrolPoint point, bool isNew)
+        {
+            if (!_editorOpen || zone == null || point == null || zone.isVanilla ||
+                !ReferenceEquals(_manager.Selected, zone) || !ReferenceEquals(_manager.FindById(zone.id), zone) ||
+                (!isNew && (zone.patrolPoints == null || !zone.patrolPoints.Contains(point))))
+                return;
+
+            _patrolPlacementZone = zone;
+            _patrolPlacementPoint = point;
+            _patrolPlacementIsNew = isNew;
+            _ui?.RequestInspectorRefresh();
+        }
+
+        private void HandlePatrolPointPlacementInput()
+        {
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                CancelPatrolPointPlacement();
+                return;
+            }
+
+            if (!_editorOpen || _ui == null || !_ui.IsVisible || _patrolPlacementZone == null ||
+                !ReferenceEquals(_manager.Selected, _patrolPlacementZone) ||
+                !ReferenceEquals(_manager.FindById(_patrolPlacementZone.id), _patrolPlacementZone) ||
+                (!_patrolPlacementIsNew &&
+                    (_patrolPlacementZone.patrolPoints == null || !_patrolPlacementZone.patrolPoints.Contains(_patrolPlacementPoint))))
+            {
+                CancelPatrolPointPlacement();
+                return;
+            }
+
+            if (IsMouseOverUI() || !Input.GetMouseButtonDown(0))
+                return;
+
+            if (!_ui.TryGetWorldSurfacePoint(Input.mousePosition, out var position))
+            {
+                CustomEditorUI.LogOutput("Patrol point placement: no world surface was hit. Move over a collider and click again.");
+                return;
+            }
+
+            _manager.Snapshot();
+            if (_patrolPlacementIsNew)
+            {
+                _patrolPlacementZone.patrolPoints ??= new List<BotActivityPatrolPoint>();
+                _patrolPlacementZone.patrolPoints.Add(_patrolPlacementPoint);
+            }
+            _patrolPlacementPoint.position = TransformData.FromVector3(position);
+            _patrolPlacementZone.patrolEnabled = true;
+            _manager.IsDirty = true;
+            CustomEditorUI.LogOutput($"Placed patrol point '{_patrolPlacementPoint.name}' at {position.x:F1}, {position.y:F1}, {position.z:F1} on activity zone '{_patrolPlacementZone.zoneId}'.");
+            _patrolPlacementZone = null;
+            _patrolPlacementPoint = null;
+            _patrolPlacementIsNew = false;
+            _ui?.RequestInspectorRefresh();
+        }
+
+        private int _activeResizeHandle = -1;
+        private Vector3 _resizeGrabOffset;
+        private Vector3 _resizeStartCenter;
+        private float _resizeStartYaw;
+        private float _resizeStartWidth;
+        private float _resizeStartDepth;
+        private Vector3 _resizeAnchorLocal;
+
+        private bool TryProjectOntoZonePlane(Camera camera, BotActivityZone zone, out Vector3 point)
+        {
+            var plane = new Plane(Vector3.up, zone.position.ToVector3());
+            var ray = camera.ScreenPointToRay(Input.mousePosition);
+            if (plane.Raycast(ray, out var distance))
+            {
+                point = ray.GetPoint(distance);
+                return true;
+            }
+            point = default(Vector3);
+            return false;
+        }
+
+        // The undo snapshot was taken on mouse-down; anchored resizing also shifts the center.
+        private void BeginZoneResize(Camera camera, BotActivityZone zone, int handle)
+        {
+            _activeResizeHandle = handle;
+            _renderer.ActiveResizeHandle = handle;
+            _resizeStartCenter = zone.position.ToVector3();
+            _resizeStartYaw = zone.rotation != null ? zone.rotation.y : 0f;
+            _resizeStartWidth = zone.shape == BotActivityZoneShape.Circle ? zone.radius : zone.EffectiveWidth;
+            _resizeStartDepth = zone.shape == BotActivityZoneShape.Circle ? zone.radius : zone.EffectiveDepth;
+            _resizeGrabOffset = Vector3.zero;
+            _resizeAnchorLocal = Vector3.zero;
+            if (TryProjectOntoZonePlane(camera, zone, out var point))
+            {
+                var yaw = Quaternion.Euler(0f, _resizeStartYaw, 0f);
+                var localPoint = Quaternion.Inverse(yaw) * (point - _resizeStartCenter);
+                if (zone.shape == BotActivityZoneShape.Circle)
+                {
+                    _resizeGrabOffset.x = _resizeStartWidth - localPoint.x;
+                }
+                else
+                {
+                    var halfWidth = _resizeStartWidth * 0.5f;
+                    var halfDepth = _resizeStartDepth * 0.5f;
+                    if (handle < 4)
+                    {
+                        var signX = handle == 0 || handle == 3 ? 1f : -1f;
+                        var signZ = handle == 0 || handle == 1 ? 1f : -1f;
+                        _resizeAnchorLocal = new Vector3(-signX * halfWidth, 0f, -signZ * halfDepth);
+                        _resizeGrabOffset = new Vector3(signX * halfWidth - localPoint.x, 0f, signZ * halfDepth - localPoint.z);
+                    }
+                    else if (handle == 4 || handle == 6)
+                    {
+                        var sign = handle == 4 ? 1f : -1f;
+                        _resizeAnchorLocal.x = -sign * halfWidth;
+                        _resizeGrabOffset.x = sign * halfWidth - localPoint.x;
+                    }
+                    else
+                    {
+                        var sign = handle == 5 ? 1f : -1f;
+                        _resizeAnchorLocal.z = -sign * halfDepth;
+                        _resizeGrabOffset.z = sign * halfDepth - localPoint.z;
+                    }
+                }
+            }
+        }
+
+        private void ApplyZoneResize(Camera camera)
+        {
+            if (!(_manager.Selected is BotActivityZone zone) || zone.isVanilla)
+            {
+                EndZoneResize();
+                return;
+            }
+            if (!TryProjectOntoZonePlane(camera, zone, out var point))
+                return;
+
+            if (zone.shape == BotActivityZoneShape.Circle)
+            {
+                var yaw = Quaternion.Euler(0f, _resizeStartYaw, 0f);
+                var local = Quaternion.Inverse(yaw) * (point - _resizeStartCenter) + _resizeGrabOffset;
+                _manager.SetActivityZoneSize(zone, local.x, out _);
+            }
+            else
+            {
+                var yaw = Quaternion.Euler(0f, _resizeStartYaw, 0f);
+                var local = Quaternion.Inverse(yaw) * (point - _resizeStartCenter) + _resizeGrabOffset;
+                var width = _resizeStartWidth;
+                var depth = _resizeStartDepth;
+                var center = Vector3.zero;
+                if (_activeResizeHandle < 4)
+                {
+                    var signX = _activeResizeHandle == 0 || _activeResizeHandle == 3 ? 1f : -1f;
+                    var signZ = _activeResizeHandle == 0 || _activeResizeHandle == 1 ? 1f : -1f;
+                    width = BotActivityZone.ClampDimension((local.x - _resizeAnchorLocal.x) * signX);
+                    depth = BotActivityZone.ClampDimension((local.z - _resizeAnchorLocal.z) * signZ);
+                    center.x = _resizeAnchorLocal.x + signX * width * 0.5f;
+                    center.z = _resizeAnchorLocal.z + signZ * depth * 0.5f;
+                }
+                else if (_activeResizeHandle == 4 || _activeResizeHandle == 6)
+                {
+                    var sign = _activeResizeHandle == 4 ? 1f : -1f;
+                    width = BotActivityZone.ClampDimension((local.x - _resizeAnchorLocal.x) * sign);
+                    center.x = _resizeAnchorLocal.x + sign * width * 0.5f;
+                }
+                else
+                {
+                    var sign = _activeResizeHandle == 5 ? 1f : -1f;
+                    depth = BotActivityZone.ClampDimension((local.z - _resizeAnchorLocal.z) * sign);
+                    center.z = _resizeAnchorLocal.z + sign * depth * 0.5f;
+                }
+
+                _manager.SetActivityZoneDimension(zone, true, width);
+                _manager.SetActivityZoneDimension(zone, false, depth);
+                var worldCenter = _resizeStartCenter + yaw * center;
+                zone.position = TransformData.FromVector3(worldCenter);
+                _manager.IsDirty = true;
+            }
+            _ui?.SyncZoneSizeField(zone);
+        }
+
+        private void EndZoneResize()
+        {
+            _activeResizeHandle = -1;
+            _renderer.ActiveResizeHandle = -1;
+            _ui?.SyncZoneSizeField(_manager.Selected as BotActivityZone, true);
+        }
+
         private void ApplyGizmoDrag(Camera camera)
         {
-            if (!GetGizmoDragPlane(camera, _activeGizmoAxis, out _gizmoDragPlane))
+            // Plane is captured once in RecordGizmoDragStart; an unset plane has a zero normal.
+            if (_gizmoDragPlane.normal == Vector3.zero)
                 return;
 
             var ray = camera.ScreenPointToRay(Input.mousePosition);
+            _diagRayDir = ray.direction;
+            _diagPlaneDot = Mathf.Abs(Vector3.Dot(ray.direction, _gizmoDragPlane.normal));
             if (!_gizmoDragPlane.Raycast(ray, out float d))
+            {
+                if (_gizmoMode == GizmoMode.Rotate)
+                    DiagRotation(_manager.SelectedChild != null ? "child" : "root", false, 0f, 0f, null, Quaternion.identity, null);
                 return;
+            }
 
             var point = ray.GetPoint(d);
             var axisDir = GetGizmoAxisDirection(_activeGizmoAxis, GetGizmoOrientation());
@@ -1682,12 +2030,15 @@ namespace MapLootEditorLite.Client
                     break;
 
                 case GizmoMode.Rotate:
-                    var v0 = Vector3.ProjectOnPlane(_gizmoDragStartWorld - _gizmoDragStartCenter, axisDir);
-                    var v1 = Vector3.ProjectOnPlane(point - _gizmoDragStartCenter, axisDir);
-                    if (v0.sqrMagnitude > 0.0001f && v1.sqrMagnitude > 0.0001f)
+                    float? diagAngle = null;
+                    Quaternion? diagTarget = null;
+                    var diagCurrent = _manager.Selected.rotation.ToQuaternion();
+                    var rotValid = TryComputeRotationAngle(point, _gizmoDragStartCenter, out var angle, out var v0Mag, out var v1Mag, out var edgeOnHeld);
+                    if (rotValid)
                     {
-                        var angle = Vector3.SignedAngle(v0, v1, axisDir);
-                        var deltaRot = Quaternion.AngleAxis(angle, axisDir);
+                        var deltaRot = Quaternion.AngleAxis(angle, _rotAxisDir);
+                        diagAngle = angle;
+                        diagTarget = deltaRot * Quaternion.Euler(_gizmoDragStartMarkerRot);
                         if (isGroup)
                         {
                             foreach (var id in _manager.SelectedIds)
@@ -1706,6 +2057,7 @@ namespace MapLootEditorLite.Client
                             _manager.Selected.rotation = TransformData.FromVector3(newRot.eulerAngles);
                         }
                     }
+                    DiagRotation(isGroup ? "root(group)" : "root", true, v0Mag, v1Mag, diagAngle, diagCurrent, diagTarget, edgeOnHeld);
                     break;
 
                 case GizmoMode.Scale:
@@ -1856,15 +2208,19 @@ namespace MapLootEditorLite.Client
                     break;
 
                 case GizmoMode.Rotate:
-                    var v0 = Vector3.ProjectOnPlane(_gizmoDragStartWorld - _gizmoDragStartChildWorldPos, axisDir);
-                    var v1 = Vector3.ProjectOnPlane(point - _gizmoDragStartChildWorldPos, axisDir);
-                    if (v0.sqrMagnitude > 0.0001f && v1.sqrMagnitude > 0.0001f)
+                    float? diagAngle = null;
+                    Quaternion? diagTarget = null;
+                    var diagCurrent = child.rotation;
+                    var rotValid = TryComputeRotationAngle(point, _gizmoDragStartChildWorldPos, out var angle, out var v0Mag, out var v1Mag, out var edgeOnHeld);
+                    if (rotValid)
                     {
-                        var angle = Vector3.SignedAngle(v0, v1, axisDir);
-                        var deltaRot = Quaternion.AngleAxis(angle, axisDir);
+                        var deltaRot = Quaternion.AngleAxis(angle, _rotAxisDir);
+                        diagAngle = angle;
+                        diagTarget = deltaRot * _gizmoDragStartChildWorldRot;
                         child.rotation = deltaRot * _gizmoDragStartChildWorldRot;
                         data.rotation = TransformData.FromVector3(child.localEulerAngles);
                     }
+                    DiagRotation("child", true, v0Mag, v1Mag, diagAngle, diagCurrent, diagTarget, edgeOnHeld);
                     break;
 
                 case GizmoMode.Scale:
@@ -1882,6 +2238,131 @@ namespace MapLootEditorLite.Client
 
             _manager.IsDirty = true;
             _ui?.RequestInspectorRefresh();
+        }
+
+        // Rotation drag state, captured at drag start and reset at drag start/end.
+        private const float RotMinProjectedLength = 0.04f;
+        private const float RotRingPlaneMinDot = 0.2f;
+        private Vector3 _rotAxisDir;
+        private bool _rotUseRingPlane;
+        private float _rotPrevRaw;
+        private float _rotAccum;
+
+        // Chooses the rotation drag plane once per drag. The ring plane (normal = rotation axis) keeps the
+        // projected vectors well-conditioned; if the ray is nearly parallel to it, the camera plane that
+        // RecordGizmoDragStart already set is kept for the whole drag.
+        private void InitRotationDragState(Camera camera)
+        {
+            _rotPrevRaw = 0f;
+            _rotAccum = 0f;
+            _rotUseRingPlane = false;
+            if (_gizmoMode != GizmoMode.Rotate)
+                return;
+
+            _rotAxisDir = GetGizmoAxisDirection(_activeGizmoAxis, GetGizmoOrientation());
+            if (_rotAxisDir == Vector3.zero)
+                return;
+
+            var ray = camera.ScreenPointToRay(Input.mousePosition);
+            if (Mathf.Abs(Vector3.Dot(ray.direction, _rotAxisDir)) < RotRingPlaneMinDot)
+                return;
+
+            var ringPlane = new Plane(_rotAxisDir, _gizmoDragStartCenter);
+            if (!ringPlane.Raycast(ray, out float d))
+                return;
+
+            _gizmoDragPlane = ringPlane;
+            _gizmoDragStartWorld = ray.GetPoint(d);
+            _rotUseRingPlane = true;
+        }
+
+        // Returns false (hold the last valid rotation, leave tracking state untouched) for unstable samples.
+        private bool TryComputeRotationAngle(Vector3 point, Vector3 center, out float angle, out float v0Mag, out float v1Mag, out bool edgeOnHeld)
+        {
+            angle = _rotAccum;
+            edgeOnHeld = false;
+            var v0 = Vector3.ProjectOnPlane(_gizmoDragStartWorld - center, _rotAxisDir);
+            var v1 = Vector3.ProjectOnPlane(point - center, _rotAxisDir);
+            v0Mag = v0.magnitude;
+            v1Mag = v1.magnitude;
+
+            if (_rotUseRingPlane && _diagPlaneDot < RotRingPlaneMinDot)
+            {
+                edgeOnHeld = true;
+                return false;
+            }
+
+            if (v0Mag < RotMinProjectedLength || v1Mag < RotMinProjectedLength)
+                return false;
+
+            var raw = Vector3.SignedAngle(v0, v1, _rotAxisDir);
+            _rotAccum += Mathf.DeltaAngle(_rotPrevRaw, raw);
+            _rotPrevRaw = raw;
+            angle = _rotAccum;
+            return true;
+        }
+
+        // TEMPORARY rotation-gizmo diagnostics. Logging only; never affects the rotation result.
+        private Vector3 _diagRayDir;
+        private float _diagPlaneDot = 1f;
+        private float _diagPrevAngle;
+        private bool _diagHasPrev;
+        private string _diagLastKey;
+        private float _diagLastTime;
+
+        private void ResetRotationDiagnostics()
+        {
+            _diagHasPrev = false;
+            _diagLastKey = null;
+        }
+
+        private void DiagRotation(string scope, bool hit, float v0Mag, float v1Mag, float? angle, Quaternion current, Quaternion? target, bool edgeOnHeld = false)
+        {
+            try
+            {
+                const float NearZero = RotMinProjectedLength;
+                const float ParallelDot = 0.1f;
+                const float SharpDelta = 45f;
+
+                var flags = new List<string>();
+                if (!hit) flags.Add("RAY_MISS");
+                if (edgeOnHeld) flags.Add("RING_EDGE_ON_HELD");
+                if (hit && v0Mag < NearZero) flags.Add("V0_ZERO");
+                if (hit && v1Mag < NearZero) flags.Add("V1_ZERO");
+                if (_diagPlaneDot < ParallelDot) flags.Add("RAY_NEAR_PARALLEL");
+
+                float delta = 0f;
+                if (angle.HasValue)
+                {
+                    if (_diagHasPrev)
+                    {
+                        delta = Mathf.DeltaAngle(_diagPrevAngle, angle.Value);
+                        if (Mathf.Abs(delta) > SharpDelta) flags.Add("ANGLE_JUMP");
+                    }
+                    _diagPrevAngle = angle.Value;
+                    _diagHasPrev = true;
+                }
+
+                if (flags.Count == 0)
+                    return;
+
+                // Throttle identical repeated warnings.
+                var key = string.Join("|", flags);
+                if (key == _diagLastKey && Time.unscaledTime - _diagLastTime < 0.5f)
+                    return;
+                _diagLastKey = key;
+                _diagLastTime = Time.unscaledTime;
+
+                var cur = current.eulerAngles;
+                var tgt = target.HasValue ? target.Value.eulerAngles.ToString("F1") : "n/a";
+                Plugin.Log.LogWarning($"[RotDiag] {string.Join(",", flags)} scope={scope} axis={_activeGizmoAxis} " +
+                    $"angle={(angle.HasValue ? angle.Value.ToString("F2") : "skipped")} prevDelta={delta:F2} " +
+                    $"|v0|={v0Mag:F4} |v1|={v1Mag:F4} rayDir={_diagRayDir.ToString("F3")} |ray.n|={_diagPlaneDot:F3} " +
+                    $"hit={hit} curRot={cur.ToString("F1")} targetRot={tgt}");
+            }
+            catch
+            {
+            }
         }
 
         private List<ChildInteractableData> GetChildInteractables(MarkerBase marker)
@@ -1979,6 +2460,7 @@ namespace MapLootEditorLite.Client
                     else
                         _gizmoDragStartWorld = _gizmoDragStartCenter;
                 }
+                InitRotationDragState(camera);
                 return;
             }
 
@@ -2059,6 +2541,7 @@ namespace MapLootEditorLite.Client
                 else
                     _gizmoDragStartWorld = _gizmoDragStartCenter;
             }
+            InitRotationDragState(camera);
         }
 
         private Quaternion GetGizmoOrientation()
@@ -2307,12 +2790,16 @@ namespace MapLootEditorLite.Client
                     case "OcclusionRepairVolume":
                         copy = entry.data.ToObject<OcclusionRepairVolume>();
                         break;
+                    case "BotActivityZone":
+                        copy = entry.data.ToObject<BotActivityZone>();
+                        break;
                     default:
                         continue;
                 }
 
                 copy.id = Guid.NewGuid().ToString();
                 copy.name = copy.name + "_prefab";
+                _manager.AssignFreshZoneId(copy);
                 var localPos = copy.position.ToVector3();
                 var localRotEuler = copy.rotation.ToVector3();
                 var localRot = Quaternion.Euler(localRotEuler);
@@ -2448,6 +2935,8 @@ namespace MapLootEditorLite.Client
             {
                 marker.sourceObjectName = best.name;
                 marker.sourceObjectPosition = TransformData.FromVector3(best.transform.position);
+                marker.sourceWorldObjectId = (best.GetComponentInChildren<WorldInteractiveObject>(true)
+                    ?? best.GetComponentInParent<WorldInteractiveObject>())?.Id ?? "";
             }
         }
 
@@ -2477,6 +2966,7 @@ namespace MapLootEditorLite.Client
 
                     copy.id = Guid.NewGuid().ToString();
                     copy.name = copy.name + "_paste";
+                    _manager.AssignFreshZoneId(copy);
                     if (copy is InteractiveObject io && string.IsNullOrEmpty(io.sourceObjectName))
                         TryResolveInteractiveSource(io);
                     _manager.AddMarker(copy);
@@ -2526,6 +3016,7 @@ namespace MapLootEditorLite.Client
                 case "OcclusionRepairVolume": return entry.data.ToObject<OcclusionRepairVolume>();
                 case "Blocker": return entry.data.ToObject<Blocker>();
                 case "NavMeshArea": return entry.data.ToObject<NavMeshArea>();
+                case "BotActivityZone": return entry.data.ToObject<BotActivityZone>();
                 default: return null;
             }
         }
@@ -2563,7 +3054,6 @@ namespace MapLootEditorLite.Client
             }
 
             var exportsDir = Plugin.ServerModExportsDirectory;
-            Directory.CreateDirectory(exportsDir);
             var path = Path.Combine(exportsDir, safeName + ".json");
 
             PackData pack = null;
@@ -2581,6 +3071,15 @@ namespace MapLootEditorLite.Client
                     var readMsg = $"Failed to read existing pack {path}: {ex.Message}";
                     Plugin.Log.LogWarning(readMsg);
                     CustomEditorUI.LogOutput(readMsg);
+                    return;
+                }
+
+                if (pack?.maps == null)
+                {
+                    var invalidMsg = $"Failed to read existing pack {path}: the pack has no valid maps object; the file was left unchanged.";
+                    Plugin.Log.LogWarning(invalidMsg);
+                    CustomEditorUI.LogOutput(invalidMsg);
+                    return;
                 }
             }
 
@@ -2603,10 +3102,20 @@ namespace MapLootEditorLite.Client
                 Culture = CultureInfo.InvariantCulture,
                 Formatting = Formatting.Indented
             };
-            File.WriteAllText(path, JsonConvert.SerializeObject(pack, settings));
-            var successMsg = $"Exported pack '{safeName}' to {path}";
-            Plugin.Log.LogInfo(successMsg);
-            CustomEditorUI.LogOutput(successMsg);
+            try
+            {
+                var json = JsonConvert.SerializeObject(pack, settings);
+                AtomicFileWriter.WriteAllText(path, json, true);
+                var successMsg = $"Exported pack '{safeName}' to {path}";
+                Plugin.Log.LogInfo(successMsg);
+                CustomEditorUI.LogOutput(successMsg);
+            }
+            catch (Exception ex)
+            {
+                var errorMsg = $"Failed to export pack '{safeName}' to {path}: {ex.Message}";
+                Plugin.Log.LogError(errorMsg);
+                CustomEditorUI.LogOutput(errorMsg);
+            }
         }
 
         private static string SanitizePackName(string name)

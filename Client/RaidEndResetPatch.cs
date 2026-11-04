@@ -17,6 +17,7 @@ namespace MapLootEditorLite.Client
             RuntimeLightZoneSpawner.Instance?.ResetState();
             RuntimeOcclusionRepairSpawner.Instance?.ResetState();
             RuntimeCutVolumeSpawner.Instance?.ResetState();
+            RuntimeNavMeshBuilder.Instance?.ResetState();
             MapEditorController.Instance?.ResetState();
         }
     }

@@ -112,6 +112,7 @@ namespace MapLootEditorLite.Client
         {
             ResetDoorLinks();
             ClearSpawned();
+            _packs = RuntimePackLoader.LoadPacks("interactive objects and removals");
             _currentWorld = null;
             _currentMapId = null;
             _sourceNameIndex = null;
@@ -160,40 +161,9 @@ namespace MapLootEditorLite.Client
 
         private void LoadPacks()
         {
-            var directories = new List<string>();
-            if (!string.IsNullOrEmpty(Plugin.ServerModPacksDirectory) && Directory.Exists(Plugin.ServerModPacksDirectory))
-                directories.Add(Plugin.ServerModPacksDirectory);
-
-            if (directories.Count == 0)
-            {
-                Plugin.Log.LogWarning($"No pack directories found; interactive objects and object removals will not be applied.");
-                return;
-            }
-
-            foreach (var dir in directories)
-            {
-                foreach (var file in Directory.GetFiles(dir, "*.json", SearchOption.AllDirectories))
-                {
-                    try
-                    {
-                        var json = File.ReadAllText(file);
-                        var trimmed = json.TrimStart();
-                        if (trimmed.Length > 0 && trimmed[0] == '[')
-                            continue;
-                        var pack = JsonConvert.DeserializeObject<PackData>(json, PackData.InvariantSettings);
-                        if (pack?.maps != null)
-                        {
-                            _packs.Add(pack);
-                            var removedCount = pack.maps.Values.Sum(m => m.removedObjects?.Count ?? 0);
-                            Plugin.Log.LogInfo($"Loaded pack '{pack.name}' from {file} ({removedCount} removedObjects across {pack.maps.Count} maps).");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Plugin.Log.LogWarning($"Failed to load pack {file}: {ex.Message}");
-                    }
-                }
-            }
+            _packs = RuntimePackLoader.LoadPacks("interactive objects and removals");
+            var removedCount = _packs.Sum(pack => pack.maps.Values.Sum(map => map.removedObjects?.Count ?? 0));
+            Plugin.Log.LogInfo($"[MEL persistence] Loaded {removedCount} removed-object entries for interactive-object restoration.");
         }
 
         private void SpawnForMap(string mapId, GameWorld world)
@@ -202,7 +172,7 @@ namespace MapLootEditorLite.Client
             var removedObjects = new List<RemovedObject>();
             foreach (var pack in _packs)
             {
-                if (pack.maps.TryGetValue(mapId, out var map))
+                if (RuntimePackLoader.TryGetMapData(pack, mapId, out var map))
                 {
                     objects.AddRange(map.interactiveObjects ?? new List<InteractiveObject>());
                     removedObjects.AddRange(map.removedObjects ?? new List<RemovedObject>());
@@ -416,7 +386,7 @@ namespace MapLootEditorLite.Client
 
                 for (int attempt = 0; attempt < 5; attempt++)
                 {
-                    source = FindSourceObject(obj.sourceObjectName, obj.sourceObjectPosition.ToVector3());
+                    source = FindSourceObject(obj.sourceObjectName, obj.sourceObjectPosition.ToVector3(), obj.sourceWorldObjectId);
                     if (source != null)
                         break;
 
@@ -468,7 +438,7 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        private GameObject FindSourceObject(string name, Vector3 position, float maxSqr = float.MaxValue)
+        private GameObject FindSourceObject(string name, Vector3 position, string sourceWorldObjectId = null, float maxSqr = float.MaxValue)
         {
             if (_sourceNameIndex == null)
                 BuildSourceNameIndex();
@@ -476,6 +446,7 @@ namespace MapLootEditorLite.Client
             if (_sourceNameIndex.TryGetValue(name, out var candidates))
             {
                 GameObject best = null;
+                GameObject bestExactId = null;
                 float bestDist = float.MaxValue;
                 for (int i = 0; i < candidates.Count; i++)
                 {
@@ -489,13 +460,25 @@ namespace MapLootEditorLite.Client
                         bestDist = dist;
                         best = t.gameObject;
                     }
+                    var sourceWio = t.GetComponentInChildren<WorldInteractiveObject>(true)
+                        ?? t.GetComponentInParent<WorldInteractiveObject>();
+                    if (!string.IsNullOrEmpty(sourceWorldObjectId) && sourceWio != null && sourceWio.Id == sourceWorldObjectId
+                        && (bestExactId == null || dist < (bestExactId.transform.position - position).sqrMagnitude))
+                        bestExactId = t.gameObject;
                 }
+                if (bestExactId != null)
+                    return bestExactId;
                 if (best != null)
+                {
+                    if (!string.IsNullOrEmpty(sourceWorldObjectId))
+                        Plugin.Log.LogWarning($"Source WorldInteractiveObject id '{sourceWorldObjectId}' was not found for '{name}'; falling back to the saved name and position.");
                     return best;
+                }
             }
 
             // Fallback: scan for late-loaded objects not in the cache
             GameObject fallback = null;
+            GameObject fallbackExactId = null;
             float fallbackDist = float.MaxValue;
             var sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
 
@@ -517,10 +500,19 @@ namespace MapLootEditorLite.Client
                             fallbackDist = dist;
                             fallback = t.gameObject;
                         }
+                        var sourceWio = t.GetComponentInChildren<WorldInteractiveObject>(true)
+                            ?? t.GetComponentInParent<WorldInteractiveObject>();
+                        if (!string.IsNullOrEmpty(sourceWorldObjectId) && sourceWio != null && sourceWio.Id == sourceWorldObjectId
+                            && (fallbackExactId == null || dist < (fallbackExactId.transform.position - position).sqrMagnitude))
+                            fallbackExactId = t.gameObject;
                     }
                 }
             }
 
+            if (fallbackExactId != null)
+                return fallbackExactId;
+            if (fallback != null && !string.IsNullOrEmpty(sourceWorldObjectId))
+                Plugin.Log.LogWarning($"Source WorldInteractiveObject id '{sourceWorldObjectId}' was not found for '{name}'; falling back to the saved name and position.");
             return fallback;
         }
 
@@ -686,14 +678,11 @@ namespace MapLootEditorLite.Client
                 {
                     wio.Id = obj.id;
 
-                    EDoorState state;
-                    if (!Enum.TryParse(obj.initialDoorState, true, out state))
+                    // Unknown/empty values (including old packs without the field) keep the previous default: Shut.
+                    if (!DoorStateHelper.TryParse(obj.initialDoorState, out var state))
                         state = EDoorState.Shut;
 
-                    wio.DoorState = state;
-                    wio.InitialDoorState = state;
-                    wio.FallbackState = state;
-                    wio.CurrentAngle = wio.GetAngle(state);
+                    DoorStateHelper.Apply(wio, state);
 
                     if (!string.IsNullOrEmpty(obj.keyId))
                     {
@@ -1042,6 +1031,7 @@ namespace MapLootEditorLite.Client
                 // Default/Hybrid: use the exact pre-rolled vanilla staticContainers.json for this
                 // container so StackObjectsCount (currency/ammo stacks) is preserved.
                 var preRolled = GetBundledStaticContainerItems(_currentMapId, cid);
+                Plugin.Log.LogInfo($"Container '{obj.name}' loot source check: mode={obj.lootMode}, template={obj.containerTemplate}, vanillaPreRolledItems={(preRolled == null ? -1 : preRolled.Count)}, packItems={(obj.items?.Count ?? 0)}, min={obj.itemCountMin}, max={obj.itemCountMax}.");
                 if (preRolled != null && preRolled.Count > 0)
                 {
                     var marker = new InteractiveObject
@@ -1053,7 +1043,7 @@ namespace MapLootEditorLite.Client
                         marker.items.AddRange(obj.items.Where(i => !i.isDistribution));
                     addedItems = InjectMarkerItems(marker, item as CompoundItem);
                 }
-                else if (obj.items != null && obj.items.Any(i => !i.isDistribution) && obj.lootMode == ContainerLootMode.Default)
+                else if (obj.items != null && obj.items.Any(i => !i.isDistribution && !string.IsNullOrWhiteSpace(i.template)) && obj.lootMode == ContainerLootMode.Default)
                 {
                     // Pre-rolled vanilla items already stored in the pack (editor import) for Default only.
                     addedItems = InjectMarkerItems(obj, item as CompoundItem);
@@ -1128,6 +1118,19 @@ namespace MapLootEditorLite.Client
 
             var controller = new ItemController(item, item.Id, item.ShortName, true, EOwnerType.Profile);
             lootable.Init(controller);
+
+            // Init() does not touch DoorState; applied afterwards so the lock exists once the lock component is attached.
+            if (string.Equals(obj.initialDoorState, "Locked", StringComparison.OrdinalIgnoreCase))
+            {
+                lootable.DoorState = EDoorState.Locked;
+                lootable.InitialDoorState = EDoorState.Locked;
+                lootable.FallbackState = EDoorState.Locked;
+                lootable.CurrentAngle = lootable.GetAngle(EDoorState.Locked);
+                if (string.IsNullOrEmpty(obj.keyId))
+                    Plugin.Log.LogWarning($"Container '{obj.name}' is set to Locked but has no keyId.");
+                else
+                    Plugin.Log.LogInfo($"Container '{obj.name}' locked with key {obj.keyId}");
+            }
             var finalGameWorld = Singleton<GameWorld>.Instance;
             if (finalGameWorld != null)
             {
@@ -1400,13 +1403,20 @@ namespace MapLootEditorLite.Client
         private int InjectMarkerItems(InteractiveObject obj, CompoundItem compoundItem)
         {
             if (compoundItem == null || obj.items == null)
+            {
+                Plugin.Log.LogWarning($"Cannot inject items into container '{obj.name}': compoundItem={(compoundItem == null ? "null (item is not a CompoundItem)" : "ok")}, items={(obj.items == null ? "null" : obj.items.Count.ToString())}.");
                 return 0;
+            }
 
             var itemFactory = Singleton<ItemFactory>.Instance;
             if (itemFactory == null)
+            {
+                Plugin.Log.LogWarning($"Cannot inject items into container '{obj.name}': ItemFactory unavailable.");
                 return 0;
+            }
 
             int added = 0;
+            Plugin.Log.LogInfo($"Injecting into '{obj.name}': distributionItems={obj.items.Count(i => i.isDistribution)}, customItems={obj.items.Count(i => !i.isDistribution)}, min={obj.itemCountMin}, max={obj.itemCountMax}, grids={(compoundItem.Grids == null ? -1 : compoundItem.Grids.Length)}.");
 
             // Distribution items (from vanilla staticLoot.json) are weighted together and drawn
             // according to the container's item count distribution, matching SPT's container loot logic.
@@ -1796,7 +1806,7 @@ namespace MapLootEditorLite.Client
             Plugin.Log.LogInfo($"Spawning stationary weapon '{obj.name}' on-demand for id '{id}'.");
 
             // Find the source object in the scene (same approach as SpawnObjectCoroutine)
-            var source = Instance?.FindSourceObject(obj.sourceObjectName, obj.sourceObjectPosition.ToVector3());
+            var source = Instance?.FindSourceObject(obj.sourceObjectName, obj.sourceObjectPosition.ToVector3(), obj.sourceWorldObjectId);
             if (source == null)
             {
                 Plugin.Log.LogWarning($"Source object '{obj.sourceObjectName}' not found for stationary weapon '{obj.name}'.");

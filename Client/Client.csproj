@@ -92,6 +92,10 @@
     <Reference Include="Microsoft.CSharp" />
     
     <!-- SPT -->
+    <Reference Include="spt-common">
+      <HintPath>$(SPTPath)\BepInEx\plugins\spt\spt-common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="spt-reflection">
       <HintPath>$(SPTPath)\BepInEx\plugins\spt\spt-reflection.dll</HintPath>
       <Private>false</Private>
@@ -103,17 +107,21 @@
       <Private>false</Private>
     </Reference>
     
-    <!-- Optional: SAIN and BigBrain (soft dependencies) -->
-    <!--
-    <Reference Include="SAIN">
-      <HintPath>$(SPTPath)\BepInEx\plugins\SAIN\SAIN.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
+    <!-- Soft dependency: BigBrain (activity-zone leash layer; only touched when the plugin is loaded) -->
     <Reference Include="DrakiaXYZ-BigBrain">
       <HintPath>$(SPTPath)\BepInEx\plugins\DrakiaXYZ-BigBrain.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Optional: SAIN (soft dependency, not referenced)
+    <Reference Include="SAIN">
+      <HintPath>$(SPTPath)\BepInEx\plugins\SAIN\SAIN.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Net.Http" />
   </ItemGroup>
 
   <ItemGroup>
@@ -126,4 +134,22 @@
     <EmbeddedResource Include="..\locations\**\itemStackCounts.json" Link="locations\%(RecursiveDir)%(Filename)%(Extension)" />
     <EmbeddedResource Include="..\locations\**\extractPositions.json" Link="locations\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
+
+  <!-- Empty globs do not fail the build, which silently strips the vanilla loot data from the DLL. -->
+  <Target Name="ValidateVanillaLocationData" BeforeTargets="BeforeBuild">
+    <PropertyGroup>
+      <_LocationsDir>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\locations'))</_LocationsDir>
+      <_RestoreHint>Restore the vanilla location data by copying staticLoot.json and staticContainers.json from your SPT install (SPT_Data\database\locations\&lt;map&gt;\) into '$(_LocationsDir)\&lt;map&gt;\', then rebuild.</_RestoreHint>
+    </PropertyGroup>
+    <ItemGroup>
+      <_VanillaStaticLoot Include="$(_LocationsDir)\**\staticLoot.json" />
+      <_VanillaStaticContainers Include="$(_LocationsDir)\**\staticContainers.json" />
+    </ItemGroup>
+    <Error Condition="!Exists('$(_LocationsDir)')"
+           Text="Vanilla location data directory not found: '$(_LocationsDir)'. Default/Hybrid container loot needs this data embedded in the client. $(_RestoreHint)" />
+    <Error Condition="Exists('$(_LocationsDir)') And '@(_VanillaStaticLoot)' == ''"
+           Text="No staticLoot.json files found under '$(_LocationsDir)'. $(_RestoreHint)" />
+    <Error Condition="Exists('$(_LocationsDir)') And '@(_VanillaStaticContainers)' == ''"
+           Text="No staticContainers.json files found under '$(_LocationsDir)'. $(_RestoreHint)" />
+  </Target>
 </Project>

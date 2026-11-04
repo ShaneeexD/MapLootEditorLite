@@ -47,6 +47,18 @@ namespace MapLootEditorLite.Client
         private readonly Color _blockerWireColor = new Color(0.8f, 0.2f, 0.8f, 1.0f);
         private readonly Color _navMeshAreaColor = new Color(0.2f, 0.8f, 0.3f, 0.25f);
         private readonly Color _navMeshAreaWireColor = new Color(0.2f, 0.8f, 0.3f, 1.0f);
+        private readonly Color _botActivityZoneColor = new Color(0.75f, 1f, 0.1f, 0.10f);
+        private readonly Color _botActivityZoneWireColor = new Color(0.75f, 1f, 0.1f, 1.0f);
+        private readonly Color _botActivityZoneHighlightColor = new Color(0.9f, 1f, 0.3f, 0.28f);
+        private readonly Color _botActivityZoneHighlightWireColor = new Color(1f, 1f, 0.55f, 1.0f);
+        private readonly Color _botActivityZoneStrongColor = new Color(1f, 0.12f, 0.12f, 0.14f);
+        private readonly Color _botActivityZoneStrongWireColor = new Color(1f, 0.15f, 0.15f, 1.0f);
+        private static bool IsStrongZone(BotActivityZone zone)
+        {
+            return zone != null && BotActivityZone.NormalizeLeashMode(zone.leashMode) == BotActivityZone.LeashModeStrong;
+        }
+        private readonly Color _botActivityZoneDisabledColor = new Color(0.5f, 0.5f, 0.5f, 0.08f);
+        private readonly Color _botActivityZoneDisabledWireColor = new Color(0.55f, 0.55f, 0.55f, 0.8f);
         private readonly Color _selectedColor = new Color(0.2f, 0.6f, 1f, 0.25f);
         private readonly Color _selectedWireColor = new Color(0.2f, 0.6f, 1f, 1.0f);
         private readonly Color _vanillaColor = new Color(0.8f, 0.8f, 0.8f, 0.35f);
@@ -59,14 +71,30 @@ namespace MapLootEditorLite.Client
         private Material _gizmoMaterial;
         private readonly Dictionary<string, ZoneShape> _zoneShapeCache = new Dictionary<string, ZoneShape>();
         private readonly Dictionary<string, NavMeshAreaShape> _navMeshAreaShapeCache = new Dictionary<string, NavMeshAreaShape>();
+        private readonly Dictionary<string, BotActivityZoneShape> _activityZoneShapeCache = new Dictionary<string, BotActivityZoneShape>();
+        private readonly HashSet<string> _highlightedZoneIds = new HashSet<string>(StringComparer.Ordinal);
+        private readonly Dictionary<string, LineRenderer> _zoneAssociationLines = new Dictionary<string, LineRenderer>();
+        private readonly Dictionary<string, PatrolVisual> _patrolVisuals = new Dictionary<string, PatrolVisual>(StringComparer.Ordinal);
+        private GameObject _patrolVisualRoot;
+        private string _patrolVisualZoneId;
         private readonly List<SceneObjectOutline> _sceneObjectOutlines = new List<SceneObjectOutline>();
+        private readonly Dictionary<Transform, GameObject> _sceneObjectsByTransform = new Dictionary<Transform, GameObject>();
 
         private struct SceneObjectOutline
         {
             public GameObject go;
             public Bounds bounds;
+            public Bounds rendererBounds;
+            public bool hasRendererBounds;
             public bool selected;
             public bool hovered;
+        }
+
+        private sealed class PatrolVisual
+        {
+            public GameObject Root;
+            public LineRenderer RouteLine;
+            public TextMesh Label;
         }
 
         public GizmoMode GizmoMode { get; set; } = GizmoMode.Translate;
@@ -142,6 +170,16 @@ namespace MapLootEditorLite.Client
 
             var camera = Camera.main;
             var cameraPos = camera != null ? camera.transform.position : Vector3.zero;
+
+            _highlightedZoneIds.Clear();
+            if (_manager.Data.botSpawnPoints != null)
+            {
+                foreach (var sp in _manager.Data.botSpawnPoints)
+                {
+                    if (sp != null && !string.IsNullOrEmpty(sp.botActivityZoneId) && _manager.IsSelected(sp))
+                        _highlightedZoneIds.Add(sp.botActivityZoneId);
+                }
+            }
 
             foreach (var marker in _manager.GetAllMarkersIncludingVanilla())
             {
@@ -273,6 +311,15 @@ namespace MapLootEditorLite.Client
                     }
                 }
 
+                if (marker is BotActivityZone currentBaz && _visuals.TryGetValue(marker.id, out GameObject existingBazVisual))
+                {
+                    if (_activityZoneShapeCache.TryGetValue(marker.id, out BotActivityZoneShape cachedBazShape) && cachedBazShape != currentBaz.shape)
+                    {
+                        UnityEngine.Object.Destroy(existingBazVisual);
+                        _visuals.Remove(marker.id);
+                    }
+                }
+
                 if (!_visuals.TryGetValue(marker.id, out GameObject visual))
                 {
                     visual = CreateVisual(marker);
@@ -355,6 +402,17 @@ namespace MapLootEditorLite.Client
                         ApplyNavMeshAreaScale(visual, nma);
                         _navMeshAreaShapeCache[marker.id] = nma.shape;
                     }
+                    else if (marker is BotActivityZone baz)
+                    {
+                        // Ground-plane boundary: only yaw is honored so the shape stays flat and level.
+                        visual.transform.rotation = Quaternion.Euler(0f, marker.rotation.y, 0f);
+                        bool circle = baz.shape == BotActivityZoneShape.Circle;
+                        // Cylinder primitive is 2 units tall, cube is 1.
+                        var width = circle ? Mathf.Max(BotActivityZone.MinSize, baz.radius) * 2f : baz.EffectiveWidth;
+                        var depth = circle ? width : baz.EffectiveDepth;
+                        visual.transform.localScale = new Vector3(width, circle ? ZoneThickness * 0.5f : ZoneThickness, depth);
+                        _activityZoneShapeCache[marker.id] = baz.shape;
+                    }
 
                     bool isSelected = _manager.IsSelected(marker);
                     ApplyColor(visual, marker, isSelected);
@@ -370,11 +428,162 @@ namespace MapLootEditorLite.Client
                     UnityEngine.Object.Destroy(_visuals[id]);
                     _visuals.Remove(id);
                     _zoneShapeCache.Remove(id);
+                    _activityZoneShapeCache.Remove(id);
                 }
             }
 
+            UpdateZoneAssociationLines();
+            UpdatePatrolVisuals();
             UpdateGizmo();
         }
+
+        private const float ZoneThickness = 0.2f;
+
+        // Editor-only line from a selected custom spawn point to its assigned activity zone center.
+        private void UpdateZoneAssociationLines()
+        {
+            var active = new HashSet<string>();
+            if (ShowPackGizmos && _manager?.Data?.botSpawnPoints != null)
+            {
+                foreach (var sp in _manager.Data.botSpawnPoints)
+                {
+                    if (sp == null || !_manager.IsSelected(sp))
+                        continue;
+                    var zone = _manager.FindActivityZone(sp.botActivityZoneId);
+                    if (zone == null || _manager.IsLocked(zone))
+                        continue;
+
+                    active.Add(sp.id);
+                    if (!_zoneAssociationLines.TryGetValue(sp.id, out var lr) || lr == null)
+                    {
+                        var go = new GameObject("MLE_ZoneAssociation");
+                        go.transform.SetParent(_root.transform, false);
+                        lr = go.AddComponent<LineRenderer>();
+                        lr.useWorldSpace = true;
+                        lr.positionCount = 2;
+                        lr.startWidth = 0.05f;
+                        lr.endWidth = 0.05f;
+                        lr.material = GetWireMaterial();
+                        lr.startColor = _botActivityZoneHighlightWireColor;
+                        lr.endColor = _botActivityZoneHighlightWireColor;
+                        SetLayerRecursive(go, 2);
+                        _zoneAssociationLines[sp.id] = lr;
+                    }
+
+                    lr.SetPosition(0, sp.position.ToVector3());
+                    lr.SetPosition(1, zone.position.ToVector3());
+                }
+            }
+
+            List<string> stale = null;
+            foreach (var kvp in _zoneAssociationLines)
+            {
+                if (!active.Contains(kvp.Key))
+                    (stale ??= new List<string>()).Add(kvp.Key);
+            }
+            if (stale != null)
+            {
+                foreach (var key in stale)
+                {
+                    if (_zoneAssociationLines[key] != null)
+                        UnityEngine.Object.Destroy(_zoneAssociationLines[key].gameObject);
+                    _zoneAssociationLines.Remove(key);
+                }
+            }
+        }
+
+        private void UpdatePatrolVisuals()
+            {
+                var zone = ShowPackGizmos && _manager?.SelectedIds.Count == 1
+                    ? _manager.Selected as BotActivityZone
+                    : null;
+                if (zone == null || !zone.patrolEnabled || zone.patrolPoints == null || zone.patrolPoints.Count == 0)
+                {
+                    if (_patrolVisualRoot != null)
+                        _patrolVisualRoot.SetActive(false);
+                    _patrolVisualZoneId = null;
+                    return;
+                }
+
+                if (_patrolVisualRoot == null)
+                {
+                    _patrolVisualRoot = new GameObject("MLE_PatrolRouteVisuals");
+                    _patrolVisualRoot.transform.SetParent(_root.transform, false);
+                    SetLayerRecursive(_patrolVisualRoot, 2);
+                }
+                _patrolVisualZoneId = zone.zoneId;
+                _patrolVisualRoot.SetActive(true);
+
+                var active = new HashSet<string>(StringComparer.Ordinal);
+                var routeStart = zone.position.ToVector3() + Vector3.up * 0.25f;
+                foreach (var point in zone.patrolPoints)
+                {
+                    if (point == null)
+                        continue;
+
+                    var key = zone.zoneId + ":" + point.id;
+                    active.Add(key);
+                    if (!_patrolVisuals.TryGetValue(key, out var visual) || visual?.Root == null)
+                    {
+                        var pointRoot = new GameObject("MLE_PatrolPoint_" + point.id);
+                        pointRoot.transform.SetParent(_patrolVisualRoot.transform, false);
+                        var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                        sphere.name = "Point";
+                        var collider = sphere.GetComponent<Collider>();
+                        if (collider != null)
+                            UnityEngine.Object.Destroy(collider);
+                        sphere.transform.SetParent(pointRoot.transform, false);
+                        sphere.transform.localScale = Vector3.one * 0.65f;
+                        var renderer = sphere.GetComponent<MeshRenderer>();
+                        if (renderer != null)
+                            renderer.material = new Material(GetGizmoMaterial());
+                        var lineObject = new GameObject("Route");
+                        lineObject.transform.SetParent(pointRoot.transform, false);
+                        var line = lineObject.AddComponent<LineRenderer>();
+                        line.useWorldSpace = true;
+                        line.positionCount = 2;
+                        line.startWidth = 0.035f;
+                        line.endWidth = 0.035f;
+                        line.material = GetWireMaterial();
+                        var labelObject = new GameObject("Label");
+                        labelObject.transform.SetParent(pointRoot.transform, false);
+                        labelObject.transform.localPosition = Vector3.up * 0.85f;
+                        var label = labelObject.AddComponent<TextMesh>();
+                        label.anchor = TextAnchor.LowerCenter;
+                        label.alignment = TextAlignment.Center;
+                        label.fontSize = 24;
+                        label.characterSize = 0.09f;
+                        visual = new PatrolVisual { Root = pointRoot, RouteLine = line, Label = label };
+                        _patrolVisuals[key] = visual;
+                        SetLayerRecursive(pointRoot, 2);
+                    }
+
+                    var pointPosition = point.position != null ? point.position.ToVector3() : routeStart;
+                    visual.Root.transform.position = pointPosition;
+                    visual.Root.SetActive(true);
+                    visual.RouteLine.SetPosition(0, routeStart);
+                    visual.RouteLine.SetPosition(1, pointPosition + Vector3.up * 0.2f);
+                    var color = point.enabled
+                        ? new Color(1f, 0.72f, 0.12f, 1f)
+                        : new Color(0.55f, 0.55f, 0.55f, 0.8f);
+                    visual.RouteLine.startColor = color;
+                    visual.RouteLine.endColor = color;
+                    visual.Label.text = string.IsNullOrWhiteSpace(point.name) ? point.id : point.name;
+                    visual.Label.color = color;
+                    if (Camera.main != null)
+                        visual.Label.transform.rotation = Camera.main.transform.rotation;
+                    var pointRenderer = visual.Root.transform.Find("Point")?.GetComponent<MeshRenderer>();
+                    if (pointRenderer != null)
+                        pointRenderer.material.color = color;
+                }
+
+                foreach (var key in _patrolVisuals.Keys.Where(key => !active.Contains(key)).ToList())
+                {
+                    if (_patrolVisuals[key]?.Root != null)
+                        UnityEngine.Object.Destroy(_patrolVisuals[key].Root);
+                    _patrolVisuals.Remove(key);
+                }
+            }
 
         public void DrawLabels(bool editorOpen)
         {
@@ -443,12 +652,21 @@ namespace MapLootEditorLite.Client
             _zoneShapeCache.Clear();
             _navMeshAreaShapeCache.Clear();
             _sceneObjectOutlines.Clear();
+            _sceneObjectsByTransform.Clear();
+            _hoveredSceneObject = null;
+            if (_patrolVisualRoot != null)
+                UnityEngine.Object.Destroy(_patrolVisualRoot);
+            _patrolVisualRoot = null;
+            _patrolVisuals.Clear();
+            _patrolVisualZoneId = null;
             DestroySceneObject3DVisuals();
         }
 
         public void SetSceneObjects(List<GameObject> objects, GameObject selected)
         {
             _sceneObjectOutlines.Clear();
+            _hoveredSceneObject = null;
+            _sceneObjectsByTransform.Clear();
             DestroySceneObject3DVisuals();
             if (objects == null)
                 return;
@@ -458,7 +676,8 @@ namespace MapLootEditorLite.Client
                 if (go == null)
                     continue;
 
-                var bounds = CalculateBounds(go);
+                var hasRendererBounds = TryCalculateRendererBounds(go, out var rendererBounds);
+                var bounds = hasRendererBounds ? rendererBounds : CalculateBounds(go);
                 if (bounds.size.sqrMagnitude < 0.0001f)
                     continue;
 
@@ -466,9 +685,12 @@ namespace MapLootEditorLite.Client
                 {
                     go = go,
                     bounds = bounds,
+                    hasRendererBounds = hasRendererBounds,
+                    rendererBounds = rendererBounds,
                     selected = go == selected,
                     hovered = false
                 });
+                _sceneObjectsByTransform[go.transform] = go;
             }
         }
 
@@ -485,17 +707,91 @@ namespace MapLootEditorLite.Client
             }
         }
 
+        // Selected (red) always outranks hover (cyan); everything else discovered stays green.
+        private static Color SceneOutlineColor(SceneObjectOutline entry)
+        {
+            if (entry.selected)
+                return new Color(1f, 0.25f, 0.25f, 0.9f);
+            if (entry.hovered)
+                return new Color(0.2f, 0.9f, 1f, 1f);
+            return new Color(0.25f, 0.9f, 0.25f, 0.9f);
+        }
+
+        private GameObject _hoveredSceneObject;
+
         public void SetHoveredSceneObject(GameObject hovered)
         {
             if (_sceneObjectOutlines == null)
                 return;
+            // Called every frame; only touch the outline list when the target actually changes.
+            if (_hoveredSceneObject == hovered)
+                return;
+            _hoveredSceneObject = hovered;
 
             for (int i = 0; i < _sceneObjectOutlines.Count; i++)
             {
                 var e = _sceneObjectOutlines[i];
-                e.hovered = e.go == hovered;
+                e.hovered = hovered != null && e.go == hovered;
                 _sceneObjectOutlines[i] = e;
             }
+        }
+
+        // Ray-vs-bounds candidates for visible objects, with no collider required. The cached combined bounds is only a
+        // cheap first test; survivors are refined against each live renderer's own bounds so gaps inside a large
+        // LOD/parent box do not count as hits. Reports the nearest renderer entry distance along the ray.
+        public void CollectRendererRayCandidates(Ray ray, float maxDistance, List<SceneRayCandidate> results, List<Renderer> rendererBuffer, int maxResults)
+        {
+            if (_sceneObjectOutlines == null || _sceneObjectOutlines.Count == 0)
+                return;
+
+            for (int i = 0; i < _sceneObjectOutlines.Count; i++)
+            {
+                var entry = _sceneObjectOutlines[i];
+                if (entry.go == null || !entry.hasRendererBounds)
+                    continue;
+
+                var box = entry.rendererBounds;
+                // A camera sitting inside a loose foliage box would otherwise "hit" it at distance 0.
+                if (box.Contains(ray.origin))
+                    continue;
+                if (!box.IntersectRay(ray, out var boxDistance) || boxDistance > maxDistance)
+                    continue;
+
+                var nearest = float.MaxValue;
+                entry.go.GetComponentsInChildren(true, rendererBuffer);
+                for (int r = 0; r < rendererBuffer.Count; r++)
+                {
+                    var rend = rendererBuffer[r];
+                    if (rend == null || !rend.enabled || rend.forceRenderingOff || !rend.gameObject.activeInHierarchy)
+                        continue;
+                    var rb = rend.bounds;
+                    if (rb.Contains(ray.origin))
+                        continue;
+                    if (rb.IntersectRay(ray, out var d) && d <= maxDistance && d < nearest)
+                        nearest = d;
+                }
+                rendererBuffer.Clear();
+
+                if (nearest == float.MaxValue)
+                {
+                    SceneRayCandidate.RejectedRefine++;
+                    continue;
+                }
+
+                var size = entry.rendererBounds.size;
+                results.Add(new SceneRayCandidate { go = entry.go, distance = nearest, volume = size.x * size.y * size.z });
+                if (results.Count >= maxResults)
+                    break;
+            }
+        }
+
+        public struct SceneRayCandidate
+        {
+            public GameObject go;
+            public float distance;
+            public float volume;
+            // Diagnostics only: number of box hits dropped because no live renderer's own bounds was hit.
+            public static int RejectedRefine;
         }
 
         public GameObject PickSceneObject(Ray ray, float maxDistance, Func<GameObject, bool> predicate)
@@ -520,6 +816,104 @@ namespace MapLootEditorLite.Client
             }
 
             return closest;
+        }
+
+        public GameObject FindSceneObjectAncestor(Transform hitTransform)
+        {
+            for (var current = hitTransform; current != null; current = current.parent)
+            {
+                if (!_sceneObjectsByTransform.TryGetValue(current, out var candidate))
+                    continue;
+
+                return candidate;
+            }
+
+            return null;
+        }
+
+        public GameObject PickSceneObjectNearScreen(Camera camera, Vector2 screenPosition, Ray ray, float maxDistance, float maxPixels, Func<GameObject, bool> predicate, out float pickedDepth, out bool ambiguous)
+        {
+            pickedDepth = float.MaxValue;
+            ambiguous = false;
+            if (camera == null || _sceneObjectOutlines.Count == 0)
+                return null;
+
+            GameObject best = null;
+            float bestScreenDistance = maxPixels;
+            foreach (var entry in _sceneObjectOutlines)
+            {
+                if (entry.go == null || !entry.hasRendererBounds)
+                    continue;
+
+                var bounds = entry.rendererBounds;
+                var projectedCenter = camera.WorldToScreenPoint(bounds.center);
+                if (projectedCenter.z <= 0f)
+                    continue;
+
+                var pixelsPerWorldUnit = camera.orthographic
+                    ? camera.pixelHeight / Mathf.Max(0.001f, 2f * camera.orthographicSize)
+                    : camera.pixelHeight / Mathf.Max(0.001f, 2f * projectedCenter.z * Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad));
+                var coarseRadius = bounds.extents.magnitude * pixelsPerWorldUnit + maxPixels;
+                if (Vector2.Distance(screenPosition, new Vector2(projectedCenter.x, projectedCenter.y)) > coarseRadius)
+                    continue;
+
+                var nearestDepth = Vector3.Dot(bounds.center - ray.origin, ray.direction)
+                    - Mathf.Abs(ray.direction.x) * bounds.extents.x
+                    - Mathf.Abs(ray.direction.y) * bounds.extents.y
+                    - Mathf.Abs(ray.direction.z) * bounds.extents.z;
+                if (nearestDepth <= 0f || nearestDepth > maxDistance)
+                    continue;
+
+                var minX = float.MaxValue;
+                var minY = float.MaxValue;
+                var maxX = float.MinValue;
+                var maxY = float.MinValue;
+                var visible = true;
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    var worldPoint = new Vector3(
+                        (corner & 1) == 0 ? bounds.min.x : bounds.max.x,
+                        (corner & 2) == 0 ? bounds.min.y : bounds.max.y,
+                        (corner & 4) == 0 ? bounds.min.z : bounds.max.z);
+                    var projected = camera.WorldToScreenPoint(worldPoint);
+                    if (projected.z <= 0f)
+                    {
+                        visible = false;
+                        break;
+                    }
+
+                    minX = Mathf.Min(minX, projected.x);
+                    minY = Mathf.Min(minY, projected.y);
+                    maxX = Mathf.Max(maxX, projected.x);
+                    maxY = Mathf.Max(maxY, projected.y);
+                }
+                if (!visible)
+                    continue;
+
+                var dx = Mathf.Max(minX - screenPosition.x, 0f, screenPosition.x - maxX);
+                var dy = Mathf.Max(minY - screenPosition.y, 0f, screenPosition.y - maxY);
+                var screenDistance = Mathf.Sqrt(dx * dx + dy * dy);
+                if (screenDistance > bestScreenDistance)
+                    continue;
+                if (predicate != null && !predicate(entry.go))
+                    continue;
+
+                if (screenDistance < bestScreenDistance - 2f)
+                {
+                    best = entry.go;
+                    bestScreenDistance = screenDistance;
+                    pickedDepth = nearestDepth;
+                    ambiguous = false;
+                }
+                else if (best != null && Mathf.Abs(screenDistance - bestScreenDistance) <= 2f &&
+                         !entry.go.transform.IsChildOf(best.transform) &&
+                         !best.transform.IsChildOf(entry.go.transform))
+                {
+                    ambiguous = true;
+                }
+            }
+
+            return ambiguous ? null : best;
         }
 
         private static Bounds CalculateBounds(GameObject go)
@@ -565,6 +959,32 @@ namespace MapLootEditorLite.Client
             }
 
             return b;
+        }
+
+        private static bool TryCalculateRendererBounds(GameObject go, out Bounds bounds)
+        {
+            bounds = default(Bounds);
+            if (go == null)
+                return false;
+
+            bool hasBounds = false;
+            foreach (var renderer in go.GetComponentsInChildren<Renderer>(true))
+            {
+                if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy || renderer.forceRenderingOff)
+                    continue;
+
+                if (!hasBounds)
+                {
+                    bounds = renderer.bounds;
+                    hasBounds = true;
+                }
+                else
+                {
+                    bounds.Encapsulate(renderer.bounds);
+                }
+            }
+
+            return hasBounds;
         }
 
         public void DrawSceneObjectOutlines(bool editorOpen)
@@ -641,7 +1061,7 @@ namespace MapLootEditorLite.Client
                 if (CustomEditorUI.IsScreenPointOverEditorUI(new Vector2((min.x + max.x) * 0.5f, Screen.height - (min.y + max.y) * 0.5f)))
                     continue;
 
-                GUI.color = (entry.selected || entry.hovered) ? new Color(1f, 0.25f, 0.25f, 0.9f) : new Color(0.25f, 0.9f, 0.25f, 0.9f);
+                GUI.color = SceneOutlineColor(entry);
 
                 GUI.DrawTexture(new Rect(min.x, min.y, max.x - min.x, thickness), whiteTexture, ScaleMode.StretchToFill, true, 1f);
                 GUI.DrawTexture(new Rect(min.x, max.y, max.x - min.x, thickness), whiteTexture, ScaleMode.StretchToFill, true, 1f);
@@ -719,7 +1139,7 @@ namespace MapLootEditorLite.Client
             visual.transform.rotation = Quaternion.identity;
             visual.transform.localScale = entry.bounds.size;
 
-            var color = (entry.selected || entry.hovered) ? new Color(1f, 0.25f, 0.25f, 0.9f) : new Color(0.25f, 0.9f, 0.25f, 0.9f);
+            var color = SceneOutlineColor(entry);
             var lr = visual.GetComponent<LineRenderer>();
             if (lr != null)
             {
@@ -790,6 +1210,9 @@ namespace MapLootEditorLite.Client
                     break;
                 case NavMeshArea nma:
                     visual = CreateNavMeshAreaVisual(nma);
+                    break;
+                case BotActivityZone baz:
+                    visual = CreateBotActivityZoneVisual(baz);
                     break;
                 default:
                     return null;
@@ -1010,6 +1433,66 @@ namespace MapLootEditorLite.Client
         private GameObject CreateBlockerVisual(Blocker blocker)
         {
             return CreateZoneVisualWithColor(blocker.shape, _blockerWireColor);
+        }
+
+        private GameObject CreateBotActivityZoneVisual(BotActivityZone zone)
+        {
+            bool circle = zone.shape == BotActivityZoneShape.Circle;
+            var go = GameObject.CreatePrimitive(circle ? PrimitiveType.Cylinder : PrimitiveType.Cube);
+
+            // The cylinder's default capsule collider turns into a large sphere when flattened; use a trigger mesh instead.
+            var existing = go.GetComponent<Collider>();
+            if (circle)
+            {
+                var mesh = go.GetComponent<MeshFilter>()?.sharedMesh;
+                if (existing != null)
+                    UnityEngine.Object.Destroy(existing);
+                var meshCollider = go.AddComponent<MeshCollider>();
+                meshCollider.sharedMesh = mesh;
+                meshCollider.convex = true;
+                meshCollider.isTrigger = true;
+            }
+            else if (existing != null)
+            {
+                existing.isTrigger = true;
+            }
+
+            var wire = new GameObject(circle ? "wire_sphere" : "wire_box");
+            wire.transform.SetParent(go.transform, false);
+            var lr = wire.AddComponent<LineRenderer>();
+            lr.useWorldSpace = false;
+            lr.startWidth = 0.08f;
+            lr.endWidth = 0.08f;
+            lr.positionCount = 0;
+            lr.material = GetWireMaterial();
+            lr.startColor = _botActivityZoneWireColor;
+            lr.endColor = _botActivityZoneWireColor;
+            DrawFlatOutline(lr, circle);
+            return go;
+        }
+
+        // Outline in the XZ plane at local half-extent 0.5, so the parent's scale sets the real size.
+        private static void DrawFlatOutline(LineRenderer lr, bool circle)
+        {
+            if (circle)
+            {
+                const int segments = 64;
+                lr.positionCount = segments + 1;
+                for (int i = 0; i <= segments; i++)
+                {
+                    float angle = i * Mathf.PI * 2f / segments;
+                    lr.SetPosition(i, new Vector3(Mathf.Cos(angle) * 0.5f, 0f, Mathf.Sin(angle) * 0.5f));
+                }
+            }
+            else
+            {
+                lr.positionCount = 5;
+                lr.SetPosition(0, new Vector3(-0.5f, 0f, -0.5f));
+                lr.SetPosition(1, new Vector3(0.5f, 0f, -0.5f));
+                lr.SetPosition(2, new Vector3(0.5f, 0f, 0.5f));
+                lr.SetPosition(3, new Vector3(-0.5f, 0f, 0.5f));
+                lr.SetPosition(4, new Vector3(-0.5f, 0f, -0.5f));
+            }
         }
 
         private GameObject CreateNavMeshAreaVisual(NavMeshArea nma)
@@ -1500,6 +1983,13 @@ namespace MapLootEditorLite.Client
             {
                 color = _navMeshAreaColor;
             }
+            else if (marker is BotActivityZone bazFill)
+            {
+                color = !bazFill.enabled ? _botActivityZoneDisabledColor
+                    : _highlightedZoneIds.Contains(bazFill.zoneId) ? _botActivityZoneHighlightColor
+                    : IsStrongZone(bazFill) ? _botActivityZoneStrongColor
+                    : _botActivityZoneColor;
+            }
             else
             {
                 color = _objectColor;
@@ -1546,11 +2036,23 @@ namespace MapLootEditorLite.Client
                         wireColor = _blockerWireColor;
                     else if (marker is NavMeshArea)
                         wireColor = _navMeshAreaWireColor;
+                    else if (marker is BotActivityZone bazWire)
+                        wireColor = !bazWire.enabled ? _botActivityZoneDisabledWireColor
+                            : _highlightedZoneIds.Contains(bazWire.zoneId) ? _botActivityZoneHighlightWireColor
+                            : IsStrongZone(bazWire) ? _botActivityZoneStrongWireColor
+                            : _botActivityZoneWireColor;
                     else
                         wireColor = _zoneWireColor;
 
                     lr.startColor = wireColor;
                     lr.endColor = wireColor;
+
+                    if (marker is BotActivityZone bazWidth)
+                    {
+                        float width = _highlightedZoneIds.Contains(bazWidth.zoneId) || selected ? 0.16f : 0.08f;
+                        lr.startWidth = width;
+                        lr.endWidth = width;
+                    }
                 }
             }
         }
@@ -1571,6 +2073,8 @@ namespace MapLootEditorLite.Client
             var hits = Physics.RaycastAll(ray, maxDistance, markerLayerMask, QueryTriggerInteraction.Collide);
             MarkerBase best = null;
             float bestDist = float.MaxValue;
+            MarkerBase bestZone = null;
+            float bestZoneDist = float.MaxValue;
             foreach (var hit in hits)
             {
                 var visual = hit.collider != null ? hit.collider.GetComponentInParent<MarkerVisual>() : null;
@@ -1579,6 +2083,16 @@ namespace MapLootEditorLite.Client
                 var marker = _manager.FindById(visual.markerId);
                 if (marker == null)
                     continue;
+                // Activity zones are large background areas: only chosen when nothing else was hit.
+                if (marker is BotActivityZone)
+                {
+                    if (hit.distance < bestZoneDist)
+                    {
+                        bestZoneDist = hit.distance;
+                        bestZone = marker;
+                    }
+                    continue;
+                }
                 if (hit.distance < bestDist)
                 {
                     bestDist = hit.distance;
@@ -1592,6 +2106,8 @@ namespace MapLootEditorLite.Client
             float bestScore = float.MaxValue;
             foreach (var marker in _manager.GetAllMarkersIncludingVanilla())
             {
+                if (marker is BotActivityZone)
+                    continue;
                 var worldPos = marker.position.ToVector3();
                 var projected = camera.WorldToScreenPoint(worldPos);
                 if (projected.z <= 0)
@@ -1609,7 +2125,7 @@ namespace MapLootEditorLite.Client
                     best = marker;
                 }
             }
-            return best;
+            return best ?? bestZone;
         }
 
         public GizmoAxis PickGizmoAxis(Camera camera, Vector2 screenPos, float maxPx)
@@ -1631,16 +2147,7 @@ namespace MapLootEditorLite.Client
 
                 if (GizmoMode == GizmoMode.Rotate)
                 {
-                    // In rotation mode handles sit on the ring of the same color.
-                    Vector3 tangent;
-                    switch (axis)
-                    {
-                        case GizmoAxis.X: tangent = GetGizmoAxisDirection(GizmoAxis.Y, rot); break;
-                        case GizmoAxis.Y: tangent = GetGizmoAxisDirection(GizmoAxis.Z, rot); break;
-                        case GizmoAxis.Z: tangent = GetGizmoAxisDirection(GizmoAxis.X, rot); break;
-                        default: tangent = dir; break;
-                    }
-                    targetPoint = pos + tangent * _gizmoSize * scale;
+                    targetPoint = GetRotationHandlePosition(dir, pos, camera, scale);
                 }
                 else
                 {
@@ -1661,6 +2168,195 @@ namespace MapLootEditorLite.Client
 
             HoveredAxis = best;
             return best;
+        }
+
+        // ---- Activity zone resize handles (independent of the Move/Rotate/Scale gizmo) ----
+        private const int ResizeHandleCount = 8;
+        private const float ResizeHandleScreenPx = 14f;
+        private static readonly Color _resizeHandleColor = new Color(1f, 0.55f, 0.05f, 1f);
+        private static readonly Color _resizeHandleHotColor = new Color(1f, 0.95f, 0.3f, 1f);
+        private readonly List<GameObject> _resizeHandles = new List<GameObject>();
+        private GameObject _resizeRoot;
+        public int HoveredResizeHandle { get; set; } = -1;
+        public int ActiveResizeHandle { get; set; } = -1;
+
+        // Resize handles exist only for a single, editable (non-vanilla) activity zone.
+        public bool TryGetResizeTarget(out BotActivityZone zone)
+        {
+            zone = null;
+            if (_manager == null || !ShowGizmo || _manager.SelectedChild != null || _manager.SelectedIds.Count != 1)
+                return false;
+            zone = _manager.Selected as BotActivityZone;
+            return zone != null && !zone.isVanilla && !_manager.IsLocked(zone);
+        }
+
+        public bool TryPickPatrolPoint(
+            Camera camera, Vector2 screenPosition, float maxPixels, out BotActivityZone zone, out BotActivityPatrolPoint point)
+        {
+            zone = _manager?.SelectedIds.Count == 1 ? _manager.Selected as BotActivityZone : null;
+            point = null;
+            if (camera == null || zone == null || zone.isVanilla || _manager.IsLocked(zone) ||
+                !zone.patrolEnabled || zone.patrolPoints == null || !ShowPackGizmos)
+            {
+                zone = null;
+                return false;
+            }
+
+            var bestDistance = maxPixels;
+            foreach (var candidate in zone.patrolPoints)
+            {
+                if (candidate?.position == null)
+                    continue;
+                var projected = camera.WorldToScreenPoint(candidate.position.ToVector3());
+                if (projected.z <= 0f)
+                    continue;
+                var distance = Vector2.Distance(screenPosition, new Vector2(projected.x, projected.y));
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    point = candidate;
+                }
+            }
+
+            if (point != null)
+                return true;
+            zone = null;
+            return false;
+        }
+
+        public static int GetResizeHandleCount(BotActivityZone zone)
+        {
+            return zone != null && zone.shape == BotActivityZoneShape.Circle ? 1 : ResizeHandleCount;
+        }
+
+        // Square handle order: four corners (+X+Z, -X+Z, -X-Z, +X-Z), then +X, +Z, -X, -Z edges.
+        public static Vector3 GetResizeHandleDirection(BotActivityZone zone, int index)
+        {
+            var yaw = Quaternion.Euler(0f, zone.rotation != null ? zone.rotation.y : 0f, 0f);
+            if (zone.shape == BotActivityZoneShape.Circle)
+                return yaw * Vector3.right;
+            if (index >= 4)
+            {
+                switch (index)
+                {
+                    case 4: return yaw * Vector3.right;
+                    case 5: return yaw * Vector3.forward;
+                    case 6: return yaw * Vector3.left;
+                    default: return yaw * Vector3.back;
+                }
+            }
+            switch (index & 3)
+            {
+                case 0: return yaw * new Vector3(1f, 0f, 1f).normalized;
+                case 1: return yaw * new Vector3(-1f, 0f, 1f).normalized;
+                case 2: return yaw * new Vector3(-1f, 0f, -1f).normalized;
+                default: return yaw * new Vector3(1f, 0f, -1f).normalized;
+            }
+        }
+
+        private static Vector3 GetResizeHandleLocalPosition(BotActivityZone zone, int index)
+        {
+            if (zone.shape == BotActivityZoneShape.Circle)
+                return Vector3.right * Mathf.Max(BotActivityZone.MinSize, zone.radius);
+
+            var halfWidth = Mathf.Max(BotActivityZone.MinSize, zone.EffectiveWidth) * 0.5f;
+            var halfDepth = Mathf.Max(BotActivityZone.MinSize, zone.EffectiveDepth) * 0.5f;
+            switch (index)
+            {
+                case 0: return new Vector3(halfWidth, 0f, halfDepth);
+                case 1: return new Vector3(-halfWidth, 0f, halfDepth);
+                case 2: return new Vector3(-halfWidth, 0f, -halfDepth);
+                case 3: return new Vector3(halfWidth, 0f, -halfDepth);
+                case 4: return new Vector3(halfWidth, 0f, 0f);
+                case 5: return new Vector3(0f, 0f, halfDepth);
+                case 6: return new Vector3(-halfWidth, 0f, 0f);
+                default: return new Vector3(0f, 0f, -halfDepth);
+            }
+        }
+
+        public static Vector3 GetResizeHandlePosition(BotActivityZone zone, int index)
+        {
+            var yaw = Quaternion.Euler(0f, zone.rotation != null ? zone.rotation.y : 0f, 0f);
+            return zone.position.ToVector3() + yaw * GetResizeHandleLocalPosition(zone, index);
+        }
+
+        public int PickResizeHandle(Camera camera, Vector2 screenPos, float maxPx)
+        {
+            if (camera == null || !TryGetResizeTarget(out var zone))
+                return -1;
+
+            var best = -1;
+            var bestDist = maxPx;
+            for (var i = 0; i < GetResizeHandleCount(zone); i++)
+            {
+                var projected = camera.WorldToScreenPoint(GetResizeHandlePosition(zone, i));
+                if (projected.z <= 0f)
+                    continue;
+                var dist = Vector2.Distance(screenPos, new Vector2(projected.x, projected.y));
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    best = i;
+                }
+            }
+            return best;
+        }
+
+        private void UpdateResizeHandles()
+        {
+            var camera = Camera.main;
+            if (camera == null || !TryGetResizeTarget(out var zone))
+            {
+                if (_resizeRoot != null)
+                    _resizeRoot.SetActive(false);
+                return;
+            }
+
+            if (_resizeRoot == null)
+            {
+                _resizeRoot = new GameObject("MLE_ResizeHandles");
+                _resizeRoot.transform.SetParent(_root.transform, false);
+                _resizeHandles.Clear();
+                for (var i = 0; i < ResizeHandleCount; i++)
+                {
+                    var handle = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    handle.name = $"MLE_ResizeHandle_{i}";
+                    var collider = handle.GetComponent<Collider>();
+                    if (collider != null)
+                        UnityEngine.Object.Destroy(collider);
+                    handle.transform.SetParent(_resizeRoot.transform, false);
+                    var mr = handle.GetComponent<MeshRenderer>();
+                    if (mr != null)
+                        mr.material = new Material(GetGizmoMaterial());
+                    _resizeHandles.Add(handle);
+                }
+            }
+
+            _resizeRoot.SetActive(true);
+            var yaw = Quaternion.Euler(0f, zone.rotation != null ? zone.rotation.y : 0f, 0f);
+            for (var i = 0; i < _resizeHandles.Count; i++)
+            {
+                var handle = _resizeHandles[i];
+                if (i >= GetResizeHandleCount(zone))
+                {
+                    handle.SetActive(false);
+                    continue;
+                }
+                handle.SetActive(true);
+                var pos = GetResizeHandlePosition(zone, i);
+                var distance = Vector3.Distance(camera.transform.position, pos);
+                var worldPerPixel = camera.orthographic
+                    ? 2f * camera.orthographicSize / Mathf.Max(1f, camera.pixelHeight)
+                    : 2f * Mathf.Max(distance, 0.01f) * Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad) / Mathf.Max(1f, camera.pixelHeight);
+                var hot = i == ActiveResizeHandle || i == HoveredResizeHandle;
+                handle.transform.position = pos;
+                handle.transform.rotation = yaw * Quaternion.Euler(0f, 45f, 0f);
+                handle.transform.localScale = Vector3.one * worldPerPixel * (hot ? 14f : 10f);
+
+                var mr = handle.GetComponent<MeshRenderer>();
+                if (mr != null && mr.material != null)
+                    mr.material.color = hot ? _resizeHandleHotColor : _resizeHandleColor;
+            }
         }
 
         private Vector3 GetGizmoPosition()
@@ -1687,6 +2383,7 @@ namespace MapLootEditorLite.Client
 
         private void UpdateGizmo()
         {
+            UpdateResizeHandles();
             if (!ShowGizmo || (_manager?.SelectedChild == null && (_manager?.Selected == null || _manager.Selected.isVanilla)))
             {
                 DestroyGizmo();
@@ -1729,16 +2426,7 @@ namespace MapLootEditorLite.Client
                 Vector3 handlePos;
                 if (GizmoMode == GizmoMode.Rotate)
                 {
-                    // Place the handle on the ring of the same color.
-                    Vector3 tangent;
-                    switch (axis)
-                    {
-                        case GizmoAxis.X: tangent = GetGizmoAxisDirection(GizmoAxis.Y, rot); break;
-                        case GizmoAxis.Y: tangent = GetGizmoAxisDirection(GizmoAxis.Z, rot); break;
-                        case GizmoAxis.Z: tangent = GetGizmoAxisDirection(GizmoAxis.X, rot); break;
-                        default: tangent = dir; break;
-                    }
-                    handlePos = pos + tangent * _gizmoSize * gizmoScale;
+                    handlePos = GetRotationHandlePosition(dir, pos, Camera.main, gizmoScale);
                 }
                 else
                 {
@@ -1785,9 +2473,35 @@ namespace MapLootEditorLite.Client
             if (distance <= 0.001f)
                 return 1f;
 
-            var worldHeight = 2f * distance * Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
-            var targetWorldSize = _gizmoScreenSize / Mathf.Max(1f, camera.pixelHeight) * worldHeight;
-            return Mathf.Max(targetWorldSize / _gizmoSize, 1f);
+            var isSingleLootSelection = _manager.SelectedIds.Count <= 1 &&
+                                        _manager.SelectedChild == null &&
+                                        _manager.Selected is LooseLootSpawn;
+            var targetScreenSize = isSingleLootSelection
+                ? Mathf.Clamp(_gizmoScreenSize * 1.28f, 56f, 72f)
+                : _gizmoScreenSize;
+            var targetWorldSize = camera.orthographic
+                ? 2f * camera.orthographicSize * targetScreenSize / Mathf.Max(1f, camera.pixelHeight)
+                : 2f * distance * Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad) * targetScreenSize / Mathf.Max(1f, camera.pixelHeight);
+            var targetScale = targetWorldSize / _gizmoSize;
+            return isSingleLootSelection ? targetScale : Mathf.Max(targetScale, 1f);
+        }
+
+        private Vector3 GetRotationHandlePosition(Vector3 normal, Vector3 center, Camera camera, float scale)
+        {
+            if (camera == null)
+            {
+                var fallback = Mathf.Abs(normal.y) < 0.9f
+                    ? Vector3.Cross(normal, Vector3.up)
+                    : Vector3.Cross(normal, Vector3.forward);
+                return center + fallback * _gizmoSize * scale;
+            }
+
+            var rightOnRing = Vector3.ProjectOnPlane(camera.transform.right, normal);
+            var upOnRing = Vector3.ProjectOnPlane(camera.transform.up, normal);
+            var handleDirection = rightOnRing.sqrMagnitude >= upOnRing.sqrMagnitude ? rightOnRing : upOnRing;
+            if (handleDirection.sqrMagnitude < 0.0001f)
+                handleDirection = Vector3.Cross(normal, camera.transform.forward);
+            return center + handleDirection.normalized * _gizmoSize * scale;
         }
 
         private void EnsureGizmo()

@@ -9,7 +9,9 @@ public static class PackRegistry
 
     public static void Register(IEnumerable<PackData> packs)
     {
-        Packs.AddRange(packs);
+        var replacement = packs.ToList();
+        Packs.Clear();
+        Packs.AddRange(replacement);
     }
 
     public static IEnumerable<MapData> GetMapsForLocation(string locationId)

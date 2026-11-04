@@ -35,6 +35,7 @@ namespace MapLootEditorLite.Client
         public void ResetState()
         {
             ClearSpawned();
+            _packs = RuntimePackLoader.LoadPacks("static objects");
             _currentWorld = null;
             _currentMapId = null;
             _sourceNameIndex = null;
@@ -76,41 +77,7 @@ namespace MapLootEditorLite.Client
 
         private void LoadPacks()
         {
-            var directories = new List<string>();
-            if (!string.IsNullOrEmpty(Plugin.ServerModPacksDirectory) && Directory.Exists(Plugin.ServerModPacksDirectory))
-                directories.Add(Plugin.ServerModPacksDirectory);
-            if (!string.IsNullOrEmpty(Plugin.ServerModExportsDirectory) && Directory.Exists(Plugin.ServerModExportsDirectory))
-                directories.Add(Plugin.ServerModExportsDirectory);
-
-            if (directories.Count == 0)
-            {
-                Plugin.Log.LogWarning($"No pack directories found; static objects will not be spawned.");
-                return;
-            }
-
-            foreach (var dir in directories)
-            {
-                foreach (var file in Directory.GetFiles(dir, "*.json", SearchOption.AllDirectories))
-                {
-                    try
-                    {
-                        var json = File.ReadAllText(file);
-                        var trimmed = json.TrimStart();
-                        if (trimmed.Length > 0 && trimmed[0] == '[')
-                            continue;
-                        var pack = JsonConvert.DeserializeObject<PackData>(json, PackData.InvariantSettings);
-                        if (pack?.maps != null)
-                        {
-                            _packs.Add(pack);
-                            Plugin.Log.LogInfo($"Loaded pack '{pack.name}' from {file}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Plugin.Log.LogWarning($"Failed to load pack {file}: {ex.Message}");
-                    }
-                }
-            }
+            _packs = RuntimePackLoader.LoadPacks("static objects");
         }
 
         private void SpawnForMap(string mapId)
@@ -119,7 +86,7 @@ namespace MapLootEditorLite.Client
             var wttClones = new List<WTTStaticObject>();
             foreach (var pack in _packs)
             {
-                if (pack.maps.TryGetValue(mapId, out var map))
+                if (RuntimePackLoader.TryGetMapData(pack, mapId, out var map))
                 {
                     foreach (var obj in map.objects ?? new List<StaticObject>())
                     {
@@ -197,7 +164,7 @@ namespace MapLootEditorLite.Client
                 GameObject source = null;
                 for (int attempt = 0; attempt < 5; attempt++)
                 {
-                    source = FindSourceObject(sourceObj.sourceObjectName, sourceObj.sourceObjectPosition.ToVector3());
+                    source = FindSourceObject(sourceObj.sourceObjectName, sourceObj.sourceObjectPosition.ToVector3(), sourceObj.sourceWorldObjectId);
                     if (source != null)
                         break;
 
@@ -307,13 +274,40 @@ namespace MapLootEditorLite.Client
             }
         }
 
-        private GameObject FindSourceObject(string name, Vector3 position)
+        private GameObject FindSourceObject(string name, Vector3 position, string sourceWorldObjectId = null)
         {
             if (_sourceNameIndex == null)
                 BuildSourceNameIndex();
 
             if (_sourceNameIndex.TryGetValue(name, out var candidates))
             {
+                if (!string.IsNullOrEmpty(sourceWorldObjectId))
+                {
+                    GameObject identified = null;
+                    float identifiedDist = float.MaxValue;
+                    for (int i = 0; i < candidates.Count; i++)
+                    {
+                        var candidate = candidates[i];
+                        if (candidate == null)
+                            continue;
+
+                        var worldObject = candidate.GetComponentInChildren<WorldInteractiveObject>(true)
+                            ?? candidate.GetComponentInParent<WorldInteractiveObject>();
+                        if (worldObject == null || worldObject.Id != sourceWorldObjectId)
+                            continue;
+
+                        var dist = (candidate.position - position).sqrMagnitude;
+                        if (dist < identifiedDist)
+                        {
+                            identifiedDist = dist;
+                            identified = candidate.gameObject;
+                        }
+                    }
+
+                    if (identified != null)
+                        return identified;
+                }
+
                 GameObject best = null;
                 float bestDist = float.MaxValue;
                 for (int i = 0; i < candidates.Count; i++)
@@ -329,12 +323,18 @@ namespace MapLootEditorLite.Client
                     }
                 }
                 if (best != null)
+                {
+                    if (!string.IsNullOrEmpty(sourceWorldObjectId))
+                        Plugin.Log.LogWarning($"Source WorldInteractiveObject id '{sourceWorldObjectId}' was not found for '{name}'; falling back to the saved name and position.");
                     return best;
+                }
             }
 
             // Fallback: scan for late-loaded objects not in the cache
             GameObject fallback = null;
             float fallbackDist = float.MaxValue;
+            GameObject identifiedFallback = null;
+            float identifiedFallbackDist = float.MaxValue;
             var sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
 
             for (int i = 0; i < sceneCount; i++)
@@ -349,6 +349,18 @@ namespace MapLootEditorLite.Client
                     {
                         if (t.name != name) continue;
                         var dist = (t.position - position).sqrMagnitude;
+                        var worldObject = t.GetComponentInChildren<WorldInteractiveObject>(true)
+                            ?? t.GetComponentInParent<WorldInteractiveObject>();
+                        if (!string.IsNullOrEmpty(sourceWorldObjectId) && worldObject != null && worldObject.Id == sourceWorldObjectId)
+                        {
+                            if (dist < identifiedFallbackDist)
+                            {
+                                identifiedFallbackDist = dist;
+                                identifiedFallback = t.gameObject;
+                            }
+                            continue;
+                        }
+
                         if (dist < fallbackDist)
                         {
                             fallbackDist = dist;
@@ -358,6 +370,10 @@ namespace MapLootEditorLite.Client
                 }
             }
 
+            if (identifiedFallback != null)
+                return identifiedFallback;
+            if (fallback != null && !string.IsNullOrEmpty(sourceWorldObjectId))
+                Plugin.Log.LogWarning($"Source WorldInteractiveObject id '{sourceWorldObjectId}' was not found for '{name}'; falling back to the saved name and position.");
             return fallback;
         }
 
@@ -376,14 +392,46 @@ namespace MapLootEditorLite.Client
             instance.transform.localScale = scale.ToVector3();
 
             if (marker is StaticObject so)
+            {
                 ApplyChildInteractableOverrides(instance, so.childInteractables);
+                ApplyRootDoorOverride(instance, so.rootKeyId, so.rootDoorState);
+            }
             else if (marker is WTTStaticObject wtt)
+            {
                 ApplyChildInteractableOverrides(instance, wtt.childInteractables);
+                ApplyRootDoorOverride(instance, wtt.rootKeyId, wtt.rootDoorState);
+            }
 
             ComponentHelper.ApplyAddedComponents(instance, marker.addedComponents);
 
             _spawned.Add(instance);
             Plugin.Log.LogInfo($"Spawned static object {marker.name} (fallback={isFallback}, source={sourceName})");
+        }
+
+        // Locking only needs the Door/WorldInteractiveObject component's DoorState; a separate "Lock" child object is not required.
+        private void ApplyRootDoorOverride(GameObject instance, string keyId, string stateText)
+        {
+            bool hasKey = !string.IsNullOrWhiteSpace(keyId);
+            bool hasState = DoorStateHelper.TryParse(stateText, out var state);
+            if (!hasKey && !hasState)
+                return;
+
+            var wio = instance.GetComponent<WorldInteractiveObject>();
+            if (wio == null)
+            {
+                Plugin.Log.LogWarning($"'{instance.name}' has a door key/state override but no door component on the copied object.");
+                return;
+            }
+
+            if (hasKey)
+                wio.KeyId = keyId;
+            if (hasState)
+                DoorStateHelper.Apply(wio, state);
+
+            if (hasState && state == EDoorState.Locked && string.IsNullOrEmpty(wio.KeyId))
+                Plugin.Log.LogWarning($"Door '{instance.name}' is Locked but has no keyId.");
+            else
+                Plugin.Log.LogInfo($"Door '{instance.name}' state={(hasState ? state.ToString() : "default")} key={(string.IsNullOrEmpty(wio.KeyId) ? "-" : wio.KeyId)}");
         }
 
         private void ApplyChildInteractableOverrides(GameObject instance, List<ChildInteractableData> overrides)
@@ -414,6 +462,21 @@ namespace MapLootEditorLite.Client
                     var wio = child.GetComponent<WorldInteractiveObject>();
                     if (wio != null)
                         wio.KeyId = childOverride.keyId;
+                }
+
+                if (DoorStateHelper.TryParse(childOverride.initialDoorState, out var childDoorState))
+                {
+                    var door = child.GetComponent<Door>();
+                    if (door != null)
+                    {
+                        DoorStateHelper.Apply(door, childDoorState);
+                        if (childDoorState == EDoorState.Locked && string.IsNullOrEmpty(door.KeyId))
+                            Plugin.Log.LogWarning($"Child door '{childOverride.childPath}' on '{instance.name}' is set to Locked but has no keyId.");
+                        else
+                            Plugin.Log.LogInfo($"Child door '{childOverride.childPath}' on '{instance.name}' state={childDoorState} key={(string.IsNullOrEmpty(door.KeyId) ? "-" : door.KeyId)}");
+                    }
+                    else
+                        Plugin.Log.LogWarning($"Child '{childOverride.childPath}' has a door state override but no Door component.");
                 }
 
                 if (!string.IsNullOrEmpty(childOverride.containerId))

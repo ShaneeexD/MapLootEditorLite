@@ -40,6 +40,7 @@ namespace MapLootEditorLite.Client
         public void ResetState()
         {
             ClearSpawned();
+            _packs = RuntimePackLoader.LoadPacks("extract zones");
             _currentWorld = null;
             _currentMapId = null;
             _hasSpawnedForCurrentMap = false;
@@ -102,39 +103,7 @@ namespace MapLootEditorLite.Client
 
         private void LoadPacks()
         {
-            var directories = new List<string>();
-            if (!string.IsNullOrEmpty(Plugin.ServerModPacksDirectory) && Directory.Exists(Plugin.ServerModPacksDirectory))
-                directories.Add(Plugin.ServerModPacksDirectory);
-
-            if (directories.Count == 0)
-            {
-                Plugin.Log.LogWarning("No pack directories found; extract zones will not be spawned.");
-                return;
-            }
-
-            foreach (var dir in directories)
-            {
-                foreach (var file in Directory.GetFiles(dir, "*.json", SearchOption.AllDirectories))
-                {
-                    try
-                    {
-                        var json = File.ReadAllText(file);
-                        var trimmed = json.TrimStart();
-                        if (trimmed.Length > 0 && trimmed[0] == '[')
-                            continue;
-                        var pack = JsonConvert.DeserializeObject<PackData>(json, PackData.InvariantSettings);
-                        if (pack?.maps != null)
-                        {
-                            _packs.Add(pack);
-                            Plugin.Log.LogInfo($"Loaded pack '{pack.name}' from {file}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Plugin.Log.LogWarning($"Failed to load pack {file}: {ex.Message}");
-                    }
-                }
-            }
+            _packs = RuntimePackLoader.LoadPacks("extract zones");
         }
 
         private void ApplyPatch()
@@ -192,7 +161,7 @@ namespace MapLootEditorLite.Client
             var zones = new List<ExtractZone>();
             foreach (var pack in _packs)
             {
-                if (pack.maps.TryGetValue(mapId, out var map))
+                if (RuntimePackLoader.TryGetMapData(pack, mapId, out var map))
                 {
                     foreach (var zone in map.extractZones ?? new List<ExtractZone>())
                     {

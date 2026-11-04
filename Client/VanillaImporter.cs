@@ -263,6 +263,7 @@ namespace MapLootEditorLite.Client
                     keyId = sceneContainer != null ? (sceneContainer.KeyId ?? "") : "",
                     sourceObjectName = sceneContainer != null ? sceneContainer.name : "",
                     sourceObjectPosition = sceneContainer != null ? FromVector3(sceneContainer.transform.position) : FromVectorData(sp.template.Position),
+                    sourceWorldObjectId = sceneContainer?.GetComponentInChildren<WorldInteractiveObject>(true)?.Id ?? "",
                     spawnChance = sp.probability * 100f,
                     lootMode = ContainerLootMode.Default,
                     items = new List<LootItem>()

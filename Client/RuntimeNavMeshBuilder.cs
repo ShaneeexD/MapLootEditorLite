@@ -17,7 +17,6 @@ namespace MapLootEditorLite.Client
         public static RuntimeNavMeshBuilder Instance { get; private set; }
 
         private readonly List<PackData> _packs = new List<PackData>();
-        private bool _loaded;
         private bool _injected;
         private Mesh _originalNavMeshMesh;
         private NavMeshData _builtNavMeshData;
@@ -44,7 +43,30 @@ namespace MapLootEditorLite.Client
 
         private void OnDestroy()
         {
+            ResetState();
             Instance = null;
+        }
+
+        public void ResetState()
+        {
+            if (_hasCustomNavMesh)
+            {
+                NavMesh.RemoveNavMeshData(_navMeshDataInstance);
+                _hasCustomNavMesh = false;
+            }
+            if (_builtNavMeshData != null)
+            {
+                Destroy(_builtNavMeshData);
+                _builtNavMeshData = null;
+            }
+            foreach (var mesh in _areaMeshes)
+            {
+                if (mesh != null)
+                    Destroy(mesh);
+            }
+            _areaMeshes.Clear();
+            _injected = false;
+            LoadPacks();
         }
 
         [HarmonyPriority(Priority.First)]
@@ -55,36 +77,8 @@ namespace MapLootEditorLite.Client
 
         private void LoadPacks()
         {
-            if (_loaded)
-                return;
-            _loaded = true;
-
-            var directories = new List<string>();
-            if (!string.IsNullOrEmpty(Plugin.ServerModPacksDirectory) && Directory.Exists(Plugin.ServerModPacksDirectory))
-                directories.Add(Plugin.ServerModPacksDirectory);
-            if (!string.IsNullOrEmpty(Plugin.ServerModExportsDirectory) && Directory.Exists(Plugin.ServerModExportsDirectory))
-                directories.Add(Plugin.ServerModExportsDirectory);
-
-            foreach (var dir in directories)
-            {
-                foreach (var file in Directory.GetFiles(dir, "*.json", SearchOption.AllDirectories))
-                {
-                    try
-                    {
-                        var json = File.ReadAllText(file);
-                        var trimmed = json.TrimStart();
-                        if (trimmed.Length > 0 && trimmed[0] == '[')
-                            continue;
-                        var pack = JsonConvert.DeserializeObject<PackData>(json, PackData.InvariantSettings);
-                        if (pack?.maps != null)
-                            _packs.Add(pack);
-                    }
-                    catch (Exception ex)
-                    {
-                        Plugin.Log.LogWarning($"Failed to load pack {file}: {ex.Message}");
-                    }
-                }
-            }
+            _packs.Clear();
+            _packs.AddRange(RuntimePackLoader.LoadPacks("navmesh"));
         }
 
         private void Inject()
@@ -106,7 +100,7 @@ namespace MapLootEditorLite.Client
             {
                 if (pack.maps == null)
                     continue;
-                if (pack.maps.TryGetValue(mapId, out var mapData) && mapData.navMeshAreas != null)
+                if (RuntimePackLoader.TryGetMapData(pack, mapId, out var mapData) && mapData.navMeshAreas != null)
                     areas.AddRange(mapData.navMeshAreas);
             }
 

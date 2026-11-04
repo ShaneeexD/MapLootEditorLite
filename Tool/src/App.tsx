@@ -24,6 +24,7 @@ import {
 import { saveAs } from 'file-saver'
 import { ClipboardPaste } from 'lucide-react'
 import { ItemSelector } from './ItemSelector'
+import { BulkItemPicker } from './BulkItemPicker'
 import { BundleBrowser } from './BundleBrowser'
 import { BundleSelector } from './BundleSelector'
 import { Tooltip } from './Tooltip'
@@ -42,6 +43,7 @@ import {
   type TransformData,
   ZoneShape,
   defaultInteractiveObject,
+  defaultBotActivityZone,
   defaultLootItem,
   defaultMapData,
   defaultPackData,
@@ -54,6 +56,7 @@ import {
   ExtractZoneList,
   LightZoneList,
   BotSpawnPointList,
+  BotActivityZoneList,
   BotSpawnZoneList,
   PmcSpawnZoneList,
   WttQuestZoneList,
@@ -73,6 +76,7 @@ type MarkerTab =
   | 'lights'
   | 'botpoints'
   | 'botzones'
+  | 'botactivity'
   | 'pmczones'
   | 'wttquests'
   | 'wttobjects'
@@ -82,16 +86,38 @@ type MarkerTab =
   | 'cutvolumes'
   | 'bundles'
 
+class PackStructureError extends Error {}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function migratePackData(pack: PackData): PackData {
+  if (!isPlainObject(pack)) {
+    throw new PackStructureError('The file must contain a JSON object at the top level.')
+  }
+  if (!isPlainObject(pack.maps)) {
+    throw new PackStructureError('The pack is missing a valid "maps" object.')
+  }
+
   const maps: Record<string, MapData> = {}
   for (const [key, map] of Object.entries(pack.maps)) {
+    if (!isPlainObject(map)) {
+      throw new PackStructureError(`Map "${key}" must be an object.`)
+    }
+    for (const field of ['lootSpawns', 'lootZones'] as const) {
+      const value = (map as any)[field]
+      if (value != null && !Array.isArray(value)) {
+        throw new PackStructureError(`Map "${key}": "${field}" must be an array.`)
+      }
+    }
     maps[key] = {
       ...map,
-      lootSpawns: map.lootSpawns.map((spawn) => ({
+      lootSpawns: (map.lootSpawns ?? []).map((spawn) => ({
         ...spawn,
         items: migrateItems(spawn.items, (spawn as any).itemTpls),
       })),
-      lootZones: map.lootZones.map((zone) => ({
+      lootZones: (map.lootZones ?? []).map((zone) => ({
         ...zone,
         scale: zone.scale ?? { x: 1, y: 1, z: 1 },
         shape: (zone as any).shape ?? ZoneShape.Sphere,
@@ -107,6 +133,13 @@ function migratePackData(pack: PackData): PackData {
       pmcSpawnZones: map.pmcSpawnZones ?? [],
       lightZones: map.lightZones ?? [],
       triggerZones: map.triggerZones ?? [],
+      botActivityZones: (map.botActivityZones ?? []).map((zone) => ({
+        ...defaultBotActivityZone(),
+        ...zone,
+        width: zone.width ?? zone.sideLength ?? 50,
+        depth: zone.depth ?? zone.sideLength ?? 50,
+        patrolPoints: zone.patrolPoints ?? [],
+      })),
       removedObjects: map.removedObjects ?? [],
       occlusionRepairVolumes: map.occlusionRepairVolumes ?? [],
       cutVolumes: map.cutVolumes ?? [],
@@ -196,14 +229,25 @@ export default function App() {
     if (!file) return
     const reader = new FileReader()
     reader.onload = () => {
+      let parsed: PackData
       try {
-        const imported = migratePackData(JSON.parse(reader.result as string) as PackData)
+        parsed = JSON.parse(reader.result as string) as PackData
+      } catch {
+        alert('Invalid pack JSON. The file could not be parsed as JSON.')
+        return
+      }
+      try {
+        const imported = migratePackData(parsed)
         setPack(imported)
         const first = Object.keys(imported.maps)[0] || ''
         setSelectedMapId(first)
         setImportKey((k) => k + 1)
-      } catch {
-        alert('Invalid pack JSON. Make sure it was exported from the in-game editor.')
+      } catch (err) {
+        if (err instanceof PackStructureError) {
+          alert(`Invalid pack structure: ${err.message}`)
+        } else {
+          alert('Invalid pack JSON. Make sure it was exported from the in-game editor.')
+        }
       }
     }
     reader.readAsText(file)
@@ -402,6 +446,13 @@ export default function App() {
                   disabled={!currentMap}
                 />
                 <TabButton
+                  active={tab === 'botactivity'}
+                  onClick={() => setTab('botactivity')}
+                  icon={<MapPin size={16} />}
+                  label={`Activity Zones${currentMap ? ` (${currentMap.botActivityZones?.length ?? 0})` : ''}`}
+                  disabled={!currentMap}
+                />
+                <TabButton
                   active={tab === 'botzones'}
                   onClick={() => setTab('botzones')}
                   icon={<Users size={16} />}
@@ -526,7 +577,17 @@ export default function App() {
                 (currentMap ? (
                   <BotSpawnPointList
                     data={currentMap.botSpawnPoints}
+                    activityZones={currentMap.botActivityZones ?? []}
                     onChange={(points) => updateMap(selectedMapId, (m) => ({ ...m, botSpawnPoints: points }))}
+                  />
+                ) : (
+                  <NoMapMessage />
+                ))}
+              {tab === 'botactivity' &&
+                (currentMap ? (
+                  <BotActivityZoneList
+                    data={currentMap.botActivityZones ?? []}
+                    onChange={(zones) => updateMap(selectedMapId, (m) => ({ ...m, botActivityZones: zones }))}
                   />
                 ) : (
                   <NoMapMessage />
@@ -729,6 +790,7 @@ function ItemListEditor({
   onChange: (items: LootItem[]) => void
   showRotation?: boolean
 }) {
+  const [bulkOpen, setBulkOpen] = useState(false)
   const update = (index: number, updates: Partial<LootItem>) => {
     onChange(replaceAt(value, index, { ...value[index], ...updates }))
   }
@@ -787,9 +849,95 @@ function ItemListEditor({
           )}
         </div>
       ))}
-      <button onClick={() => onChange([...value, defaultLootItem()])} className="btn-secondary text-sm flex items-center gap-1">
-        <Plus size={14} /> Add Item
-      </button>
+      {bulkOpen ? (
+        <BulkItemPicker
+          existingIds={value.map((v) => v.template)}
+          onCancel={() => setBulkOpen(false)}
+          onConfirm={(ids) => {
+            if (ids.length > 0) {
+              onChange([...value, ...ids.map((id) => ({ ...defaultLootItem(), template: id }))])
+            }
+            setBulkOpen(false)
+          }}
+        />
+      ) : (
+        <div className="flex items-center gap-2">
+          <button onClick={() => onChange([...value, defaultLootItem()])} className="btn-secondary text-sm flex items-center gap-1">
+            <Plus size={14} /> Add Item
+          </button>
+          <button onClick={() => setBulkOpen(true)} className="btn-secondary text-sm flex items-center gap-1">
+            <Plus size={14} /> Bulk Add Items
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function LootGroupControls({
+  value,
+  allSpawns,
+  onChange,
+}: {
+  value: LooseLootSpawn
+  allSpawns: LooseLootSpawn[]
+  onChange: (updates: Partial<LooseLootSpawn>) => void
+}) {
+  const enabled = value.lootGroupEnabled ?? false
+  const groupId = (value.lootGroupId ?? '').trim()
+  const weight = value.lootGroupWeight ?? 1
+  const memberCount = groupId
+    ? allSpawns.filter((s) => s.id !== value.id && (s.lootGroupEnabled ?? false) && (s.lootGroupId ?? '').trim() === groupId).length + 1
+    : 0
+  const existingIds = Array.from(
+    new Set(allSpawns.filter((s) => s.lootGroupEnabled && (s.lootGroupId ?? '').trim()).map((s) => (s.lootGroupId ?? '').trim())),
+  ).sort()
+
+  return (
+    <div className="md:col-span-2 lg:col-span-4 space-y-2 border border-tarkov-border rounded p-3">
+      <Toggle
+        label="Part of Loot Group"
+        checked={enabled}
+        onChange={(v) => onChange({ lootGroupEnabled: v })}
+        tooltip="Spawns sharing a Loot Group id are picked between: exactly one spawns per raid."
+      />
+      {enabled && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <TextField
+              label="Loot Group"
+              value={value.lootGroupId ?? ''}
+              onChange={(v) => onChange({ lootGroupId: v })}
+              tooltip="Group id shared by all spawns in this gameplay group."
+            />
+            <NumberField
+              label="Selection Weight"
+              value={weight}
+              onChange={(v) => onChange({ lootGroupWeight: v })}
+              min={0}
+              step={0.1}
+              tooltip="Relative chance of this spawn being the one picked. Values of 0 or below are ignored."
+            />
+          </div>
+          {!groupId && <p className="text-xs text-yellow-400">Empty Loot Group id: this spawn is treated as ungrouped.</p>}
+          {weight <= 0 && <p className="text-xs text-yellow-400">Weight must be above 0 or this spawn is treated as ungrouped.</p>}
+          {groupId && (
+            <p className="text-xs text-tarkov-text-dim">
+              Members in group: {memberCount}
+              {memberCount < 2 && ' (only one member, it will always spawn)'}. Spawn Chance and Forced are ignored for grouped spawns.
+            </p>
+          )}
+          {existingIds.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {existingIds.map((id) => (
+                <button key={id} type="button" className="btn-secondary text-xs px-2 py-1" onClick={() => onChange({ lootGroupId: id })}>
+                  {id}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }
@@ -862,6 +1010,7 @@ function SpawnList({
           </div>
           <TransformField label="Position" value={form.position} onChange={(v) => setForm((f) => ({ ...f, position: v }))} tooltip="World-space position of this spawn." />
           <TransformField label="Rotation" value={form.rotation} onChange={(v) => setForm((f) => ({ ...f, rotation: v }))} tooltip="World-space rotation of this spawn." />
+          <LootGroupControls value={form} allSpawns={data} onChange={(u) => setForm((f) => ({ ...f, ...u }))} />
           <div className="md:col-span-2 lg:col-span-4">
             <ItemListEditor value={form.items} onChange={(v) => setForm((f) => ({ ...f, items: v }))} />
           </div>
@@ -891,6 +1040,10 @@ function SpawnList({
                       spawnChance: parsed.spawnChance ?? 100,
                       respawnable: parsed.respawnable ?? false,
                       forced: parsed.forced ?? false,
+                      group: parsed.group,
+                      lootGroupEnabled: parsed.lootGroupEnabled ?? false,
+                      lootGroupId: parsed.lootGroupId ?? '',
+                      lootGroupWeight: parsed.lootGroupWeight ?? 1,
                     })
                   } else {
                     alert('Clipboard does not contain a valid spawn JSON. Copy a spawn from the in-game editor first.')
@@ -941,6 +1094,7 @@ function SpawnList({
               </div>
               <TransformField label="Position" value={spawn.position} onChange={(v) => update(i, { position: v })} tooltip="World-space position of this spawn." />
               <TransformField label="Rotation" value={spawn.rotation} onChange={(v) => update(i, { rotation: v })} tooltip="World-space rotation of this spawn." />
+              <LootGroupControls value={spawn} allSpawns={data} onChange={(u) => update(i, u)} />
               <div className="md:col-span-2 lg:col-span-4">
                 <ItemListEditor value={spawn.items} onChange={(v) => update(i, { items: v })} />
               </div>
@@ -1586,6 +1740,7 @@ function InteractiveItemListEditor({
   onChange: (items: LootItem[]) => void
   tooltip?: string
 }) {
+  const [bulkOpen, setBulkOpen] = useState(false)
   const update = (index: number, updates: Partial<LootItem>) => {
     onChange(replaceAt(value, index, { ...value[index], ...updates }))
   }
@@ -1632,9 +1787,27 @@ function InteractiveItemListEditor({
           </div>
         </div>
       ))}
-      <button onClick={() => onChange([...value, { ...defaultLootItem() }])} className="btn-secondary text-sm flex items-center gap-1">
-        <Plus size={14} /> Add Item
-      </button>
+      {bulkOpen ? (
+        <BulkItemPicker
+          existingIds={value.map((v) => v.template)}
+          onCancel={() => setBulkOpen(false)}
+          onConfirm={(ids) => {
+            if (ids.length > 0) {
+              onChange([...value, ...ids.map((id) => ({ ...defaultLootItem(), template: id }))])
+            }
+            setBulkOpen(false)
+          }}
+        />
+      ) : (
+        <div className="flex items-center gap-2">
+          <button onClick={() => onChange([...value, { ...defaultLootItem() }])} className="btn-secondary text-sm flex items-center gap-1">
+            <Plus size={14} /> Add Item
+          </button>
+          <button onClick={() => setBulkOpen(true)} className="btn-secondary text-sm flex items-center gap-1">
+            <Plus size={14} /> Bulk Add Items
+          </button>
+        </div>
+      )}
     </div>
   )
 }

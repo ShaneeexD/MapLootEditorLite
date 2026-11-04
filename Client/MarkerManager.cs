@@ -124,6 +124,7 @@ namespace MapLootEditorLite.Client
         public void LoadMap(string mapId)
         {
             Data = JsonStorage.Load(mapId);
+            NormalizeActivityZones(Data);
             Selected = null;
             IsDirty = false;
             _undoStack.Clear();
@@ -182,6 +183,7 @@ namespace MapLootEditorLite.Client
 
         public void SetMapData(MapData data)
         {
+            NormalizeActivityZones(data);
             Data = data;
             Selected = null;
             IsDirty = true;
@@ -248,6 +250,9 @@ namespace MapLootEditorLite.Client
                     yield return m;
             if (Data.navMeshAreas != null)
                 foreach (var m in Data.navMeshAreas)
+                    yield return m;
+            if (Data.botActivityZones != null)
+                foreach (var m in Data.botActivityZones)
                     yield return m;
         }
 
@@ -428,6 +433,10 @@ namespace MapLootEditorLite.Client
                     Data.navMeshAreas ??= new List<NavMeshArea>();
                     Data.navMeshAreas.Add(nma);
                     break;
+                case BotActivityZone baz:
+                    Data.botActivityZones ??= new List<BotActivityZone>();
+                    Data.botActivityZones.Add(baz);
+                    break;
             }
             IsDirty = true;
         }
@@ -435,6 +444,7 @@ namespace MapLootEditorLite.Client
         public void SelectGroup(string group)
         {
             SelectedIds.Clear();
+            _selected = null;
             foreach (var m in GetAllMarkers())
             {
                 if (string.Equals(m.group ?? "", group ?? "", StringComparison.OrdinalIgnoreCase) && !IsLocked(m))
@@ -466,6 +476,31 @@ namespace MapLootEditorLite.Client
             IsDirty = true;
         }
 
+        public void DeleteGroupAssignments(string group)
+        {
+            if (Data == null || string.IsNullOrWhiteSpace(group))
+                return;
+
+            bool changed = false;
+            foreach (var marker in GetAllMarkers())
+            {
+                if (string.Equals(marker.group ?? "", group, StringComparison.OrdinalIgnoreCase))
+                {
+                    marker.group = "";
+                    changed = true;
+                }
+            }
+
+            if (Data.lockedGroups != null &&
+                Data.lockedGroups.RemoveAll(lockedGroup => string.Equals(lockedGroup, group, StringComparison.OrdinalIgnoreCase)) > 0)
+            {
+                changed = true;
+            }
+
+            if (changed)
+                IsDirty = true;
+        }
+
         public void DeleteSelection()
         {
             if (Data == null)
@@ -495,6 +530,7 @@ namespace MapLootEditorLite.Client
                 case CutVolume cv: Data.cutVolumes.Remove(cv); break;
                 case Blocker b: Data.blockers.Remove(b); break;
                 case NavMeshArea nma: Data.navMeshAreas.Remove(nma); break;
+                case BotActivityZone baz: Data.botActivityZones.Remove(baz); break;
                 }
             }
             ClearSelection();
@@ -699,12 +735,17 @@ namespace MapLootEditorLite.Client
                         copy = JsonConvert.DeserializeObject<NavMeshArea>(json);
                         Data.navMeshAreas.Add((NavMeshArea)copy);
                         break;
+                    case BotActivityZone baz:
+                        copy = JsonConvert.DeserializeObject<BotActivityZone>(json);
+                        Data.botActivityZones.Add((BotActivityZone)copy);
+                        break;
                     default:
                         continue;
                 }
                 copy.id = Guid.NewGuid().ToString();
                 copy.name = copy.name + "_copy";
                 copy.position.x += 0.2f;
+                AssignFreshZoneId(copy);
                 newIds.Add(copy.id);
             }
             SelectedIds.Clear();
@@ -1012,6 +1053,118 @@ namespace MapLootEditorLite.Client
             return marker;
         }
 
+        public BotActivityZone CreateBotActivityZone(Vector3 position)
+        {
+            Data.botActivityZones ??= new List<BotActivityZone>();
+            var marker = new BotActivityZone
+            {
+                name = "bot_activity_zone",
+                position = TransformData.FromVector3(position),
+                rotation = TransformData.FromVector3(Vector3.zero),
+                zoneId = NextFreeZoneId()
+            };
+            Data.botActivityZones.Add(marker);
+            IsDirty = true;
+            return marker;
+        }
+
+        public IEnumerable<BotActivityZone> GetActivityZones()
+        {
+            if (Data?.botActivityZones == null)
+                return Enumerable.Empty<BotActivityZone>();
+            return Data.botActivityZones;
+        }
+
+        public BotActivityZone FindActivityZone(string zoneId)
+        {
+            if (string.IsNullOrEmpty(zoneId) || Data?.botActivityZones == null)
+                return null;
+            return Data.botActivityZones.FirstOrDefault(z => string.Equals(z.zoneId, zoneId, StringComparison.Ordinal));
+        }
+
+        private string NextFreeZoneId()
+        {
+            string id;
+            do { id = BotActivityZone.NewZoneId(); } while (FindActivityZone(id) != null);
+            return id;
+        }
+
+        // Copies (duplicate, paste, prefab) must not share a zone ID with the original.
+        public void AssignFreshZoneId(MarkerBase marker)
+        {
+            if (marker is BotActivityZone zone)
+            {
+                zone.zoneId = NextFreeZoneId();
+                if (zone.patrolPoints != null)
+                {
+                    foreach (var point in zone.patrolPoints)
+                        if (point != null)
+                            point.id = BotActivityPatrolPoint.NewId();
+                }
+            }
+        }
+
+        // Makes older or hand-edited data safe: missing lists, empty/duplicate zone IDs, invalid sizes.
+        // The first zone keeps a duplicated ID so existing spawn-point references stay stable.
+        public static void NormalizeActivityZones(MapData data)
+        {
+            if (data == null)
+                return;
+
+            data.botActivityZones ??= new List<BotActivityZone>();
+            data.botSpawnPoints ??= new List<BotSpawnPoint>();
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var patrolIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var zone in data.botActivityZones)
+            {
+                if (zone == null)
+                    continue;
+
+                zone.position ??= new TransformData();
+                zone.rotation ??= new TransformData();
+                zone.radius = BotActivityZone.ClampRadius(zone.radius);
+                zone.sideLength = BotActivityZone.ClampSideLength(zone.sideLength);
+                zone.width = BotActivityZone.ClampDimension(zone.EffectiveWidth);
+                zone.depth = BotActivityZone.ClampDimension(zone.EffectiveDepth);
+                zone.sideLength = Mathf.Max(zone.width, zone.depth);
+                zone.leashMode = BotActivityZone.NormalizeLeashMode(zone.leashMode);
+                zone.patrolPoints ??= new List<BotActivityPatrolPoint>();
+                foreach (var point in zone.patrolPoints)
+                {
+                    if (point == null)
+                        continue;
+                    point.position ??= new TransformData();
+                    point.dwellSeconds = float.IsNaN(point.dwellSeconds) || float.IsInfinity(point.dwellSeconds)
+                        ? 60f
+                        : Mathf.Clamp(point.dwellSeconds, 1f, 3600f);
+                    if (string.IsNullOrWhiteSpace(point.id) || !patrolIds.Add(point.id))
+                    {
+                        string fresh;
+                        do { fresh = BotActivityPatrolPoint.NewId(); } while (!patrolIds.Add(fresh));
+                        point.id = fresh;
+                    }
+                    point.destinationZoneId ??= "";
+                    point.name ??= "";
+                }
+                zone.patrolPoints.RemoveAll(point => point == null);
+
+                if (string.IsNullOrWhiteSpace(zone.zoneId) || !seen.Add(zone.zoneId))
+                {
+                    string fresh;
+                    do { fresh = BotActivityZone.NewZoneId(); } while (!seen.Add(fresh));
+                    zone.zoneId = fresh;
+                }
+            }
+            data.botActivityZones.RemoveAll(z => z == null);
+
+            foreach (var point in data.botSpawnPoints)
+            {
+                if (point != null && point.botActivityZoneId == null)
+                    point.botActivityZoneId = "";
+            }
+        }
+
         public void DeleteSelected()
         {
             if (Selected == null || Data == null || IsVanilla(Selected))
@@ -1035,6 +1188,7 @@ namespace MapLootEditorLite.Client
                 case CutVolume cv: Data.cutVolumes.Remove(cv); break;
                 case Blocker b: Data.blockers.Remove(b); break;
                 case NavMeshArea nma: Data.navMeshAreas.Remove(nma); break;
+                case BotActivityZone baz: Data.botActivityZones.Remove(baz); break;
             }
 
             Selected = null;
@@ -1103,6 +1257,10 @@ namespace MapLootEditorLite.Client
                     copy = JsonConvert.DeserializeObject<Blocker>(json);
                     Data.blockers.Add((Blocker)copy);
                     break;
+                case BotActivityZone baz:
+                    copy = JsonConvert.DeserializeObject<BotActivityZone>(json);
+                    Data.botActivityZones.Add((BotActivityZone)copy);
+                    break;
                 default:
                     return null;
             }
@@ -1110,6 +1268,7 @@ namespace MapLootEditorLite.Client
             copy.id = Guid.NewGuid().ToString();
             copy.name = copy.name + "_copy";
             copy.position.x += 0.5f;
+            AssignFreshZoneId(copy);
             Selected = copy;
             IsDirty = true;
             return copy;
@@ -1131,6 +1290,51 @@ namespace MapLootEditorLite.Client
 
             Selected.rotation = TransformData.FromVector3(Selected.rotation.ToVector3() + delta);
             IsDirty = true;
+        }
+
+        // Legacy uniform size entry point. Position, rotation and spawn-point assignments are untouched.
+        public bool SetActivityZoneSize(BotActivityZone zone, float requested, out float applied)
+        {
+            applied = 0f;
+            if (zone == null || IsVanilla(zone))
+                return false;
+
+            var circle = zone.shape == BotActivityZoneShape.Circle;
+            if (circle)
+            {
+                applied = BotActivityZone.ClampRadius(requested);
+                if (Mathf.Approximately(zone.radius, applied))
+                    return false;
+                zone.radius = applied;
+            }
+            else
+            {
+                applied = BotActivityZone.ClampSideLength(requested);
+                if (Mathf.Approximately(zone.EffectiveWidth, applied) && Mathf.Approximately(zone.EffectiveDepth, applied))
+                    return false;
+                zone.width = zone.depth = zone.sideLength = applied;
+            }
+            IsDirty = true;
+            return true;
+        }
+
+        public bool SetActivityZoneDimension(BotActivityZone zone, bool width, float requested)
+        {
+            if (zone == null || zone.shape != BotActivityZoneShape.Square || IsVanilla(zone))
+                return false;
+
+            var applied = BotActivityZone.ClampDimension(requested);
+            var current = width ? zone.EffectiveWidth : zone.EffectiveDepth;
+            if (Mathf.Approximately(current, applied))
+                return false;
+
+            if (width)
+                zone.width = applied;
+            else
+                zone.depth = applied;
+            zone.sideLength = Mathf.Max(zone.EffectiveWidth, zone.EffectiveDepth);
+            IsDirty = true;
+            return true;
         }
 
         public void ChangeRadius(float delta)

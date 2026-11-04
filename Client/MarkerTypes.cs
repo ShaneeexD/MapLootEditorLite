@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 namespace MapLootEditorLite.Client
@@ -23,7 +24,15 @@ namespace MapLootEditorLite.Client
         OcclusionRepairVolume,
         CutVolume,
         Blocker,
-        NavMeshArea
+        NavMeshArea,
+        BotActivityZone
+    }
+
+    [JsonConverter(typeof(StringEnumConverter))]
+    public enum BotActivityZoneShape
+    {
+        Circle,
+        Square
     }
 
     public enum ExtractZoneRequirementType
@@ -110,7 +119,9 @@ namespace MapLootEditorLite.Client
         Kolontay,
         Partisan,
         Cultist,
-        Infected
+        Infected,
+        Reshala,
+        BotGen
     }
 
     [JsonConverter(typeof(StringEnumConverter))]
@@ -145,24 +156,44 @@ namespace MapLootEditorLite.Client
             { BotSpawnPreset.Kolontay, "Kolontay" },
             { BotSpawnPreset.Partisan, "Partisan" },
             { BotSpawnPreset.Cultist, "Cultist" },
-            { BotSpawnPreset.Infected, "Infected" }
+            { BotSpawnPreset.Infected, "Infected" },
+            { BotSpawnPreset.Reshala, "Reshala (Bully)" },
+            { BotSpawnPreset.BotGen, "BotGen" }
         };
 
         public static void ApplyPreset(BotSpawnPreset preset, BotSpawnPoint point)
         {
-            point.wildSpawnType = GetWildSpawnType(preset);
+            if (preset == BotSpawnPreset.BotGen)
+            {
+                if (string.IsNullOrEmpty(point.wildSpawnType) || !point.wildSpawnType.StartsWith("botgen_", StringComparison.OrdinalIgnoreCase))
+                    point.wildSpawnType = "";
+            }
+            else
+                point.wildSpawnType = GetWildSpawnType(preset);
             ApplyPreset(preset, ref point.side, ref point.category);
         }
 
         public static void ApplyPreset(BotSpawnPreset preset, BotSpawnZone zone)
         {
-            zone.wildSpawnType = GetWildSpawnType(preset);
+            if (preset == BotSpawnPreset.BotGen)
+            {
+                if (string.IsNullOrEmpty(zone.wildSpawnType) || !zone.wildSpawnType.StartsWith("botgen_", StringComparison.OrdinalIgnoreCase))
+                    zone.wildSpawnType = "";
+            }
+            else
+                zone.wildSpawnType = GetWildSpawnType(preset);
             ApplyPreset(preset, ref zone.side, ref zone.category);
         }
 
         public static void ApplyPreset(BotSpawnPreset preset, BotSpawnGroup group)
         {
-            group.wildSpawnType = GetWildSpawnType(preset);
+            if (preset == BotSpawnPreset.BotGen)
+            {
+                if (string.IsNullOrEmpty(group.wildSpawnType) || !group.wildSpawnType.StartsWith("botgen_", StringComparison.OrdinalIgnoreCase))
+                    group.wildSpawnType = "";
+            }
+            else
+                group.wildSpawnType = GetWildSpawnType(preset);
             ApplyPreset(preset, ref group.side, ref group.category);
         }
 
@@ -187,6 +218,7 @@ namespace MapLootEditorLite.Client
                 case BotSpawnPreset.Boar:
                 case BotSpawnPreset.Kolontay:
                 case BotSpawnPreset.Partisan:
+                case BotSpawnPreset.Reshala:
                     side = BotSpawnSide.Savage;
                     category = BotSpawnCategory.Boss;
                     break;
@@ -196,6 +228,7 @@ namespace MapLootEditorLite.Client
                 case BotSpawnPreset.Raider:
                 case BotSpawnPreset.Rogue:
                 case BotSpawnPreset.Scav:
+                case BotSpawnPreset.BotGen:
                     side = BotSpawnSide.Savage;
                     category = BotSpawnCategory.Bot;
                     break;
@@ -229,6 +262,8 @@ namespace MapLootEditorLite.Client
                 case BotSpawnPreset.Partisan: return "bossPartisan";
                 case BotSpawnPreset.Cultist: return "sectantWarrior";
                 case BotSpawnPreset.Infected: return "infectedAssault";
+                case BotSpawnPreset.Reshala: return "bossBully";
+                case BotSpawnPreset.BotGen: return "";
                 default: return "";
             }
         }
@@ -237,6 +272,8 @@ namespace MapLootEditorLite.Client
         {
             if (string.IsNullOrEmpty(wildSpawnType))
                 return BotSpawnPreset.Any;
+            if (wildSpawnType.StartsWith("botgen_", StringComparison.OrdinalIgnoreCase))
+                return BotSpawnPreset.BotGen;
             foreach (var kvp in PresetNames)
             {
                 if (GetWildSpawnType(kvp.Key).Equals(wildSpawnType, StringComparison.OrdinalIgnoreCase))
@@ -249,6 +286,8 @@ namespace MapLootEditorLite.Client
     public class MapData
     {
         public string map;
+        [JsonExtensionData]
+        public IDictionary<string, JToken> extensionData = new Dictionary<string, JToken>(StringComparer.Ordinal);
         public List<string> lockedGroups = new List<string>();
         public List<LooseLootSpawn> lootSpawns = new List<LooseLootSpawn>();
         public List<LootZone> lootZones = new List<LootZone>();
@@ -266,11 +305,26 @@ namespace MapLootEditorLite.Client
         public List<CutVolume> cutVolumes = new List<CutVolume>();
         public List<Blocker> blockers = new List<Blocker>();
         public List<NavMeshArea> navMeshAreas = new List<NavMeshArea>();
+        public List<BotActivityZone> botActivityZones = new List<BotActivityZone>();
         public List<RemovedObject> removedObjects = new List<RemovedObject>();
+        // Per-map NPC deployments. Eligibility is derived from SPT quest state at raid start; nothing about progression is stored here.
+        public List<NpcDeployment> deployments = new List<NpcDeployment>();
+    }
+
+    public class NpcDeployment
+    {
+        [JsonExtensionData]
+        public IDictionary<string, JToken> extensionData = new Dictionary<string, JToken>(StringComparer.Ordinal);
+        public string id = "";
+        public string name = "";
+        public string activationQuestId = "";
+        public string deactivationQuestId = "";
     }
 
     public class RemovedObject
     {
+        [JsonExtensionData]
+        public IDictionary<string, JToken> extensionData = new Dictionary<string, JToken>(StringComparer.Ordinal);
         public string id = System.Guid.NewGuid().ToString("N");
         public string name = "";
         public string path = "";
@@ -283,6 +337,8 @@ namespace MapLootEditorLite.Client
 
     public class PackData
     {
+        [JsonExtensionData]
+        public IDictionary<string, JToken> extensionData = new Dictionary<string, JToken>(StringComparer.Ordinal);
         public string name = "My Loot Pack";
         public string author = "";
         public string version = "1.1.0";
@@ -297,6 +353,8 @@ namespace MapLootEditorLite.Client
 
     public class TransformData
     {
+        [JsonExtensionData]
+        public IDictionary<string, JToken> extensionData = new Dictionary<string, JToken>(StringComparer.Ordinal);
         public float x;
         public float y;
         public float z;
@@ -319,6 +377,8 @@ namespace MapLootEditorLite.Client
 
     public abstract class MarkerBase
     {
+        [JsonExtensionData]
+        public IDictionary<string, JToken> extensionData = new Dictionary<string, JToken>(StringComparer.Ordinal);
         public string id = Guid.NewGuid().ToString();
         public string name = "marker";
         [JsonProperty("group")]
@@ -337,6 +397,8 @@ namespace MapLootEditorLite.Client
 
     public class LootItem
     {
+        [JsonExtensionData]
+        public IDictionary<string, JToken> extensionData = new Dictionary<string, JToken>(StringComparer.Ordinal);
         public string id = "";            // Optional vanilla/mongo id, used during import to rebuild parent/child links
         public string template = "";
         public float chance = 100f;
@@ -365,6 +427,9 @@ namespace MapLootEditorLite.Client
         public bool questOnly = false;
         public bool questCompleted = false;
         public string questId = "";
+        public bool lootGroupEnabled = false;
+        public string lootGroupId = "";
+        public float lootGroupWeight = 1f;
 
         public override MarkerKind Kind => MarkerKind.LooseLoot;
     }
@@ -399,6 +464,11 @@ namespace MapLootEditorLite.Client
         public bool questOnly = false;
         public bool questCompleted = false;
         public string questId = "";
+        // Surface placement. Zero/empty = defaults / legacy behaviour (server scatters points at the zone's Y).
+        public int bakeCount = 0;
+        public float minSpacing = 0f;
+        public float maxSlope = 0f;
+        public List<TransformData> surfacePoints = new List<TransformData>();
 
         public override MarkerKind Kind => MarkerKind.LootZone;
     }
@@ -407,12 +477,17 @@ namespace MapLootEditorLite.Client
     {
         string sourceObjectName { get; set; }
         TransformData sourceObjectPosition { get; set; }
+        string sourceWorldObjectId { get; set; }
     }
 
     public class ChildInteractableData
     {
+        [JsonExtensionData]
+        public IDictionary<string, JToken> extensionData = new Dictionary<string, JToken>(StringComparer.Ordinal);
         public string childPath = "";
         public string keyId = "";
+        // Door children only. Empty = leave the vanilla state untouched (also what packs saved before this field load as).
+        public string initialDoorState = "";
         public string containerId = "";
         public TransformData position;
         public TransformData rotation;
@@ -429,6 +504,7 @@ namespace MapLootEditorLite.Client
         // Fallback: copy an existing vanilla scene object instead of loading a bundle.
         public string sourceObjectName { get; set; } = "";
         public TransformData sourceObjectPosition { get; set; } = new TransformData();
+        public string sourceWorldObjectId { get; set; } = "";
 
         // Custom bundle model
         public string bundleName = "";
@@ -439,6 +515,10 @@ namespace MapLootEditorLite.Client
         public string questId = "";
 
         public List<ChildInteractableData> childInteractables = new List<ChildInteractableData>();
+
+        // Used when the copied source object is itself a door. Empty = leave the vanilla values.
+        public string rootKeyId = "";
+        public string rootDoorState = "";
 
         public override MarkerKind Kind => MarkerKind.StaticObject;
     }
@@ -466,6 +546,7 @@ namespace MapLootEditorLite.Client
         // Clone mode (copy an existing scene object)
         public string sourceObjectName { get; set; } = "";
         public TransformData sourceObjectPosition { get; set; } = new TransformData();
+        public string sourceWorldObjectId { get; set; } = "";
         public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
 
         // Quest conditions
@@ -486,6 +567,9 @@ namespace MapLootEditorLite.Client
 
         public List<ChildInteractableData> childInteractables = new List<ChildInteractableData>();
 
+        public string rootKeyId = "";
+        public string rootDoorState = "";
+
         public override MarkerKind Kind => MarkerKind.WTTStaticObject;
     }
 
@@ -495,6 +579,7 @@ namespace MapLootEditorLite.Client
 
         public string sourceObjectName { get; set; } = "";
         public TransformData sourceObjectPosition { get; set; } = new TransformData();
+        public string sourceWorldObjectId { get; set; } = "";
         public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
 
         // Custom bundle model
@@ -528,6 +613,8 @@ namespace MapLootEditorLite.Client
 
     public class ExtractZoneRequirement
     {
+        [JsonExtensionData]
+        public IDictionary<string, JToken> extensionData = new Dictionary<string, JToken>(StringComparer.Ordinal);
         public string type = "None";
         public string templateId = "";
         public int count = 1;
@@ -563,6 +650,8 @@ namespace MapLootEditorLite.Client
 
     public class BotSpawnGroup
     {
+        [JsonExtensionData]
+        public IDictionary<string, JToken> extensionData = new Dictionary<string, JToken>(StringComparer.Ordinal);
         public string id = "";
         public int spawnCount = 1;
         public BotSpawnPreset preset = BotSpawnPreset.Scav;
@@ -589,6 +678,7 @@ namespace MapLootEditorLite.Client
 
     public class BotSpawnPoint : MarkerBase
     {
+        public string botSpawnGroupId = "";
         public float radius = 1f;
         public BotSpawnSide side = BotSpawnSide.Savage;
         public BotSpawnCategory category = BotSpawnCategory.Bot;
@@ -606,8 +696,95 @@ namespace MapLootEditorLite.Client
         public bool triggerActivated = false;
         public string triggerZoneName = "";
         public bool forcePlayerSpawn = false;
+        public bool followersEnabled = false;
+        public int minFollowers = 0;
+        public int maxFollowers = 0;
+        // References BotActivityZone.zoneId for optional observe-only diagnostics; empty = unassigned.
+        public string botActivityZoneId = "";
+        // References NpcDeployment.id on the same map; empty = not part of a deployment.
+        public string deploymentId = "";
 
         public override MarkerKind Kind => MarkerKind.BotSpawnPoint;
+    }
+
+    // Boundary, leash and patrol configuration for MEL-owned bot spawn points.
+    public class BotActivityZone : MarkerBase
+    {
+        public const float MinSize = 0.5f;
+        public const float DefaultRadius = 25f;
+        public const float DefaultSideLength = 50f;
+        public const float DefaultWidth = DefaultSideLength;
+        public const float DefaultDepth = DefaultSideLength;
+        public const float MaxRadius = 500f;
+        public const float MaxSideLength = 1000f;
+
+        public static float ClampRadius(float value)
+        {
+            if (float.IsNaN(value))
+                return DefaultRadius;
+            return value < MinSize ? MinSize : (value > MaxRadius ? MaxRadius : value);
+        }
+
+        public static float ClampSideLength(float value)
+        {
+            if (float.IsNaN(value))
+                return DefaultSideLength;
+            return value < MinSize ? MinSize : (value > MaxSideLength ? MaxSideLength : value);
+        }
+
+        public static float ClampDimension(float value)
+        {
+            return ClampSideLength(value);
+        }
+
+        // Stable reference key used by BotSpawnPoint.botActivityZoneId; separate from marker id.
+        public string zoneId = "";
+        public bool enabled = true;
+        public BotActivityZoneShape shape = BotActivityZoneShape.Circle;
+        // Circle: radius in meters from the zone center.
+        public float radius = DefaultRadius;
+        // Legacy square size. Kept in sync with the larger dimension for older editor versions.
+        public float sideLength = DefaultSideLength;
+        // Square footprint dimensions, aligned to the zone's yaw (rotation.y). Zero means legacy sideLength.
+        public float width;
+        public float depth;
+        // "Soft" (default) or "Strong". Stored as a string so unknown/missing values never fail pack loading.
+        public string leashMode = LeashModeSoft;
+        public bool patrolEnabled;
+        public List<BotActivityPatrolPoint> patrolPoints = new List<BotActivityPatrolPoint>();
+
+        public float EffectiveWidth => width >= MinSize ? ClampDimension(width) : ClampSideLength(sideLength);
+        public float EffectiveDepth => depth >= MinSize ? ClampDimension(depth) : ClampSideLength(sideLength);
+
+        public const string LeashModeSoft = "Soft";
+        public const string LeashModeStrong = "Strong";
+
+        public static string NormalizeLeashMode(string value)
+        {
+            return string.Equals(value?.Trim(), LeashModeStrong, StringComparison.OrdinalIgnoreCase) ? LeashModeStrong : LeashModeSoft;
+        }
+
+        public override MarkerKind Kind => MarkerKind.BotActivityZone;
+
+        public static string NewZoneId()
+        {
+            return "zone_" + Guid.NewGuid().ToString("N").Substring(0, 8);
+        }
+    }
+
+    public class BotActivityPatrolPoint
+    {
+        public string id = "";
+        public string name = "";
+        public TransformData position = new TransformData();
+        public string destinationZoneId = "";
+        public float dwellSeconds = 60f;
+        public bool enabled = true;
+
+        public static string NewId()
+        {
+            return "patrol_" + Guid.NewGuid().ToString("N").Substring(0, 8);
+        }
     }
 
     public class BotSpawnZone : MarkerBase
@@ -632,6 +809,10 @@ namespace MapLootEditorLite.Client
         public List<BotSpawnGroup> randomGroups = new();
         public bool triggerActivated = false;
         public string triggerZoneName = "";
+        public bool followersEnabled = false;
+        public int minFollowers = 0;
+        public int maxFollowers = 0;
+        public string deploymentId = "";
 
         public override MarkerKind Kind => MarkerKind.BotSpawnZone;
     }
@@ -660,6 +841,8 @@ namespace MapLootEditorLite.Client
 
     public class LightColorData
     {
+        [JsonExtensionData]
+        public IDictionary<string, JToken> extensionData = new Dictionary<string, JToken>(StringComparer.Ordinal);
         public float r = 1f;
         public float g = 1f;
         public float b = 1f;
@@ -719,6 +902,7 @@ namespace MapLootEditorLite.Client
     {
         public string sourceObjectName { get; set; } = "";
         public TransformData sourceObjectPosition { get; set; } = new TransformData();
+        public string sourceWorldObjectId { get; set; } = "";
         public TransformData scale = new TransformData { x = 1f, y = 1f, z = 1f };
         public ZoneShape shape = ZoneShape.Box;
         public bool invert = false; // keep geometry inside instead of removing it

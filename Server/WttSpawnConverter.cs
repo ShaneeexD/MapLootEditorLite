@@ -50,7 +50,7 @@ public static class WttSpawnConverter
         {
             foreach (var (packMapKey, map) in pack.Maps)
             {
-                foreach (var spawn in map.LootSpawns.Where(s => s.Forced))
+                foreach (var spawn in map.LootSpawns.Where(s => s.Forced && !s.IsInLootGroup))
                 {
                     foreach (var wttMapId in ToWttMapIds(packMapKey))
                     {
@@ -70,9 +70,10 @@ public static class WttSpawnConverter
                             continue;
                         }
 
+                        var surfacePool = zone.SurfacePoints is { Count: > 0 } ? new List<TransformData>(zone.SurfacePoints) : null;
                         for (int i = 0; i < zone.Items.Count; i++)
                         {
-                            forcedByMap[wttMapId].Add(CreateWttZoneItemSpawnpoint(zone, zone.Items[i], i));
+                            forcedByMap[wttMapId].Add(CreateWttZoneItemSpawnpoint(zone, zone.Items[i], i, LootTransformer.TakeSurfacePoint(surfacePool, Random.Shared)));
                         }
                     }
                 }
@@ -145,14 +146,14 @@ public static class WttSpawnConverter
         };
     }
 
-    private static WttSpawnpoint CreateWttZoneItemSpawnpoint(LootZone zone, LootItem item, int index)
+    private static WttSpawnpoint CreateWttZoneItemSpawnpoint(LootZone zone, LootItem item, int index, TransformData? surfacePoint)
     {
         var items = BuildWttItems([item], out var chances);
         var rootId = items.FirstOrDefault()?.Id ?? new MongoId();
         var chance = chances.Count > 0 ? chances[0] : 1;
         var rotation = item.RandomRotation ? RandomYRotation() : item.Rotation;
         var locationId = $"{zone.Id}_{index}";
-        var position = RandomPointInShape(zone);
+        var position = surfacePoint ?? RandomPointInShape(zone);
         var composedKey = items.FirstOrDefault()?.ComposedKey ?? string.Empty;
 
         return new WttSpawnpoint

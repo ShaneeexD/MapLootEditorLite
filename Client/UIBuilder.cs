@@ -88,6 +88,38 @@ namespace MapLootEditorLite.Client
             return t;
         }
 
+        public static Text CreateWrappedText(Transform parent, string text, int fontSize = 12, Color? color = null, FontStyle style = FontStyle.Normal)
+        {
+            var textComponent = CreateText(parent, text, fontSize, color, style);
+            textComponent.horizontalOverflow = HorizontalWrapMode.Wrap;
+            textComponent.verticalOverflow = VerticalWrapMode.Overflow;
+            var layoutElement = textComponent.GetComponent<LayoutElement>();
+            if (layoutElement != null)
+                layoutElement.preferredHeight = -1f;
+            AddContentSizeFitter(textComponent.gameObject, ContentSizeFitter.FitMode.Unconstrained, ContentSizeFitter.FitMode.PreferredSize);
+            return textComponent;
+        }
+
+        public static float MeasureTextWidth(Text text, string value)
+        {
+            if (text == null || string.IsNullOrEmpty(value))
+                return 0f;
+            var settings = text.GetGenerationSettings(Vector2.zero);
+            return text.cachedTextGeneratorForLayout.GetPreferredWidth(value, settings) / Mathf.Max(0.01f, text.pixelsPerUnit);
+        }
+
+        // Single-line truncation with ellipsis (full text in a hover tooltip). hoverTarget defaults to the text itself.
+        public static EllipsisText AddEllipsis(Text text, GameObject hoverTarget = null)
+        {
+            if (text == null)
+                return null;
+            var existing = text.GetComponent<EllipsisText>();
+            var ellipsis = existing != null ? existing : text.gameObject.AddComponent<EllipsisText>();
+            ellipsis.HoverTarget = hoverTarget;
+            text.horizontalOverflow = HorizontalWrapMode.Overflow;
+            return ellipsis;
+        }
+
         public static Text CreateLabel(Transform parent, string text, int fontSize = 12, int width = 0, int height = 20)
         {
             var t = CreateText(parent, text, fontSize, Color.white, FontStyle.Normal);
@@ -98,6 +130,7 @@ namespace MapLootEditorLite.Client
                 AddLayoutElement(t.gameObject, null, height, width, height, 0, 0);
             else
                 AddLayoutElement(t.gameObject, null, height, null, height, 1, 0);
+            AddEllipsis(t);
             return t;
         }
 
@@ -122,8 +155,9 @@ namespace MapLootEditorLite.Client
             var textRt = text.GetComponent<RectTransform>();
             textRt.anchorMin = Vector2.zero;
             textRt.anchorMax = Vector2.one;
-            textRt.offsetMin = Vector2.zero;
-            textRt.offsetMax = Vector2.zero;
+            textRt.offsetMin = new Vector2(3f, 0f);
+            textRt.offsetMax = new Vector2(-3f, 0f);
+            AddEllipsis(text, go);
             button.onClick.AddListener(onClick);
             var rt = go.GetComponent<RectTransform>();
             rt.sizeDelta = new Vector2(width, height);
@@ -171,6 +205,9 @@ namespace MapLootEditorLite.Client
             textRt.offsetMin = new Vector2(4, 0);
             textRt.offsetMax = new Vector2(-4, 0);
 
+            // Long single-line values scroll inside the field instead of drawing over neighbouring controls.
+            go.AddComponent<RectMask2D>();
+
             input.textComponent = textText;
             input.placeholder = placeholderText;
             input.text = text;
@@ -202,11 +239,16 @@ namespace MapLootEditorLite.Client
             checkRt.offsetMax = new Vector2(-3, -3);
 
             var hasLabel = !string.IsNullOrEmpty(label);
-            var labelWidth = hasLabel ? 140 : 0;
+            var labelWidth = 0;
+            Text labelText = null;
+            if (hasLabel)
+            {
+                labelText = CreateText(go.transform, label, 12, new Color(0.82f, 0.82f, 0.82f, 1f));
+                labelWidth = Mathf.Clamp(Mathf.CeilToInt(MeasureTextWidth(labelText, labelText.text)) + 4, 140, 260);
+            }
             var totalWidth = height + 4 + labelWidth;
             if (hasLabel)
             {
-                var labelText = CreateText(go.transform, label, 12, new Color(0.82f, 0.82f, 0.82f, 1f));
                 labelText.raycastTarget = false;
                 var labelRt = labelText.GetComponent<RectTransform>();
                 labelRt.anchorMin = new Vector2(0, 0.5f);
@@ -214,6 +256,7 @@ namespace MapLootEditorLite.Client
                 labelRt.pivot = new Vector2(0, 0.5f);
                 labelRt.anchoredPosition = new Vector2(height + 4, 0);
                 labelRt.sizeDelta = new Vector2(labelWidth, height);
+                AddEllipsis(labelText, go);
             }
 
             AddLayoutElement(go, null, height, totalWidth, height, 0, 0);

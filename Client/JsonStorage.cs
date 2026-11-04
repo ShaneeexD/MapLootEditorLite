@@ -30,7 +30,7 @@ namespace MapLootEditorLite.Client
 
             Directory.CreateDirectory(SaveDirectory);
             var json = JsonConvert.SerializeObject(data, _settings);
-            File.WriteAllText(GetFilePath(data.map), json);
+            AtomicFileWriter.WriteAllText(GetFilePath(data.map), json, true);
         }
 
         public static MapData Load(string mapId)

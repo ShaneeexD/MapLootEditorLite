@@ -57,6 +57,9 @@ export interface LooseLootSpawn {
   questOnly?: boolean
   questCompleted?: boolean
   questId?: string
+  lootGroupEnabled?: boolean
+  lootGroupId?: string
+  lootGroupWeight?: number
 }
 
 export enum ZoneShape {
@@ -83,6 +86,10 @@ export interface LootZone {
   questOnly?: boolean
   questCompleted?: boolean
   questId?: string
+  bakeCount?: number
+  minSpacing?: number
+  maxSlope?: number
+  surfacePoints?: TransformData[]
 }
 
 export interface StaticObject {
@@ -95,6 +102,7 @@ export interface StaticObject {
   prefabPath: string
   sourceObjectName?: string
   sourceObjectPosition?: TransformData
+  sourceWorldObjectId?: string
   bundleName?: string
   prefabName?: string
   questOnly?: boolean
@@ -125,6 +133,7 @@ export interface InteractiveObject {
   interactiveType: InteractiveObjectType
   sourceObjectName?: string
   sourceObjectPosition?: TransformData
+  sourceWorldObjectId?: string
   bundleName?: string
   prefabName?: string
   keyId?: string
@@ -246,6 +255,8 @@ export enum BotSpawnPreset {
   Partisan = 'Partisan',
   Cultist = 'Cultist',
   Infected = 'Infected',
+  Reshala = 'Reshala',
+  BotGen = 'BotGen',
 }
 
 export interface BotSpawnGroup {
@@ -261,6 +272,9 @@ export interface BotSpawnPoint {
   id: string
   name: string
   group?: string
+  botSpawnGroupId?: string
+  botActivityZoneId?: string
+  deploymentId?: string
   position: TransformData
   rotation: TransformData
   radius: number
@@ -280,6 +294,9 @@ export interface BotSpawnPoint {
   triggerActivated?: boolean
   triggerZoneName?: string
   forcePlayerSpawn?: boolean
+  followersEnabled?: boolean
+  minFollowers?: number
+  maxFollowers?: number
 }
 
 export interface BotSpawnZone {
@@ -306,8 +323,12 @@ export interface BotSpawnZone {
   botSpawnChance?: number
   randomSpawnTypes?: string[]
   randomGroups?: BotSpawnGroup[]
+  deploymentId?: string
   triggerActivated?: boolean
   triggerZoneName?: string
+  followersEnabled?: boolean
+  minFollowers?: number
+  maxFollowers?: number
 }
 
 export interface PmcSpawnZone {
@@ -332,6 +353,38 @@ export interface PmcSpawnZone {
   questCompleted?: boolean
   questId?: string
   forcePlayerSpawn?: boolean
+}
+
+export type BotActivityZoneShape = 'Circle' | 'Square'
+export type BotActivityLeashMode = 'Soft' | 'Strong'
+
+// Bot activity boundary and optional runtime patrol configuration.
+export interface BotActivityZone {
+  id: string
+  name: string
+  group?: string
+  position: TransformData
+  rotation: TransformData
+  zoneId: string
+  enabled: boolean
+  shape: BotActivityZoneShape
+  radius: number
+  sideLength: number
+  width?: number
+  depth?: number
+  patrolEnabled?: boolean
+  patrolPoints?: BotActivityPatrolPoint[]
+  // Missing or unrecognized values are treated as 'Soft'.
+  leashMode?: BotActivityLeashMode
+}
+
+export interface BotActivityPatrolPoint {
+  id: string
+  name?: string
+  position: TransformData
+  destinationZoneId?: string
+  dwellSeconds?: number
+  enabled?: boolean
 }
 
 export interface TriggerZone {
@@ -415,6 +468,7 @@ export interface WTTStaticObject {
   prefabName?: string
   sourceObjectName?: string
   sourceObjectPosition?: TransformData
+  sourceWorldObjectId?: string
   questId?: string
   requiredQuestStatuses?: string[]
   excludedQuestStatuses?: string[]
@@ -471,7 +525,15 @@ export interface CutVolume {
   shape: ZoneShape
   sourceObjectName?: string
   sourceObjectPosition?: TransformData
+  sourceWorldObjectId?: string
   invert?: boolean
+}
+
+export interface NpcDeployment {
+  id: string
+  name: string
+  activationQuestId: string
+  deactivationQuestId?: string
 }
 
 export interface MapData {
@@ -488,6 +550,8 @@ export interface MapData {
   pmcSpawnZones: PmcSpawnZone[]
   lightZones: LightZone[]
   triggerZones: TriggerZone[]
+  botActivityZones?: BotActivityZone[]
+  deployments?: NpcDeployment[]
   removedObjects?: RemovedObject[]
   occlusionRepairVolumes?: OcclusionRepairVolume[]
   cutVolumes?: CutVolume[]
@@ -587,6 +651,8 @@ export function defaultMapData(mapId: string): MapData {
     pmcSpawnZones: [],
     lightZones: [],
     triggerZones: [],
+    botActivityZones: [],
+    deployments: [],
     removedObjects: [],
     occlusionRepairVolumes: [],
     cutVolumes: [],
@@ -603,6 +669,7 @@ export function defaultInteractiveObject(): InteractiveObject {
     interactiveType: InteractiveObjectType.Container,
     sourceObjectName: '',
     sourceObjectPosition: defaultTransform(),
+    sourceWorldObjectId: '',
     bundleName: '',
     prefabName: '',
     keyId: '',
@@ -681,6 +748,8 @@ export function defaultBotSpawnPoint(): BotSpawnPoint {
   return {
     id: generateId(),
     name: 'bot_spawn_point',
+    botSpawnGroupId: '',
+    botActivityZoneId: '',
     position: defaultTransform(),
     rotation: defaultTransform(),
     radius: 1,
@@ -699,6 +768,9 @@ export function defaultBotSpawnPoint(): BotSpawnPoint {
     triggerActivated: false,
     triggerZoneName: '',
     forcePlayerSpawn: false,
+    followersEnabled: false,
+    minFollowers: 0,
+    maxFollowers: 0,
   }
 }
 
@@ -752,6 +824,9 @@ export function defaultBotSpawnZone(): BotSpawnZone {
     randomGroups: [],
     triggerActivated: false,
     triggerZoneName: '',
+    followersEnabled: false,
+    minFollowers: 0,
+    maxFollowers: 0,
   }
 }
 
@@ -782,6 +857,7 @@ export function defaultWttStaticObject(): WTTStaticObject {
     prefabName: '',
     sourceObjectName: '',
     sourceObjectPosition: defaultTransform(),
+    sourceWorldObjectId: '',
     questId: '',
     requiredQuestStatuses: [],
     excludedQuestStatuses: [],
@@ -796,6 +872,29 @@ export function defaultWttStaticObject(): WTTStaticObject {
     requiredBossSpawned: '',
     questOnly: false,
     questCompleted: false,
+  }
+}
+
+export function generateZoneId(): string {
+  return 'zone_' + crypto.randomUUID().replace(/-/g, '').slice(0, 8)
+}
+
+export function defaultBotActivityZone(): BotActivityZone {
+  return {
+    id: generateId(),
+    name: 'bot_activity_zone',
+    position: defaultTransform(),
+    rotation: defaultTransform(),
+    zoneId: generateZoneId(),
+    enabled: true,
+    shape: 'Circle',
+    radius: 25,
+    sideLength: 50,
+    width: 50,
+    depth: 50,
+    patrolEnabled: false,
+    patrolPoints: [],
+    leashMode: 'Soft',
   }
 }
 
@@ -862,6 +961,7 @@ export function defaultCutVolume(): CutVolume {
     shape: ZoneShape.Box,
     sourceObjectName: '',
     sourceObjectPosition: defaultTransform(),
+    sourceWorldObjectId: '',
     invert: false,
   }
 }

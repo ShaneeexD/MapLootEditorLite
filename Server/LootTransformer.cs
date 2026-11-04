@@ -14,7 +14,7 @@ public static class LootTransformer
     // Tracks which LooseLoot instances have already had a transformer attached, so Register() can be safely called again when locations are regenerated.
     private static readonly ConditionalWeakTable<object, object> RegisteredLooseLoot = new ConditionalWeakTable<object, object>();
     private static LocationTable? _locationTable;
-
+    private const string LootGroupTemplatePrefix = "MEL_LG_";
     public static void Register(LocationTable locationTable)
     {
         _locationTable = locationTable;
@@ -68,6 +68,9 @@ public static class LootTransformer
                 }
 
                 var spawnpoints = looseLootObj.Spawnpoints?.ToList() ?? [];
+                var forcedSpawnpoints = looseLootObj.SpawnpointsForced?.ToList() ?? [];
+                var forcedIds = new HashSet<string>(forcedSpawnpoints.Select(s => s.LocationId!));
+                var groupCounts = new Dictionary<string, int>();
                 var existingIds = new HashSet<string>(spawnpoints.Select(s => s.LocationId));
                 var random = Random.Shared;
                 var added = 0;
@@ -76,6 +79,31 @@ public static class LootTransformer
                 {
                     foreach (var spawn in map.LootSpawns)
                     {
+                        // Loot-group members go to SpawnpointsForced; SPT's ChooseForcedPositions then
+                        // picks one per shared Template.Id, weighted by Probability. SpawnChance is ignored.
+                        if (spawn.IsInLootGroup)
+                        {
+                            if (!QuestConditionsMet(spawn.QuestOnly, spawn.QuestCompleted, spawn.QuestId))
+                            {
+                                continue;
+                            }
+
+                            var groupItems = spawn.Items.Where(ShouldSpawnItem).ToList();
+                            if (groupItems.Count == 0 || !forcedIds.Add(spawn.Id))
+                            {
+                                continue;
+                            }
+
+                            var groupKey = spawn.LootGroupId.Trim();
+                            var groupSpawn = CreateSpawnpoint(spawn, groupItems);
+                            groupSpawn.Probability = spawn.LootGroupWeight;
+                            groupSpawn.Template!.Id = LootGroupTemplatePrefix + groupKey;
+                            groupSpawn.Template.IsAlwaysSpawn = true;
+                            forcedSpawnpoints.Add(groupSpawn);
+                            groupCounts[groupKey] = groupCounts.GetValueOrDefault(groupKey) + 1;
+                            continue;
+                        }
+
                         if (spawn.Forced)
                         {
                             continue;
@@ -137,6 +165,7 @@ public static class LootTransformer
                             continue;
                         }
 
+                        var surfacePool = zone.SurfacePoints is { Count: > 0 } ? new List<TransformData>(zone.SurfacePoints) : null;
                         for (int i = 0; i < zone.Items.Count; i++)
                         {
                             var item = zone.Items[i];
@@ -151,7 +180,7 @@ public static class LootTransformer
                             }
 
                             var locationId = $"{zone.Id}_{i}";
-                            var newSpawn = CreateZoneItemSpawnpoint(zone, item, i, random);
+                            var newSpawn = CreateZoneItemSpawnpoint(zone, item, i, random, TakeSurfacePoint(surfacePool, random));
                             if (existingIds.Contains(locationId))
                             {
                                 var idx = spawnpoints.FindIndex(s => s.LocationId == locationId);
@@ -178,6 +207,9 @@ public static class LootTransformer
                     ServerPlugin.Logger?.Info($"[MEL] Added {added} custom loot spawnpoints to {locationId}.");
 
                 looseLootObj.Spawnpoints = spawnpoints;
+                looseLootObj.SpawnpointsForced = forcedSpawnpoints;
+                foreach (var (groupKey, count) in groupCounts)
+                    ServerPlugin.Logger?.Info($"[MEL] Loot group '{groupKey}' on {locationId}: {count} eligible member(s); SPT will pick one.");
                 return looseLootObj;
             });
 
@@ -214,12 +246,23 @@ public static class LootTransformer
         };
     }
 
-    private static Spawnpoint CreateZoneItemSpawnpoint(LootZone zone, LootItem item, int index, Random random)
+    // Each item takes a different baked surface point so items in one zone never share a spot; null once the pool is empty.
+    internal static TransformData? TakeSurfacePoint(List<TransformData>? pool, Random random)
+    {
+        if (pool == null || pool.Count == 0)
+            return null;
+        var idx = random.Next(pool.Count);
+        var point = pool[idx];
+        pool.RemoveAt(idx);
+        return point;
+    }
+
+    private static Spawnpoint CreateZoneItemSpawnpoint(LootZone zone, LootItem item, int index, Random random, TransformData? surfacePoint)
     {
         var itemTpl = string.IsNullOrWhiteSpace(item.Template) ? "544fb45d4bdc2dee738b4568" : item.Template;
         var locationId = $"{zone.Id}_{index}";
         var composedKey = $"{zone.Id}_{itemTpl}_{index}";
-        var position = RandomPointInShape(zone, random);
+        var position = surfacePoint ?? RandomPointInShape(zone, random);
         var rotation = item.RandomRotation ? RandomYRotation(random) : item.Rotation;
 
         var items = new List<SptLootItem>();

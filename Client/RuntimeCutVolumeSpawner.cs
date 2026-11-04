@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using Comfort.Common;
 using EFT;
+using EFT.Interactive;
 using Newtonsoft.Json;
 using Unity.Collections;
 using UnityEngine;
@@ -46,6 +47,8 @@ namespace MapLootEditorLite.Client
         public void ResetState()
         {
             RestoreAllCuts();
+            _packs.Clear();
+            _packs.AddRange(RuntimePackLoader.LoadPacks("cut volumes"));
             _currentWorld = null;
             _currentMapId = null;
         }
@@ -81,32 +84,8 @@ namespace MapLootEditorLite.Client
 
         private void LoadPacks()
         {
-            if (string.IsNullOrEmpty(Plugin.ServerModPacksDirectory) || !Directory.Exists(Plugin.ServerModPacksDirectory))
-            {
-                Plugin.Log.LogWarning("Cut volumes disabled: no pack directory found.");
-                return;
-            }
-
-            foreach (var file in Directory.GetFiles(Plugin.ServerModPacksDirectory, "*.json", SearchOption.AllDirectories))
-            {
-                try
-                {
-                    var json = File.ReadAllText(file);
-                    var trimmed = json.TrimStart();
-                    if (trimmed.Length > 0 && trimmed[0] == '[')
-                        continue;
-                    var pack = JsonConvert.DeserializeObject<PackData>(json, PackData.InvariantSettings);
-                    if (pack?.maps != null)
-                    {
-                        _packs.Add(pack);
-                        Plugin.Log.LogInfo($"Loaded pack '{pack.name}' for cut volumes.");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Plugin.Log.LogWarning($"Failed to load pack {file}: {ex.Message}");
-                }
-            }
+            _packs.Clear();
+            _packs.AddRange(RuntimePackLoader.LoadPacks("cut volumes"));
         }
 
         private IEnumerator ApplyCutVolumesForMap(string mapId)
@@ -116,7 +95,7 @@ namespace MapLootEditorLite.Client
             var volumes = new List<CutVolume>();
             foreach (var pack in _packs)
             {
-                if (pack.maps.TryGetValue(mapId, out var map))
+                if (RuntimePackLoader.TryGetMapData(pack, mapId, out var map))
                     volumes.AddRange(map.cutVolumes ?? new List<CutVolume>());
             }
 
@@ -141,7 +120,7 @@ namespace MapLootEditorLite.Client
                 yield break;
             }
 
-            var target = FindSourceObject(volume.sourceObjectName, volume.sourceObjectPosition.ToVector3());
+            var target = FindSourceObject(volume.sourceObjectName, volume.sourceObjectPosition.ToVector3(), volume.sourceWorldObjectId);
             if (target == null)
             {
                 Plugin.Log.LogWarning($"Cut volume '{volume.name}' could not find source object '{volume.sourceObjectName}'.");
@@ -691,10 +670,12 @@ namespace MapLootEditorLite.Client
                    a.min.z <= b.max.z && a.max.z >= b.min.z;
         }
 
-        private GameObject FindSourceObject(string name, Vector3 position)
+        private GameObject FindSourceObject(string name, Vector3 position, string sourceWorldObjectId = null)
         {
             GameObject best = null;
             float bestDist = float.MaxValue;
+            GameObject identified = null;
+            float identifiedDist = float.MaxValue;
             var sceneCount = UnityEngine.SceneManagement.SceneManager.sceneCount;
 
             for (int i = 0; i < sceneCount; i++)
@@ -710,6 +691,18 @@ namespace MapLootEditorLite.Client
                         if (t.name != name)
                             continue;
                         var dist = (t.position - position).sqrMagnitude;
+                        var worldObject = t.GetComponentInChildren<WorldInteractiveObject>(true)
+                            ?? t.GetComponentInParent<WorldInteractiveObject>();
+                        if (!string.IsNullOrEmpty(sourceWorldObjectId) && worldObject != null && worldObject.Id == sourceWorldObjectId)
+                        {
+                            if (dist < identifiedDist)
+                            {
+                                identifiedDist = dist;
+                                identified = t.gameObject;
+                            }
+                            continue;
+                        }
+
                         if (dist < bestDist)
                         {
                             bestDist = dist;
@@ -719,6 +712,10 @@ namespace MapLootEditorLite.Client
                 }
             }
 
+            if (identified != null)
+                return identified;
+            if (best != null && !string.IsNullOrEmpty(sourceWorldObjectId))
+                Plugin.Log.LogWarning($"Source WorldInteractiveObject id '{sourceWorldObjectId}' was not found for '{name}'; falling back to the saved name and position.");
             return best;
         }
 

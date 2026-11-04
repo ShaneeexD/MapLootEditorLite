@@ -34,6 +34,13 @@ namespace MapLootEditorLite.Client
             return null;
         }
 
+        public static IEnumerable<KeyValuePair<string, string>> GetAllKnownNames()
+        {
+            if (_apiNames == null)
+                LoadOfflineCache();
+            return _apiNames ?? Enumerable.Empty<KeyValuePair<string, string>>();
+        }
+
         public static string GetNameOrId(string templateId)
         {
             var name = GetName(templateId);

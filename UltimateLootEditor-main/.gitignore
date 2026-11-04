@@ -1,0 +1,17 @@
+.vs/
+bin/
+obj/
+tmp-build/
+tools/
+release/
+
+*.user
+*.suo
+*.lscache
+*.pdb
+*.dll
+*.exe
+*.cache
+*.deps.json
+*.runtimeconfig.json
+*.zip

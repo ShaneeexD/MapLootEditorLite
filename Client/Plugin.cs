@@ -10,6 +10,7 @@ namespace MapLootEditorLite.Client
 {
     [BepInPlugin("com.shaneeexd.mapeditorlite", "Map Editor Lite", "2.1.0")]
     [BepInDependency("com.wtt.commonlib", BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency("xyz.drakia.bigbrain", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
     {
         public static Plugin Instance { get; private set; }
@@ -23,6 +24,17 @@ namespace MapLootEditorLite.Client
         public static string LocalizationDirectory { get; private set; } = string.Empty;
         public static ConfigEntry<bool> EnableEditor;
         public static ConfigEntry<bool> EnableDebugVisuals;
+        public static ConfigEntry<bool> EnablePreviewLifecycleDiagnostics;
+        public static ConfigEntry<bool> EnableBotActivityZoneDiagnostics;
+        public static ConfigEntry<bool> EnableScenePickDiagnostics;
+        public static ConfigEntry<bool> EnableLootZoneDiagnostics;
+        public static ConfigEntry<bool> SuppressVanillaBossWaves;
+        public static ConfigEntry<bool> SprintToZone;
+        public static ConfigEntry<bool> StrongLeashCombatContainment;
+        public static ConfigEntry<string> BotGenBackendUrl;
+        public static ConfigEntry<float> FreeCamSpeed;
+        public static ConfigEntry<float> FreeCamFastMultiplier;
+        public static ConfigEntry<KeyCode> DoorDiagnosticKey;
         public static ConfigEntry<float> UIScale;
         public static ConfigEntry<float> VanillaRenderDistance;
         public static ConfigEntry<float> ObjectRenderDistance;
@@ -73,6 +85,28 @@ namespace MapLootEditorLite.Client
 
             EnableEditor = base.Config.Bind("General", "EnableEditor", false, "Enable the in-raid F8 editor");
             EnableDebugVisuals = base.Config.Bind("General", "EnableDebugVisuals", false, "Show debug visuals in raid");
+            EnablePreviewLifecycleDiagnostics = base.Config.Bind("Diagnostics", "EnablePreviewLifecycleDiagnostics", false, "Log preview requests, instance associations, stale completions, and movement checks.");
+            EnableBotActivityZoneDiagnostics = base.Config.Bind("Diagnostics", "EnableBotActivityZoneDiagnostics", false, "Track exact MEL-spawned bot profile IDs and log containment in assigned Bot Activity Zones.");
+            EnableScenePickDiagnostics = base.Config.Bind("Diagnostics", "EnableScenePickDiagnostics", false, "Log every viewport scene-object click: collider and renderer candidates, distances, rejection reasons and the final pick.");
+            EnableLootZoneDiagnostics = base.Config.Bind("Diagnostics", "EnableLootZoneDiagnostics", false, "Log every candidate tested when baking Loose Loot Zone surface points: ray origin, hit object, normal/slope and accept/reject reason (can be verbose).");
+            SuppressVanillaBossWaves = base.Config.Bind("Bots", "SuppressVanillaBossWaves", true, "When a MEL custom spawn point will spawn a boss, remove that map's vanilla spawn waves for the same boss type so a second squad (e.g. a second Goons group) does not appear elsewhere. Only boss types MEL itself is spawning are affected.");
+            SprintToZone = base.Config.Bind("Bots", "SprintToZone", true, "Bots with an assigned Bot Activity Zone sprint (stamina permitting) while travelling back to their zone from outside it, and walk once inside.");
+            StrongLeashCombatContainment = base.Config.Bind("Bots", "StrongLeashCombatContainment", true, "Strong Leash zones only: validate SAIN combat movement destinations (pursuit, cover, regroup) for MEL-owned bots and replace destinations outside the zone with a reachable point inside it. Grenade avoidance and flash recovery are never constrained. Takes effect at game start; disable if it causes problems with SAIN.");
+            BotGenBackendUrl = base.Config.Bind("Integrations", "BotGenBackendUrl", "",
+                "Optional trusted SPT backend base URL for BotGen. Empty uses SPT's configured backend (recommended). SPT session credentials are sent to this server. POST /botgen/registry is appended automatically; no credentials, query, or fragment allowed.");
+            var legacyRegistryUrl = base.Config.Bind("Integrations", "BotGenRegistryUrl", "",
+                "Deprecated. Migrated to BotGenBackendUrl on first upgrade; the old hardcoded default is replaced with automatic SPT discovery.");
+            if (string.IsNullOrWhiteSpace(BotGenBackendUrl.Value) && !string.IsNullOrWhiteSpace(legacyRegistryUrl.Value))
+            {
+                BotGenBackendUrl.Value = BotGenRegistryTransport.MigrateLegacyUrl(legacyRegistryUrl.Value);
+                Log.LogInfo("[MEL BotGen] Migrated legacy registry setting to " +
+                    (string.IsNullOrWhiteSpace(BotGenBackendUrl.Value) ? "automatic SPT discovery." : "manual backend override (validated on refresh)."));
+            }
+            if (!string.IsNullOrEmpty(legacyRegistryUrl.Value))
+                legacyRegistryUrl.Value = "";
+            FreeCamSpeed = base.Config.Bind("Camera", "FreeCamSpeed", 5f, new ConfigDescription("Free camera travel speed in metres/second. In the free camera, [ and ] or Alt+mouse wheel change it on the fly.", new AcceptableValueRange<float>(0.5f, 300f)));
+            FreeCamFastMultiplier = base.Config.Bind("Camera", "FreeCamFastMultiplier", 3f, new ConfigDescription("Speed multiplier while holding Shift in the free camera.", new AcceptableValueRange<float>(1f, 20f)));
+            DoorDiagnosticKey = base.Config.Bind("Diagnostics", "DoorDiagnosticKey", KeyCode.F10, "With EnableScenePickDiagnostics on and the editor open, press this key while aiming at a door to log the door hierarchy under the cursor (one-shot).");
             UIScale = base.Config.Bind("General", "UIScale", 1.0f, new ConfigDescription("Scale of the editor UI window", new AcceptableValueRange<float>(0.5f, 2.0f)));
             VanillaRenderDistance = base.Config.Bind("General", "VanillaRenderDistance", 50f, new ConfigDescription("Maximum distance to render vanilla gizmos (0 = unlimited)", new AcceptableValueRange<float>(0f, 500f)));
             ObjectRenderDistance = base.Config.Bind("General", "ObjectRenderDistance", 50f, new ConfigDescription("Maximum distance to render scene object picker outlines (0 = unlimited)", new AcceptableValueRange<float>(0f, 500f)));
@@ -109,11 +143,42 @@ namespace MapLootEditorLite.Client
             gameObject.AddComponent<RuntimeNavMeshBuilder>();
             Log.LogInfo("Runtime navmesh builder attached");
 
+            try
+            {
+                if (BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey("xyz.drakia.bigbrain"))
+                    ActivityZoneLeashRegistrar.Register();
+                else
+                    Log.LogInfo("[MEL leash] BigBrain not found; activity-zone leash disabled.");
+            }
+            catch (Exception ex)
+            {
+                Log.LogWarning($"[MEL leash] Registration failed; leash disabled: {ex.Message}");
+            }
+
+            try
+            {
+                // Strong SAIN destination containment is independent of BigBrain layer selection.
+                StrongLeashContainment.EnsureInstalled();
+            }
+            catch (Exception ex)
+            {
+                Log.LogWarning($"[MEL StrongLeash] SAIN containment setup failed: {ex.Message}");
+            }
+
             var raidResetHarmony = new Harmony("com.shane.mapeditorlite.raidreset");
             raidResetHarmony.PatchAll();
             Log.LogInfo("Raid reset patch applied");
 
             StartCoroutine(ItemNameResolver.LoadApiNames());
+            StartCoroutine(NpcProviderRegistry.RefreshAtStartup(success =>
+            {
+                if (!success)
+                    Log.LogWarning("[MEL BotGen] Initial registry refresh failed; NPC choices will remain unavailable until a successful refresh.");
+            }));
+
+            var decalProbe = base.Config.Bind("Diagnostics", "EnableDecalFeasibilityProbe", false, "Temporary M0 diagnostic: log shader availability and PNG loading results. Does not modify the world.");
+            if (decalProbe.Value)
+                StartCoroutine(DecalFeasibilityProbe.Run());
         }
 
     }

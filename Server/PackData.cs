@@ -53,6 +53,9 @@ public record MapData
     [JsonPropertyName("triggerZones")]
     public List<TriggerZone> TriggerZones { get; set; } = [];
 
+    [JsonPropertyName("botActivityZones")]
+    public List<BotActivityZone> BotActivityZones { get; set; } = [];
+
     [JsonPropertyName("occlusionRepairVolumes")]
     public List<OcclusionRepairVolume> OcclusionRepairVolumes { get; set; } = [];
 
@@ -61,6 +64,25 @@ public record MapData
 
     [JsonPropertyName("removedObjects")]
     public List<RemovedObject> RemovedObjects { get; set; } = [];
+
+    // Preserved only; the server does not evaluate deployments (the client does, from the player's quest state).
+    [JsonPropertyName("deployments")]
+    public List<NpcDeployment> Deployments { get; set; } = [];
+}
+
+public record NpcDeployment
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("activationQuestId")]
+    public string ActivationQuestId { get; set; } = string.Empty;
+
+    [JsonPropertyName("deactivationQuestId")]
+    public string DeactivationQuestId { get; set; } = string.Empty;
 }
 
 public record RemovedObject
@@ -167,6 +189,13 @@ public record BotSpawnPoint
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
 
+    [JsonPropertyName("botSpawnGroupId")]
+    public string BotSpawnGroupId { get; set; } = string.Empty;
+
+    // Editor-only reference to BotActivityZone.zoneId; not used by server logic.
+    [JsonPropertyName("botActivityZoneId")]
+    public string BotActivityZoneId { get; set; } = string.Empty;
+
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 
@@ -226,6 +255,18 @@ public record BotSpawnPoint
 
     [JsonPropertyName("triggerZoneName")]
     public string TriggerZoneName { get; set; } = string.Empty;
+
+    [JsonPropertyName("followersEnabled")]
+    public bool FollowersEnabled { get; set; } = false;
+
+    [JsonPropertyName("minFollowers")]
+    public int MinFollowers { get; set; } = 0;
+
+    [JsonPropertyName("maxFollowers")]
+    public int MaxFollowers { get; set; } = 0;
+
+    [JsonPropertyName("deploymentId")]
+    public string DeploymentId { get; set; } = string.Empty;
 }
 
 public record BotSpawnGroup
@@ -247,6 +288,77 @@ public record BotSpawnGroup
 
     [JsonPropertyName("category")]
     public BotSpawnCategory Category { get; set; } = BotSpawnCategory.Bot;
+}
+
+// Pass-through Bot Activity Zone configuration. Shape and leash remain strings so unknown values survive pack loading.
+public record BotActivityZone
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("group")]
+    public string Group { get; set; } = string.Empty;
+
+    [JsonPropertyName("position")]
+    public TransformData Position { get; set; } = new();
+
+    [JsonPropertyName("rotation")]
+    public TransformData Rotation { get; set; } = new();
+
+    [JsonPropertyName("zoneId")]
+    public string ZoneId { get; set; } = string.Empty;
+
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = true;
+
+    [JsonPropertyName("shape")]
+    public string Shape { get; set; } = "Circle";
+
+    [JsonPropertyName("radius")]
+    public float Radius { get; set; } = 25f;
+
+    [JsonPropertyName("sideLength")]
+    public float SideLength { get; set; } = 50f;
+
+    [JsonPropertyName("width")]
+    public float Width { get; set; }
+
+    [JsonPropertyName("depth")]
+    public float Depth { get; set; }
+
+    [JsonPropertyName("patrolEnabled")]
+    public bool PatrolEnabled { get; set; }
+
+    [JsonPropertyName("patrolPoints")]
+    public List<BotActivityPatrolPoint> PatrolPoints { get; set; } = [];
+
+    // Kept as strings so unknown values never fail pack loading and fields survive round trips.
+    [JsonPropertyName("leashMode")]
+    public string LeashMode { get; set; } = "Soft";
+}
+
+public record BotActivityPatrolPoint
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("position")]
+    public TransformData Position { get; set; } = new();
+
+    [JsonPropertyName("destinationZoneId")]
+    public string DestinationZoneId { get; set; } = string.Empty;
+
+    [JsonPropertyName("dwellSeconds")]
+    public float DwellSeconds { get; set; } = 60f;
+
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = true;
 }
 
 public record TriggerZone
@@ -374,6 +486,9 @@ public record CutVolume
     [JsonPropertyName("sourceObjectPosition")]
     public TransformData SourceObjectPosition { get; set; } = new();
 
+    [JsonPropertyName("sourceWorldObjectId")]
+    public string SourceWorldObjectId { get; set; } = string.Empty;
+
     [JsonPropertyName("scale")]
     public TransformData Scale { get; set; } = new() { X = 1, Y = 1, Z = 1 };
 
@@ -460,6 +575,18 @@ public record BotSpawnZone
 
     [JsonPropertyName("triggerZoneName")]
     public string TriggerZoneName { get; set; } = string.Empty;
+
+    [JsonPropertyName("followersEnabled")]
+    public bool FollowersEnabled { get; set; } = false;
+
+    [JsonPropertyName("minFollowers")]
+    public int MinFollowers { get; set; } = 0;
+
+    [JsonPropertyName("maxFollowers")]
+    public int MaxFollowers { get; set; } = 0;
+
+    [JsonPropertyName("deploymentId")]
+    public string DeploymentId { get; set; } = string.Empty;
 }
 
 public record LightColorData
@@ -602,6 +729,18 @@ public record LooseLootSpawn
 
     [JsonPropertyName("questId")]
     public string QuestId { get; set; } = string.Empty;
+
+    // Gameplay loot group (independent of the editor-only "group" field)
+    [JsonPropertyName("lootGroupEnabled")]
+    public bool LootGroupEnabled { get; set; } = false;
+
+    [JsonPropertyName("lootGroupId")]
+    public string LootGroupId { get; set; } = string.Empty;
+
+    [JsonPropertyName("lootGroupWeight")]
+    public double LootGroupWeight { get; set; } = 1.0;
+
+    public bool IsInLootGroup => LootGroupEnabled && !string.IsNullOrWhiteSpace(LootGroupId) && LootGroupWeight > 0;
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -663,6 +802,10 @@ public record LootZone
 
     [JsonPropertyName("questId")]
     public string QuestId { get; set; } = string.Empty;
+
+    // Baked in the editor from real map geometry. Empty (legacy packs) = scatter at the zone's Y as before.
+    [JsonPropertyName("surfacePoints")]
+    public List<TransformData>? SurfacePoints { get; set; }
 }
 
 public record StaticObject
@@ -693,6 +836,9 @@ public record StaticObject
 
     [JsonPropertyName("sourceObjectPosition")]
     public TransformData SourceObjectPosition { get; set; } = new();
+
+    [JsonPropertyName("sourceWorldObjectId")]
+    public string SourceWorldObjectId { get; set; } = string.Empty;
 
     [JsonPropertyName("bundleName")]
     public string BundleName { get; set; } = string.Empty;
@@ -756,6 +902,9 @@ public record WTTStaticObject
 
     [JsonPropertyName("sourceObjectPosition")]
     public TransformData SourceObjectPosition { get; set; } = new();
+
+    [JsonPropertyName("sourceWorldObjectId")]
+    public string SourceWorldObjectId { get; set; } = string.Empty;
 
     [JsonPropertyName("questId")]
     public string QuestId { get; set; } = string.Empty;
@@ -874,7 +1023,9 @@ public enum BotSpawnPreset
     Kolontay,
     Partisan,
     Cultist,
-    Infected
+    Infected,
+    Reshala,
+    BotGen
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -913,6 +1064,9 @@ public record InteractiveObject
 
     [JsonPropertyName("sourceObjectPosition")]
     public TransformData SourceObjectPosition { get; set; } = new();
+
+    [JsonPropertyName("sourceWorldObjectId")]
+    public string SourceWorldObjectId { get; set; } = string.Empty;
 
     [JsonPropertyName("bundleName")]
     public string BundleName { get; set; } = string.Empty;
